@@ -2,20 +2,31 @@ package com.evidentdb.database
 
 import java.util.*
 
+// Domain Model
+
 data class ProposedDatabase(val id: UUID, val name: String)
 data class DatabaseCreated(val id: UUID, val name: String, val t: Long)
 data class DatabaseRejected(val id: UUID, val name: String, val t: Long)
 sealed class ProposalOutcome {
-    object Accepted : ProposalOutcome() {
-        fun event(id: UUID, name: String, t: Long) : DatabaseCreated {
-            return DatabaseCreated(id, name, t)
+    class Accepted(private val proposal: ProposedDatabase, private val t: Long) : ProposalOutcome() {
+        fun event() : DatabaseCreated {
+            return DatabaseCreated(proposal.id, proposal.name, t)
         }
     }
 
-    object Rejected : ProposalOutcome() {
-        fun event(id: UUID, name: String, t: Long) : DatabaseRejected {
-            return DatabaseRejected(id, name, t)
+    class Rejected(private val proposal: ProposedDatabase, private val t: Long) : ProposalOutcome() {
+        fun event() : DatabaseRejected {
+            return DatabaseRejected(proposal.id, proposal.name, t)
         }
+    }
+}
+
+fun processDatabaseProposal(catalog: Catalog, proposedDatabase: ProposedDatabase) : ProposalOutcome {
+    val nextT = catalog.t + 1
+    return if (catalog.containsName(proposedDatabase.name)) {
+        ProposalOutcome.Rejected(proposedDatabase, nextT)
+    } else {
+        ProposalOutcome.Accepted(proposedDatabase, nextT)
     }
 }
 
@@ -25,10 +36,4 @@ fun proposeDatabase(name: String) : ProposedDatabase {
     return ProposedDatabase(UUID.randomUUID(), name)
 }
 
-fun processDatabaseProposal(catalog: Catalog, proposedDatabase: ProposedDatabase) : ProposalOutcome {
-    return if (catalog.containsName(proposedDatabase.name)) {
-        ProposalOutcome.Rejected
-    } else {
-        ProposalOutcome.Accepted
-    }
-}
+// Service Interface

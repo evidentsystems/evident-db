@@ -1,5 +1,6 @@
-package com.evidentdb.database
+package com.evidentdb.database.workflows
 
+import com.evidentdb.database.Catalog
 import java.util.*
 
 data class RenamingProposal(val oldName: String, val newName: String)

@@ -1,20 +1,7 @@
 package com.evidentdb.database
 
-import java.util.*
-
-// Domain Model
-
-data class Database(val id: UUID, val name: String)
-interface Catalog {
-    val t: Long
-    val databases : Map<String, Database>
-
-    fun containsName(name: String) : Boolean {
-        return databases.containsKey(name)
-    }
-}
-
-// Service Interface
+import com.evidentdb.database.workflows.ProposedDatabase
+import com.evidentdb.database.workflows.ValidRenamingProposal
 
 interface ReadableStore {
     fun byName(name: String) : Database?

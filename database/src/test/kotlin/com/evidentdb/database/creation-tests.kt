@@ -1,5 +1,6 @@
 package com.evidentdb.database
 
+import com.evidentdb.database.workflows.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.*
@@ -10,23 +11,23 @@ class CreationTests {
     @Test
     fun `database name constraints and input gate`() {
         Assertions.assertThrows(IllegalArgumentException::class.java) {
-            proposeDatabase("")
+            validateCreationProposal("")
         }
 
         Assertions.assertThrows(IllegalArgumentException::class.java) {
-            proposeDatabase("abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz")
+            validateCreationProposal("abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz")
         }
 
         val name = "a nice short string name"
-        val proposal = proposeDatabase(name)
+        val proposal = validateCreationProposal(name)
         Assertions.assertEquals(proposal.name, name)
     }
 
     @Test
-    fun `accept a database proposal`() {
+    fun `accept a database creation proposal`() {
         val catalog = MockCatalog(1, mapOf())
-        val proposal = proposeDatabase("foo")
-        when(val outcome = processDatabaseProposal(catalog, proposal)) {
+        val proposal = validateCreationProposal("foo")
+        when(val outcome = processCreationProposal(catalog, proposal)) {
             is ProposalOutcome.Accepted ->
                 Assertions.assertEquals(outcome.event(), DatabaseCreated(proposal.id, proposal.name, catalog.t + 1))
             else -> Assertions.fail("Outcome should have been Accepted!")
@@ -34,10 +35,10 @@ class CreationTests {
     }
 
     @Test
-    fun `reject a database proposal`() {
+    fun `reject a database creation proposal due to already existing name`() {
         val catalog = MockCatalog(1, mapOf(Pair("foo", Database(UUID.randomUUID(), "foo"))))
-        val proposal = proposeDatabase("foo")
-        when(val outcome = processDatabaseProposal(catalog, proposal)) {
+        val proposal = validateCreationProposal("foo")
+        when(val outcome = processCreationProposal(catalog, proposal)) {
             is ProposalOutcome.Rejected ->
                 Assertions.assertEquals(outcome.event(), DatabaseRejected(proposal.id, proposal.name, catalog.t + 1))
             else -> Assertions.fail("Outcome should have been Rejected!")

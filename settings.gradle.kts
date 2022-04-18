@@ -1,5 +1,4 @@
 rootProject.name = "evident-db"
-include("database")
-include("batch")
+include("domain")
 include("transactor")
 include("server")

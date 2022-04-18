@@ -5,22 +5,20 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.*
 
-data class MockCatalog(override val t: Long, override val databases: Map<String, Database>) : Catalog
-
 class CreationTests {
     @Test
-    fun `database name constraints and input gate`() {
+    fun `fail fast on invalid database name`() {
         Assertions.assertThrows(IllegalArgumentException::class.java) {
-            validateCreationProposal("")
+            validateCreationProposal(DomainTests.tooShort)
         }
 
         Assertions.assertThrows(IllegalArgumentException::class.java) {
-            validateCreationProposal("abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz")
+            validateCreationProposal(DomainTests.tooLong)
         }
 
-        val name = "a nice short string name"
-        val proposal = validateCreationProposal(name)
-        Assertions.assertEquals(proposal.name, name)
+        Assertions.assertDoesNotThrow {
+            validateCreationProposal(DomainTests.justRight)
+        }
     }
 
     @Test
@@ -28,7 +26,7 @@ class CreationTests {
         val catalog = MockCatalog(1, mapOf())
         val proposal = validateCreationProposal("foo")
         when(val outcome = processCreationProposal(catalog, proposal)) {
-            is ProposalOutcome.Accepted ->
+            is CreationProposalOutcome.Accepted ->
                 Assertions.assertEquals(outcome.event(), DatabaseCreated(proposal.id, proposal.name, catalog.t + 1))
             else -> Assertions.fail("Outcome should have been Accepted!")
         }
@@ -39,8 +37,8 @@ class CreationTests {
         val catalog = MockCatalog(1, mapOf(Pair("foo", Database(UUID.randomUUID(), "foo"))))
         val proposal = validateCreationProposal("foo")
         when(val outcome = processCreationProposal(catalog, proposal)) {
-            is ProposalOutcome.Rejected ->
-                Assertions.assertEquals(outcome.event(), DatabaseRejected(proposal.id, proposal.name, catalog.t + 1))
+            is CreationProposalOutcome.Rejected ->
+                Assertions.assertEquals(outcome.event(), DatabaseRejected(proposal.id, proposal.name, catalog.t + 1, "Database name already exists"))
             else -> Assertions.fail("Outcome should have been Rejected!")
         }
     }

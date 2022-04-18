@@ -17,8 +17,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":database"))
-    implementation(project(":batch"))
+    implementation(project(":domain"))
 
     implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut:micronaut-runtime")

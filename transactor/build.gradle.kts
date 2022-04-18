@@ -16,8 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":database"))
-    implementation(project(":batch"))
+    implementation(project(":domain"))
 
     kapt("io.micronaut:micronaut-http-validation")
     implementation("io.micronaut:micronaut-http-client")

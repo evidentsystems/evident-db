@@ -1,2 +1,1 @@
-includeBuild("./database")
-includeBuild("./batch")
+includeBuild("./domain")

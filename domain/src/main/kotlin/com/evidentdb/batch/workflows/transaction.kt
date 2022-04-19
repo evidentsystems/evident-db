@@ -3,6 +3,7 @@ package com.evidentdb.batch.workflows
 import com.evidentdb.batch.Event
 import com.evidentdb.batch.Index
 import com.evidentdb.batch.StreamState
+import java.net.URI
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -50,11 +51,12 @@ sealed class BatchProposalOutcome {
 }
 
 // Validates incoming string IDs by parsing to UUIDs (throws IllegalArgumentException if invalid)
-fun validateBatchProposal(database: UUID, events: Iterable<EventProposal>): ProposedBatch {
+fun validateBatchProposal(database: URI, events: Iterable<EventProposal>): ProposedBatch {
+    val databaseId = UUID.fromString(database.schemeSpecificPart)
     val validatedEvents = events.map {
         ProposedEvent(UUID.fromString(it.id), it.stream, it.streamState ?: StreamState.Any)
     }
-    return ProposedBatch(UUID.randomUUID(), database, validatedEvents)
+    return ProposedBatch(UUID.randomUUID(), databaseId, validatedEvents)
 }
 
 fun isEventValid(index: Index, proposedEvent: ProposedEvent) =
@@ -86,7 +88,7 @@ fun processBatchProposal(index: Index, proposal: ProposedBatch): BatchProposalOu
         BatchProposalOutcome.Rejected(
             proposal,
             invalidEvents,
-            revision
+            index.revision
         )
     }
 }

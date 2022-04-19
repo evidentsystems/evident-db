@@ -70,6 +70,7 @@ fun isEventValid(index: Index, proposedEvent: ProposedEvent) =
             index.streamRevision(proposedEvent.stream) == proposedEvent.streamState.revision
     }
 
+// Assumes that index is for the database identified in proposed batch
 fun processBatchProposal(index: Index, proposal: ProposedBatch): BatchProposalOutcome {
     var revision = index.revision
     val invalidEvents = ArrayList<UUID>()

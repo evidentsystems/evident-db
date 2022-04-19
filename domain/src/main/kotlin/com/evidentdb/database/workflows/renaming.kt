@@ -42,7 +42,7 @@ fun processRenamingProposal(catalog: Catalog, proposal: ProposedRenaming) : Rena
             proposal, catalog.nextRevision(),
             "No database named ${proposal.oldName} exists!"
         )
-    } else if (catalog.containsName(proposal.newName)) {
+    } else if (catalog.exists(proposal.newName)) {
         RenamingProposalOutcome.Rejected(
             proposal, catalog.nextRevision(),
             "Database already exists with same name: ${proposal.newName}")

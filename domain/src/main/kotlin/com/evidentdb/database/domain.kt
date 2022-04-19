@@ -1,5 +1,6 @@
 package com.evidentdb.database
 
+import com.evidentdb.batch.Index
 import java.util.*
 
 data class Database(val id: UUID, val name: String)
@@ -8,7 +9,9 @@ interface Catalog {
     val revision: Long
     val databases: Map<String, Database>
 
-    fun containsName(name: String) : Boolean {
+    fun index(id: UUID) : Index
+
+    fun exists(name: String) : Boolean {
         return databases.containsKey(name)
     }
 

@@ -1,11 +1,17 @@
 package com.evidentdb.database
 
+import com.evidentdb.batch.Index
 import com.evidentdb.database.workflows.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.*
 
-data class MockCatalog(override val revision: Long, override val databases: Map<String, Database>) : Catalog
+data class MockCatalog(override val revision: Long,
+                       override val databases: Map<String, Database>): Catalog {
+    override fun index(id: UUID): Index {
+        TODO("Not yet implemented")
+    }
+}
 
 class RenamingTests {
     @Test
@@ -42,11 +48,12 @@ class RenamingTests {
 
     @Test
     fun `reject a database renaming proposal due to already existing name`() {
-        val database = Database(UUID.randomUUID(), "foo")
-        val catalog = MockCatalog(1,
-            mapOf(Pair(database.name, database),
-            Pair("bar", Database(UUID.randomUUID(), "bar"))))
-        val proposal = validateRenamingProposal(database.name, "bar")
+        val database1 = Database(UUID.randomUUID(), "foo")
+        val database2 = Database(UUID.randomUUID(), "bar")
+        val catalog = MockCatalog(
+            1, mapOf(Pair(database1.name, database1), Pair(database2.name, database2))
+        )
+        val proposal = validateRenamingProposal(database1.name, "bar")
         when(val outcome = processRenamingProposal(catalog, proposal)) {
             is RenamingProposalOutcome.Rejected ->
                 Assertions.assertEquals(outcome.event(),
@@ -60,8 +67,8 @@ class RenamingTests {
 
     @Test
     fun `reject a database renaming proposal due to no database existing having given old name`() {
-        val catalog = MockCatalog(1,
-            mapOf(Pair("bar", Database(UUID.randomUUID(), "bar"))))
+        val database = Database(UUID.randomUUID(), "bar")
+        val catalog = MockCatalog(1, mapOf(Pair(database.name, database)))
         val proposal = validateRenamingProposal("foo", "quux")
         when(val outcome = processRenamingProposal(catalog, proposal)) {
             is RenamingProposalOutcome.Rejected ->

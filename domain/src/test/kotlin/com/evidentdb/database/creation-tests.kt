@@ -34,7 +34,8 @@ class CreationTests {
 
     @Test
     fun `reject a database creation proposal due to already existing name`() {
-        val catalog = MockCatalog(1, mapOf(Pair("foo", Database(UUID.randomUUID(), "foo"))))
+        val database = Database(UUID.randomUUID(), "foo")
+        val catalog = MockCatalog(1, mapOf(Pair(database.name, database)))
         val proposal = validateCreationProposal("foo")
         when(val outcome = processCreationProposal(catalog, proposal)) {
             is CreationProposalOutcome.Rejected ->

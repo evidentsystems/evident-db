@@ -31,7 +31,7 @@ fun validateCreationProposal(name: String) : ProposedDatabase {
 }
 
 fun processCreationProposal(catalog: Catalog, proposedDatabase: ProposedDatabase) =
-    if (catalog.containsName(proposedDatabase.name)) {
+    if (catalog.exists(proposedDatabase.name)) {
         CreationProposalOutcome.Rejected(
             proposedDatabase,
             catalog.nextRevision(),

@@ -4,6 +4,8 @@ import com.evidentdb.database.Catalog
 import com.evidentdb.database.validateDatabaseName
 import java.util.*
 
+// TODO: Input-gates via constructors
+
 data class ProposedDatabase(val id: UUID, val name: String)
 data class DatabaseCreated(val id: UUID, val name: String, val revision: Long)
 data class DatabaseRejected(val id: UUID, val name: String, val revision: Long, val reason: String)

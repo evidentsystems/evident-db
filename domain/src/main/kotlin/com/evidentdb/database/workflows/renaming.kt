@@ -4,6 +4,8 @@ import com.evidentdb.database.Catalog
 import com.evidentdb.database.validateDatabaseName
 import java.util.*
 
+// TODO: Input-gates via constructors
+
 data class ProposedRenaming(val oldName: String, val newName: String)
 data class DatabaseRenamed(val id: UUID,
                            val oldName: String,

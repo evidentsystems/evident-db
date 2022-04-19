@@ -7,6 +7,8 @@ import java.net.URI
 import java.util.*
 import kotlin.collections.ArrayList
 
+// TODO: Input-gates via constructors
+
 data class EventProposal(val id: String, val stream: String, val streamState: StreamState?)
 data class ProposedEvent(val id: UUID, val stream: String, val streamState: StreamState)
 

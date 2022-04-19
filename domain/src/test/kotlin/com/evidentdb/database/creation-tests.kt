@@ -27,7 +27,7 @@ class CreationTests {
         val proposal = validateCreationProposal("foo")
         when(val outcome = processCreationProposal(catalog, proposal)) {
             is CreationProposalOutcome.Accepted ->
-                Assertions.assertEquals(outcome.event(), DatabaseCreated(proposal.id, proposal.name, catalog.t + 1))
+                Assertions.assertEquals(outcome.event(), DatabaseCreated(proposal.id, proposal.name, catalog.nextRevision()))
             else -> Assertions.fail("Outcome should have been Accepted!")
         }
     }
@@ -38,7 +38,7 @@ class CreationTests {
         val proposal = validateCreationProposal("foo")
         when(val outcome = processCreationProposal(catalog, proposal)) {
             is CreationProposalOutcome.Rejected ->
-                Assertions.assertEquals(outcome.event(), DatabaseRejected(proposal.id, proposal.name, catalog.t + 1, "Database name already exists"))
+                Assertions.assertEquals(outcome.event(), DatabaseRejected(proposal.id, proposal.name, catalog.nextRevision(), "Database name already exists"))
             else -> Assertions.fail("Outcome should have been Rejected!")
         }
     }

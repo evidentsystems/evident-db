@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.*
 
-data class MockCatalog(override val t: Long, override val databases: Map<String, Database>) : Catalog
+data class MockCatalog(override val revision: Long, override val databases: Map<String, Database>) : Catalog
 
 class RenamingTests {
     @Test
@@ -20,7 +20,7 @@ class RenamingTests {
                         database.id,
                         proposal.oldName,
                         proposal.newName,
-                        catalog.t + 1))
+                        catalog.nextRevision()))
             else -> Assertions.fail("Outcome should have been Accepted!")
         }
     }
@@ -52,7 +52,7 @@ class RenamingTests {
                 Assertions.assertEquals(outcome.event(),
                     DatabaseRenameRejected(proposal.oldName,
                         proposal.newName,
-                        catalog.t + 1,
+                        catalog.nextRevision(),
                         "Database already exists with same name: ${proposal.newName}"))
             else -> Assertions.fail("Outcome should have been Rejected!")
         }
@@ -68,7 +68,7 @@ class RenamingTests {
                 Assertions.assertEquals(outcome.event(),
                     DatabaseRenameRejected(proposal.oldName,
                         proposal.newName,
-                        catalog.t + 1,
+                        catalog.nextRevision(),
                         "No database named ${proposal.oldName} exists!"))
             else -> Assertions.fail("Outcome should have been Rejected!")
         }

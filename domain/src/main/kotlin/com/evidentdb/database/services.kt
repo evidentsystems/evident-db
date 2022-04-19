@@ -16,5 +16,4 @@ interface WriteableStore : ReadableStore {
 
 interface DatabaseService {
     val store: WriteableStore
-
 }

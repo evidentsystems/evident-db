@@ -7,11 +7,7 @@ import org.junit.jupiter.api.Test
 import java.util.*
 
 data class MockCatalog(override val revision: Long,
-                       override val databases: Map<String, Database>): Catalog {
-    override fun index(id: UUID): Index {
-        TODO("Not yet implemented")
-    }
-}
+                       override val databases: Map<String, Database>): Catalog
 
 class RenamingTests {
     @Test

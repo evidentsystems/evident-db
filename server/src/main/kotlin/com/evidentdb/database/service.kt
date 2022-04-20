@@ -1,7 +1,7 @@
 package com.evidentdb.database
 
 import com.evidentdb.command.InFlightCoordinator
-import com.evidentdb.database.workflows.*
+import com.evidentdb.database.domain.*
 import java.util.*
 import java.util.concurrent.CompletableFuture
 
@@ -32,20 +32,3 @@ interface DatabaseCommandHandler {
 //    }
 }
 
-interface ReadableStore {
-    fun byName(name: String) : Database?
-    fun catalog() : Catalog
-}
-
-interface WriteableStore : ReadableStore {
-    fun create(proposal: ProposedDatabase) : Catalog
-    fun rename(proposal: ProposedRenaming) : Catalog
-    fun delete(name: String) : Catalog
-}
-
-interface DatabaseEventHandler {
-    val catalog: Catalog
-
-    fun creationProposed(proposedDatabase: ProposedDatabase) = processCreationProposal(catalog, proposedDatabase)
-    fun renamingProposed(proposedRenaming: ProposedRenaming) = processRenamingProposal(catalog, proposedRenaming)
-}

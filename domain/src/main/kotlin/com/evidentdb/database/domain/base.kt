@@ -1,4 +1,4 @@
-package com.evidentdb.database
+package com.evidentdb.database.domain
 
 import java.util.*
 

@@ -1,7 +1,5 @@
-package com.evidentdb.database
+package com.evidentdb.database.domain
 
-import com.evidentdb.batch.Index
-import com.evidentdb.database.workflows.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.*

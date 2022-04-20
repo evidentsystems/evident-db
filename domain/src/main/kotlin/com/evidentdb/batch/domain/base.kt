@@ -1,4 +1,4 @@
-package com.evidentdb.batch
+package com.evidentdb.batch.domain
 
 import java.util.*
 

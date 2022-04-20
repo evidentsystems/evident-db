@@ -1,6 +1,5 @@
-package com.evidentdb.batch
+package com.evidentdb.batch.domain
 
-import com.evidentdb.batch.workflows.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.net.URI

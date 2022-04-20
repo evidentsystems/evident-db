@@ -1,15 +1,14 @@
-package com.evidentdb.database
+package com.evidentdb.database.domain
 
-import com.evidentdb.database.workflows.validateCreationProposal
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
 class DomainTests {
     companion object {
-        val tooShort = ""
-        val tooLong =
+        const val tooShort = ""
+        const val tooLong =
             "abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz"
-        val justRight = "a nice short string name"
+        const val justRight = "a nice short string name"
     }
 
     @Test

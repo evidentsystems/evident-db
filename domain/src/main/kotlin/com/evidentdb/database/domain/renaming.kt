@@ -1,7 +1,5 @@
-package com.evidentdb.database.workflows
+package com.evidentdb.database.domain
 
-import com.evidentdb.database.Catalog
-import com.evidentdb.database.validateDatabaseName
 import java.util.*
 
 // TODO: Input-gates via constructors

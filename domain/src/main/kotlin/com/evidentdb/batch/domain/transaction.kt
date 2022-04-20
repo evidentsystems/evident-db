@@ -1,8 +1,5 @@
-package com.evidentdb.batch.workflows
+package com.evidentdb.batch.domain
 
-import com.evidentdb.batch.Event
-import com.evidentdb.batch.Index
-import com.evidentdb.batch.StreamState
 import java.net.URI
 import java.util.*
 import kotlin.collections.ArrayList

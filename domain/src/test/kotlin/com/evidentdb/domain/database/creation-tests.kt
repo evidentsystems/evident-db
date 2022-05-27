@@ -1,4 +1,4 @@
-package com.evidentdb.database.domain
+package com.evidentdb.domain.database
 
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test

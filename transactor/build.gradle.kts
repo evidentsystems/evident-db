@@ -17,6 +17,13 @@ repositories {
 
 dependencies {
     implementation(project(":domain"))
+    implementation(project(":cloudevents"))
+
+    // Kafka Streams
+    implementation("org.apache.kafka:kafka-streams:3.1.0")
+
+    // CloudEvents
+    implementation("io.cloudevents:cloudevents-core:2.3.0")
 
     kapt("io.micronaut:micronaut-http-validation")
     implementation("io.micronaut:micronaut-http-client")

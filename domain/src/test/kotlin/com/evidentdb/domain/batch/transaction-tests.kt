@@ -1,4 +1,4 @@
-package com.evidentdb.batch.domain
+package com.evidentdb.domain.batch
 
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test

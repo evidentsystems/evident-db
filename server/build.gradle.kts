@@ -12,13 +12,27 @@ version = "0.1.0-SNAPSHOT"
 group = "com.evidentdb"
 
 val kotlinVersion= project.properties["kotlinVersion"]
+val grpcKotlinVersion = project.properties ["grpcKotlinVersion"]
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation(project(":domain"))
+    // Language Extensions
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1")
 
+    // App Domain
+    implementation(project(":domain"))
+    implementation(project(":cloudevents"))
+
+    // CloudEvents
+    implementation("io.cloudevents:cloudevents-core:2.3.0")
+
+    // Kafka
+    implementation("io.micronaut.kafka:micronaut-kafka")
+
+    // Micronaut
     implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.grpc:micronaut-grpc-runtime")
@@ -28,6 +42,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}")
     runtimeOnly("ch.qos.logback:logback-classic")
     implementation("io.micronaut:micronaut-validation")
+    implementation("io.grpc:grpc-kotlin-stub:${grpcKotlinVersion}")
 
     runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
 
@@ -58,6 +73,7 @@ sourceSets {
     main {
         java {
             srcDirs("build/generated/source/proto/main/grpc")
+            srcDirs("build/generated/source/proto/main/grpckt")
             srcDirs("build/generated/source/proto/main/java")
         }
     }
@@ -71,12 +87,15 @@ protobuf {
         id("grpc") {
             artifact = "io.grpc:protoc-gen-grpc-java:1.39.0"
         }
+        id("grpckt") {
+            artifact = "io.grpc:protoc-gen-grpc-kotlin:${grpcKotlinVersion}:jdk7@jar"
+        }
     }
     generateProtoTasks {
         ofSourceSet("main").forEach {
             it.plugins {
-                // Apply the "grpc" plugin whose spec is defined above, without options.
                 id("grpc")
+                id("grpckt")
             }
         }
     }

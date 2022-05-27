@@ -11,6 +11,8 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    implementation("io.arrow-kt:arrow-core:1.0.1")
+
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
 }

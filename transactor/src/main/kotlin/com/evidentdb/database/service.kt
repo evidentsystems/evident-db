@@ -1,6 +1,7 @@
 package com.evidentdb.database
 
 import com.evidentdb.database.domain.*
+import com.evidentdb.domain.database.*
 
 interface CatalogProvider {
     fun catalog() : Catalog

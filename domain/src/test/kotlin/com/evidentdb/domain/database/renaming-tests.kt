@@ -1,4 +1,4 @@
-package com.evidentdb.database.domain
+package com.evidentdb.domain.database
 
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -20,7 +20,8 @@ class RenamingTests {
                         database.id,
                         proposal.oldName,
                         proposal.newName,
-                        catalog.nextRevision()))
+                        catalog.nextRevision())
+                )
             else -> Assertions.fail("Outcome should have been Accepted!")
         }
     }
@@ -54,7 +55,8 @@ class RenamingTests {
                     DatabaseRenameRejected(proposal.oldName,
                         proposal.newName,
                         catalog.nextRevision(),
-                        "Database already exists with same name: ${proposal.newName}"))
+                        "Database already exists with same name: ${proposal.newName}")
+                )
             else -> Assertions.fail("Outcome should have been Rejected!")
         }
     }
@@ -70,7 +72,8 @@ class RenamingTests {
                     DatabaseRenameRejected(proposal.oldName,
                         proposal.newName,
                         catalog.nextRevision(),
-                        "No database named ${proposal.oldName} exists!"))
+                        "No database named ${proposal.oldName} exists!")
+                )
             else -> Assertions.fail("Outcome should have been Rejected!")
         }
     }

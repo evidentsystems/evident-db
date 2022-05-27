@@ -1,4 +1,4 @@
-package com.evidentdb
+package com.evidentdb.transactor
 
 import io.micronaut.runtime.Micronaut.*
 fun main(args: Array<String>) {

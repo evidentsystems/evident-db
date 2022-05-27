@@ -2,28 +2,29 @@ package com.evidentdb.database
 
 import com.evidentdb.command.InFlightCoordinator
 import com.evidentdb.database.domain.*
+import com.evidentdb.domain.database.*
 import java.util.*
 import java.util.concurrent.CompletableFuture
 
-interface CommandLog {
-    fun proposeCreation(proposal: ProposedDatabase) : UUID
-    fun proposeRenaming(proposal: ProposedRenaming) : UUID
+interface DatabaseCommandLog {
+    fun append(proposal: ProposedDatabase) : UUID
+    fun append(proposal: ProposedRenaming) : UUID
 }
 
 interface DatabaseCommandHandler {
-    val commandLog: CommandLog
-    val inFlightCreations: InFlightCoordinator<UUID, CreationProposalOutcome>
-    val inFlightRenames: InFlightCoordinator<UUID, RenamingProposalOutcome>
+    val log: DatabaseCommandLog
+    val inFlightCreations: InFlightCoordinator<CreationProposalOutcome>
+    val inFlightRenames: InFlightCoordinator<RenamingProposalOutcome>
 
     fun proposeCreation(name: String) : CompletableFuture<CreationProposalOutcome> {
         val proposedDatabase = validateCreationProposal(name)
-        val commandId = commandLog.proposeCreation(proposedDatabase)
+        val commandId = log.append(proposedDatabase)
         return inFlightCreations.add(commandId)
     }
 
     fun proposeRenaming(oldName: String, newName: String) : CompletableFuture<RenamingProposalOutcome> {
         val proposedRenaming = validateRenamingProposal(oldName, newName)
-        val commandId = commandLog.proposeRenaming(proposedRenaming)
+        val commandId = log.append(proposedRenaming)
         return inFlightRenames.add(commandId)
     }
 

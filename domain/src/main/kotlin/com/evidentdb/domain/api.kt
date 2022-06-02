@@ -22,6 +22,11 @@ interface StreamStore {
     suspend fun all(): Iterable<Stream>
 }
 
+interface EventStore {
+    suspend fun get(id: EventId): Event?
+    suspend fun all(): Iterable<Event>
+}
+
 // TODO: consider accumulating errors, rather than failing fast
 interface Service {
     val databaseStore: DatabaseStore
@@ -106,19 +111,22 @@ interface Broker {
 }
 
 interface Transactor {
+    val databaseStore: DatabaseStore
+    val streamStore: StreamStore
+
     fun handleCreateDatabase(command: CreateDatabase)
-            : Either<DatabaseCreationError, DatabaseCreated>
+            : Either<DatabaseCreationError, DatabaseCreated> =
+        TODO()
+
     fun handleRenameDatabase(command: RenameDatabase)
-            : Either<DatabaseRenameError, DatabaseRenamed>
+            : Either<DatabaseRenameError, DatabaseRenamed> =
+        TODO()
+
     fun handleDeleteDatabase(command: DeleteDatabase)
-            : Either<DatabaseDeletionError, DatabaseDeleted>
+            : Either<DatabaseDeletionError, DatabaseDeleted> =
+        TODO()
+
     fun handleTransactBatch(command: TransactBatch)
-            : Either<BatchTransactionError, BatchTransacted>
-}
-
-// Read Models
-
-interface EventStore {
-    suspend fun get(id: EventId): Event?
-    suspend fun all(): Iterable<Event>
+            : Either<BatchTransactionError, BatchTransacted> =
+        TODO()
 }

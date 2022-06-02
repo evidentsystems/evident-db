@@ -1,13 +1,16 @@
 package com.evidentdb.domain.batch
 
+import com.evidentdb.domain.StreamIndex
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.net.URI
 import java.util.*
 
-data class MockIndex(override val database: UUID,
-                     override val revision: Long,
-                     val streams: Map<String, Long>) : Index {
+data class MockStreamIndex(
+    override val database: UUID,
+    override val revision: Long,
+    val streams: Map<String, Long>
+) : StreamIndex {
     override fun streamExists(stream: String) = streams.containsKey(stream)
 
     override fun streamRevision(stream: String) =
@@ -66,7 +69,7 @@ class TransactionTests {
                 ProposedEvent(UUID.randomUUID(), stream3, StreamState.NoStream),
                 ProposedEvent(UUID.randomUUID(), stream4, StreamState.AtRevision(stream4Revision))
             ))
-        val index = MockIndex(
+        val index = MockStreamIndex(
             database,
             random.nextInt(1000).toLong() + 101,
             mapOf(
@@ -101,7 +104,7 @@ class TransactionTests {
                 ProposedEvent(UUID.randomUUID(), stream2, StreamState.NoStream),
                 ProposedEvent(UUID.randomUUID(), stream3, StreamState.AtRevision(stream4Revision))
             ))
-        val index = MockIndex(
+        val index = MockStreamIndex(
             database,
             random.nextInt(1000).toLong() + 101,
             mapOf(

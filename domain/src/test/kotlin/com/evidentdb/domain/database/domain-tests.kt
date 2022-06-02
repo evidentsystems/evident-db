@@ -1,5 +1,6 @@
 package com.evidentdb.domain.database
 
+import com.evidentdb.domain.validateDatabaseName
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

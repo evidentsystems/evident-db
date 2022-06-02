@@ -1,31 +1,7 @@
 package com.evidentdb.domain
 
 import arrow.core.*
-import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
-
-fun validateDatabaseName(proposedName: DatabaseName)
-        : Either<InvalidDatabaseNameError, DatabaseName> =
-    if (proposedName.isNotEmpty())
-        Either.Right(proposedName)
-    else
-        Either.Left(InvalidDatabaseNameError(proposedName))
-
-suspend fun validateDatabaseNameNotTaken(databaseStore: DatabaseStore,
-                                         name: DatabaseName)
-        : Either<DatabaseNameAlreadyExistsError, DatabaseName> =
-    if (databaseStore.exists(name))
-        Either.Left(DatabaseNameAlreadyExistsError(name))
-    else
-        Either.Right(name)
-
-suspend fun lookupDatabaseIdFromDatabaseName(
-    databaseStore: DatabaseStore,
-    name: DatabaseName
-) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseStore.get(name)
-        ?.let { Either.Right(it.id) }
-        ?: Either.Left(DatabaseNotFoundError(name))
 
 fun validateStreamName(streamName: StreamName)
         : ValidatedNel<InvalidStreamName, StreamName> =

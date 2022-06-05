@@ -32,7 +32,7 @@ fun validateEventAttributes(attributes: Map<EventAttributeKey, EventAttributeVal
         ::validateEventAttribute
     )
 
-fun validateProposedEvent(event: UnvalidatedProposedEvent)
+fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
         : Validated<InvalidEventError, ProposedEvent> =
     validateStreamName(event.stream).zip(
         Semigroup.nonEmptyList(),
@@ -49,9 +49,9 @@ fun validateProposedEvent(event: UnvalidatedProposedEvent)
         )
     }.mapLeft { InvalidEventError(event, it) }
 
-fun validateProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
+fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
         : Validated<InvalidEventsError, Iterable<ProposedEvent>> {
-    val (errors, validatedEvents) = events.map(::validateProposedEvent).separateValidated()
+    val (errors, validatedEvents) = events.map(::validateUnvalidatedProposedEvent).separateValidated()
     return if (errors.isEmpty())
         validatedEvents.valid()
     else
@@ -66,7 +66,8 @@ fun validateStreamState(
         event.id,
         event.type,
         event.attributes,
-        event.data
+        event.data,
+        event.stream
     ).valid()
     val invalid = StreamStateConflictError(event).invalid()
     return when (event.streamState) {
@@ -94,11 +95,9 @@ fun validateStreamState(
     }
 }
 
-// TODO: make this pure based on stream state
-suspend fun transactEvent(
+suspend fun validateProposedEvent(
     databaseId: DatabaseId,
-    eventStore: WritableEventStore,
-    streamStore: WritableStreamStore,
+    streamStore: StreamStore,
     event: ProposedEvent
 ): Either<StreamStateConflictError, Event> =
     either {
@@ -106,24 +105,20 @@ suspend fun transactEvent(
             streamStore.streamState(databaseId, event.stream),
             event
         ).bind()
-        eventStore.put(validEvent)
-        streamStore.append(databaseId, event.stream, validEvent.id)
         // TODO: add to other index stream(s)
         validEvent
     }
 
-// TODO: make this pure based on stream state
-suspend fun transactProposedBatch(
+suspend fun validateProposedBatch(
     databaseId: DatabaseId,
-    eventStore: WritableEventStore,
-    streamStore: WritableStreamStore,
+    streamStore: StreamStore,
     batch: ProposedBatch
 ): Either<BatchTransactionError, Batch> {
     val (errors, events) = batch.events.map{
-        transactEvent(databaseId, eventStore, streamStore, it)
+        validateProposedEvent(databaseId, streamStore, it)
     }.separateEither()
     return if (errors.isEmpty())
-        Batch(batch.id, databaseId, events).right()
+            Batch(batch.id, databaseId, events).right()
     else
         StreamStateConflictsError(errors).left()
 }

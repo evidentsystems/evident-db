@@ -98,6 +98,7 @@ data class DatabaseDeleted(
 // Streams & Indexes
 
 typealias StreamName = String
+typealias DatabaseStreamName = String
 typealias StreamRevision = Long
 typealias StreamEntityId = String
 
@@ -261,7 +262,8 @@ data class Event(
     val id: EventId,
     val type: EventType,
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
-    val data: ByteArray?
+    val data: ByteArray?,
+    val stream: StreamName,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -276,6 +278,7 @@ data class Event(
             if (other.data == null) return false
             if (!data.contentEquals(other.data)) return false
         } else if (other.data != null) return false
+        if (stream != other.stream) return false
 
         return true
     }
@@ -285,6 +288,7 @@ data class Event(
         result = 31 * result + type.hashCode()
         result = 31 * result + attributes.hashCode()
         result = 31 * result + (data?.contentHashCode() ?: 0)
+        result = 31 * result + stream.hashCode()
         return result
     }
 }

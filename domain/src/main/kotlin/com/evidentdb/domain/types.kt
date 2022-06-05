@@ -30,14 +30,17 @@ sealed interface InternalEvent<T> {
 
 // Database
 
+typealias TenantRevision = Long
 typealias DatabaseId = UUID
 typealias DatabaseName = String
 typealias DatabaseRevision = Long
 
-data class Database(val id: DatabaseId,
-                    val name: DatabaseName,
-                    val created: DatabaseRevision,
-                    val revision: DatabaseRevision)
+data class Database(
+    val id: DatabaseId,
+    val name: DatabaseName,
+    // val created: TenantRevision,
+    // val revision: DatabaseRevision
+)
 
 data class DatabaseCreationInfo(val name: DatabaseName)
 
@@ -98,14 +101,16 @@ typealias StreamName = String
 typealias StreamRevision = Long
 typealias StreamEntityId = String
 
+sealed interface ProposedEventStreamState
+
 sealed interface StreamState {
-    object Any : StreamState
-    object NoStream : StreamState
-    object StreamExists : StreamState
-    data class AtRevision(val revision: StreamRevision): StreamState
+    object NoStream : StreamState, ProposedEventStreamState
+    object StreamExists : ProposedEventStreamState
+    data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
+    object Any : ProposedEventStreamState
 }
 
-sealed interface Stream {
+interface Stream {
     val databaseId: DatabaseId
     val name: StreamName
     val revision: StreamRevision
@@ -122,7 +127,7 @@ data class SimpleStream(
     override val databaseId: DatabaseId,
     override val name: StreamName,
     override val revision: StreamRevision
-) : Stream
+): Stream
 
 data class EntityStream(
     override val databaseId: DatabaseId,
@@ -131,18 +136,37 @@ data class EntityStream(
     val entityId: StreamEntityId
 ): Stream
 
-// External/User Events & Batches
+interface StreamWithEventIds: Stream {
+    val eventIds: Iterable<EventId>
+}
+
+data class SimpleStreamWithEventIds(
+    override val databaseId: DatabaseId,
+    override val name: StreamName,
+    override val revision: StreamRevision,
+    override val eventIds: Iterable<EventId>
+): StreamWithEventIds
+
+data class EntityStreamWithEventIds(
+    override val databaseId: DatabaseId,
+    override val name: StreamName,
+    override val revision: StreamRevision,
+    val entityId: StreamEntityId,
+    override val eventIds: Iterable<EventId>
+): StreamWithEventIds
+
+// Events & Batches
 
 typealias EventAttributeKey = String
 
 sealed interface EventAttributeValue {
-    data class BooleanValue(val value: Boolean) : EventAttributeValue
-    data class IntegerValue(val value: Long) : EventAttributeValue
-    data class StringValue(val value: String) : EventAttributeValue
-    data class UriValue(val value: URI) : EventAttributeValue
-    data class UriRefValue(val value: URI) : EventAttributeValue
+    data class BooleanValue(val value: Boolean): EventAttributeValue
+    data class IntegerValue(val value: Long): EventAttributeValue
+    data class StringValue(val value: String): EventAttributeValue
+    data class UriValue(val value: URI): EventAttributeValue
+    data class UriRefValue(val value: URI): EventAttributeValue
     data class TimestampValue(val value: Instant)
-    data class ByteArrayValue(val value: ByteArray) : EventAttributeValue {
+    data class ByteArrayValue(val value: ByteArray): EventAttributeValue {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
@@ -165,7 +189,7 @@ data class UnvalidatedProposedEvent(
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
     val stream: StreamName,
-    val streamState: StreamState
+    val streamState: ProposedEventStreamState
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -201,7 +225,7 @@ data class ProposedEvent(
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
     val stream: StreamName,
-    val streamState: StreamState
+    val streamState: ProposedEventStreamState
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -236,11 +260,8 @@ data class ProposedEvent(
 data class Event(
     val id: EventId,
     val type: EventType,
-    val revision: StreamRevision,
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
-    val data: ByteArray?,
-    val databaseId: DatabaseId,
-    val stream: StreamName
+    val data: ByteArray?
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -249,10 +270,7 @@ data class Event(
         other as Event
 
         if (id != other.id) return false
-        if (databaseId != other.databaseId) return false
-        if (stream != other.stream) return false
         if (type != other.type) return false
-        if (revision != other.revision) return false
         if (attributes != other.attributes) return false
         if (data != null) {
             if (other.data == null) return false
@@ -264,10 +282,7 @@ data class Event(
 
     override fun hashCode(): Int {
         var result = id.hashCode()
-        result = 31 * result + databaseId.hashCode()
-        result = 31 * result + stream.hashCode()
         result = 31 * result + type.hashCode()
-        result = 31 * result + revision.hashCode()
         result = 31 * result + attributes.hashCode()
         result = 31 * result + (data?.contentHashCode() ?: 0)
         return result
@@ -278,6 +293,7 @@ typealias BatchId = UUID
 
 data class ProposedBatch(
     val id: BatchId,
+    val databaseName: DatabaseName,
     val events: Iterable<ProposedEvent>
 )
 
@@ -306,7 +322,7 @@ data class BatchTransacted(
 
 data class InvalidDatabaseNameError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
-data class DatabaseNotFoundError(val oldName: DatabaseName) : DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
+data class DatabaseNotFoundError(val oldName: DatabaseName): DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
 
 sealed interface EventInvalidation
 
@@ -315,5 +331,7 @@ data class InvalidEventType(val eventType: EventType): EventInvalidation
 data class InvalidEventAttribute(val attributeKey: EventAttributeKey): EventInvalidation
 
 data class InvalidEventError(val event: UnvalidatedProposedEvent, val errors: Iterable<EventInvalidation>)
-data class InvalidEventsError(val errors: Iterable<InvalidEventError>) : BatchTransactionError
-data class StreamStateConflictError(val errors: Map<ProposedEvent, Stream>) : BatchTransactionError
+data class InvalidEventsError(val errors: Iterable<InvalidEventError>): BatchTransactionError
+
+data class StreamStateConflictError(val event: ProposedEvent)
+data class StreamStateConflictsError(val errors: Iterable<StreamStateConflictError>): BatchTransactionError

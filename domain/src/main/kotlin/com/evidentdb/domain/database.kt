@@ -10,7 +10,7 @@ fun validateDatabaseName(proposedName: DatabaseName)
         InvalidDatabaseNameError(proposedName).invalid()
 
 suspend fun validateDatabaseNameNotTaken(
-    databaseStore: DatabaseStore,
+    databaseStore: ReadableDatabaseStore,
     name: DatabaseName
 ) : Validated<DatabaseNameAlreadyExistsError, DatabaseName> =
     if (databaseStore.exists(name))
@@ -19,9 +19,8 @@ suspend fun validateDatabaseNameNotTaken(
         name.valid()
 
 suspend fun lookupDatabaseIdFromDatabaseName(
-    databaseStore: DatabaseStore,
+    databaseStore: ReadableDatabaseStore,
     name: DatabaseName
 ) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseStore.get(name)
-        ?.let { Either.Right(it.id) }
-        ?: Either.Left(DatabaseNotFoundError(name))
+    databaseStore.get(name)?.id?.right()
+        ?: DatabaseNotFoundError(name).left()

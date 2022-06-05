@@ -3,44 +3,81 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 
-interface DatabaseStore {
-    val revision: DatabaseRevision
+// TODO: pervasive offset tracking from system/tenent-level event-log offset down to database and stream revisions
 
-    suspend fun exists(databaseId: DatabaseId): Boolean
-    suspend fun exists(name: DatabaseName): Boolean
+interface ReadableDatabaseStore {
+    suspend fun exists(databaseId: DatabaseId): Boolean =
+        get(databaseId) != null
+    suspend fun exists(name: DatabaseName): Boolean =
+        get(name) != null
+
     suspend fun get(databaseId: DatabaseId): Database?
     suspend fun get(name: DatabaseName): Database?
     suspend fun all(): Iterable<Database>
 }
 
-interface StreamStore {
-    val database: Database
-
-    suspend fun exists(stream: String): Boolean
-    suspend fun streamRevision(stream: String): StreamRevision
-    suspend fun get(name: StreamName): Stream?
-    suspend fun all(): Iterable<Stream>
+// TODO: replace with kstream topic writes?
+interface WritableDatabaseStore: ReadableDatabaseStore {
+    // Updates both the name -> id and id -> database indexes
+    suspend fun create(database: Database): Database
+    // Updates both the name -> id and id -> database indexes
+    suspend fun delete(databaseId: DatabaseId): DatabaseId
+    // Updates just the name -> id index
+    suspend fun rename(oldName: DatabaseName, newName: DatabaseName): Database
 }
 
-interface EventStore {
+interface ReadableStreamStore {
+    // Reads from stream definition store
+    suspend fun exists(databaseId: DatabaseId, name: StreamName): Boolean =
+        get(databaseId, name) != null
+
+    // Reads from both stream definition and stream events stores
+    suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
+    // Reads from both stream definition and stream events stores
+    suspend fun get(databaseId: DatabaseId, name: StreamName): Stream?
+    // Reads from stream events store
+    suspend fun eventIds(databaseId: DatabaseId, name: StreamName): Iterable<EventId>?
+    // Reads from: database streams, stream definition, stream events stores
+    suspend fun all(databaseId: DatabaseId): Iterable<Stream>
+}
+
+// Replace with kstream aggregation?
+interface WritableStreamStore: ReadableStreamStore {
+    // Writes to both database streams and stream definition stores
+    suspend fun create(databaseId: DatabaseId, name: StreamName): Stream
+
+    // TODO: stream deletion?
+
+    // Writes to stream events store.
+    // Assumes event has already been written to event store
+    suspend fun append(
+        databaseId: DatabaseId,
+        name: StreamName,
+        eventId: EventId
+    ): StreamRevision
+}
+
+interface ReadableEventStore {
     suspend fun get(id: EventId): Event?
-    suspend fun all(): Iterable<Event>
 }
 
-// TODO: consider accumulating errors, rather than failing fast
+// TODO: replace with emit to event topic keyed on ID?
+interface WritableEventStore: ReadableEventStore {
+    suspend fun put(event: Event): Event
+}
+
 interface Service {
-    val databaseStore: DatabaseStore
+    val databaseStore: ReadableDatabaseStore
     val broker: Broker
 
     suspend fun createDatabase(proposedName: DatabaseName)
             : Either<DatabaseCreationError, DatabaseCreated> =
         either {
             val name = validateDatabaseName(proposedName).bind()
-            val availableName = validateDatabaseNameNotTaken(databaseStore, name).bind()
             val command = CreateDatabase(
                 CommandId.randomUUID(),
                 DatabaseId.randomUUID(),
-                DatabaseCreationInfo(availableName)
+                DatabaseCreationInfo(name)
             )
             broker.createDatabase(command).bind()
         }
@@ -55,12 +92,10 @@ interface Service {
                 oldName
             ).bind()
             val validNewName = validateDatabaseName(newName).bind()
-            val availableNewName = validateDatabaseNameNotTaken(databaseStore, validNewName)
-                .bind()
             val command = RenameDatabase(
                 CommandId.randomUUID(),
                 databaseId,
-                DatabaseRenameInfo(oldName, availableNewName)
+                DatabaseRenameInfo(oldName, validNewName)
             )
             broker.renameDatabase(command).bind()
         }
@@ -93,7 +128,7 @@ interface Service {
             val command = TransactBatch(
                 CommandId.randomUUID(),
                 databaseId,
-                ProposedBatch(BatchId.randomUUID(), validatedEvents)
+                ProposedBatch(BatchId.randomUUID(), databaseName, validatedEvents)
             )
             broker.transactBatch(command).bind()
         }
@@ -111,22 +146,65 @@ interface Broker {
 }
 
 interface Transactor {
-    val databaseStore: DatabaseStore
-    val streamStore: StreamStore
+    val databaseStore: WritableDatabaseStore
+    val streamStore: WritableStreamStore
+    val eventStore: WritableEventStore
 
-    fun handleCreateDatabase(command: CreateDatabase)
+    suspend fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
-        TODO()
+        either {
+            val availableName = validateDatabaseNameNotTaken(
+                databaseStore,
+                command.data.name
+            ).bind()
+            val id = DatabaseId.randomUUID()
+            val database = databaseStore.create(Database(id, availableName))
+            DatabaseCreated(EventId.randomUUID(), id, database)
+        }
 
-    fun handleRenameDatabase(command: RenameDatabase)
+    suspend fun handleRenameDatabase(command: RenameDatabase)
             : Either<DatabaseRenameError, DatabaseRenamed> =
-        TODO()
+        either {
+            val databaseId = lookupDatabaseIdFromDatabaseName(
+                databaseStore,
+                command.data.oldName
+            ).bind()
+            val availableNewName = validateDatabaseNameNotTaken(
+                databaseStore,
+                command.data.newName
+            ).bind()
+            databaseStore.rename(command.data.oldName, availableNewName)
+            DatabaseRenamed(
+                EventId.randomUUID(),
+                databaseId,
+                command.data
+            )
+        }
 
-    fun handleDeleteDatabase(command: DeleteDatabase)
+    suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
-        TODO()
+        either {
+            val databaseId = lookupDatabaseIdFromDatabaseName(
+                databaseStore,
+                command.data.name
+            ).bind()
+            val deletedId = databaseStore.delete(databaseId)
+            DatabaseDeleted(EventId.randomUUID(), deletedId, command.data)
+        }
 
-    fun handleTransactBatch(command: TransactBatch)
+    suspend fun handleTransactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted> =
-        TODO()
+        either {
+            val databaseId = lookupDatabaseIdFromDatabaseName(
+                databaseStore,
+                command.data.databaseName
+            ).bind()
+            val transactedBatch = transactProposedBatch(
+                databaseId,
+                eventStore,
+                streamStore,
+                command.data
+            ).bind()
+            BatchTransacted(EventId.randomUUID(), databaseId, transactedBatch)
+        }
 }

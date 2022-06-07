@@ -2,10 +2,19 @@ package com.evidentdb.transactor
 
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
+import com.evidentdb.kafka.partitionBySource
+import io.cloudevents.CloudEvent
 import org.apache.kafka.streams.KeyValue
 import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.kstream.KStream
+import org.apache.kafka.streams.processor.StreamPartitioner
+import java.util.*
+
+class EventSourceStreamPartitioner: StreamPartitioner<UUID, CloudEvent> {
+    override fun partition(topic: String?, key: UUID?, value: CloudEvent?, numPartitions: Int): Int =
+        partitionBySource(value!!, numPartitions)
+}
 
 object Topology {
     fun build(

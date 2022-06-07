@@ -22,6 +22,5 @@ suspend fun lookupDatabaseIdFromDatabaseName(
     databaseStore: DatabaseStore,
     name: DatabaseName
 ) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseStore.get(name)
-        ?.let { Either.Right(it.id) }
-        ?: Either.Left(DatabaseNotFoundError(name))
+    databaseStore.get(name)?.id?.right()
+        ?: DatabaseNotFoundError(name).left()

@@ -4,13 +4,6 @@ import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
 
-fun validateStreamName(streamName: StreamName)
-        : ValidatedNel<InvalidStreamName, StreamName> =
-    if (streamName.isNotEmpty())
-        streamName.validNel()
-    else
-        InvalidStreamName(streamName).invalidNel()
-
 fun validateEventType(eventType: EventType)
         : ValidatedNel<InvalidEventType, EventType> =
     if (eventType.isNotEmpty())
@@ -59,6 +52,7 @@ fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>
 }
 
 fun validateStreamState(
+    databaseId: DatabaseId,
     streamState: StreamState,
     event: ProposedEvent
 ): Validated<StreamStateConflictError, Event> {
@@ -67,6 +61,7 @@ fun validateStreamState(
         event.type,
         event.attributes,
         event.data,
+        databaseId,
         event.stream
     ).valid()
     val invalid = StreamStateConflictError(event).invalid()
@@ -102,6 +97,7 @@ suspend fun validateProposedEvent(
 ): Either<StreamStateConflictError, Event> =
     either {
         val validEvent = validateStreamState(
+            databaseId,
             streamStore.streamState(databaseId, event.stream),
             event
         ).bind()

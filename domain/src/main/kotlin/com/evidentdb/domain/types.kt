@@ -9,24 +9,35 @@ import java.util.*
 typealias CommandId = UUID
 typealias CommandType = String
 
-sealed interface InternalCommand<T> {
+sealed interface CommandBody
+
+sealed interface CommandEnvelope {
     val id: CommandId
     val type: CommandType
         get() = this.javaClass.name
     val databaseId: DatabaseId
-    val data: T
+    val data: CommandBody
 }
 
 typealias EventId = UUID
 typealias EventType = String
 
-sealed interface InternalEvent<T> {
+sealed interface EventBody
+sealed interface ErrorBody: EventBody
+
+sealed interface EventEnvelope {
     val id: EventId
-    val type: CommandType
+    val type: EventType
         get() = this.javaClass.name
     val databaseId: DatabaseId
-    val data: T
+    val data: EventBody
 }
+
+data class ErrorEnvelope(
+    override val id: EventId,
+    override val databaseId: DatabaseId,
+    override val data: ErrorBody
+): EventEnvelope
 
 // Database
 
@@ -35,65 +46,73 @@ typealias DatabaseId = UUID
 typealias DatabaseName = String
 typealias DatabaseRevision = Long
 
-data class Database(
+sealed interface DatabaseEvent
+
+interface Database
+
+class EmptyDatabase: Database
+
+data class DatabaseRecord(
     val id: DatabaseId,
     val name: DatabaseName,
     // val created: TenantRevision,
     // val revision: DatabaseRevision
-)
+): Database
 
-data class DatabaseCreationInfo(val name: DatabaseName)
+data class CreateDatabaseInfo(val name: DatabaseName): CommandBody
 
 data class CreateDatabase(
     override val id: CommandId,
     override val databaseId: DatabaseId,
-    override val data: DatabaseCreationInfo
-): InternalCommand<DatabaseCreationInfo>
+    override val data: CreateDatabaseInfo
+): CommandEnvelope
 
-sealed interface DatabaseCreationError
+sealed interface DatabaseCreationError: ErrorBody
+
+data class DatabaseCreatedInfo(val database: DatabaseRecord): EventBody
 
 data class DatabaseCreated(
     override val id: EventId,
     override val databaseId: DatabaseId,
-    override val data: Database
-): InternalEvent<Database>
+    override val data: DatabaseCreatedInfo
+): EventEnvelope, DatabaseEvent
 
 data class DatabaseRenameInfo(
     val oldName: DatabaseName,
     val newName: DatabaseName
-)
+): CommandBody, EventBody
 
 data class RenameDatabase(
     override val id: CommandId,
     override val databaseId: DatabaseId,
     override val data: DatabaseRenameInfo
-): InternalCommand<DatabaseRenameInfo>
+): CommandEnvelope
 
-sealed interface DatabaseRenameError
+sealed interface DatabaseRenameError: ErrorBody
 
 data class DatabaseRenamed(
     override val id: EventId,
     override val databaseId: DatabaseId,
     override val data: DatabaseRenameInfo
-): InternalEvent<DatabaseRenameInfo>
+): EventEnvelope, DatabaseEvent
 
 data class DatabaseDeletionInfo(
     val name: DatabaseName
-)
+): CommandBody, EventBody
 
 data class DeleteDatabase(
     override val id: CommandId,
     override val databaseId: DatabaseId,
     override val data: DatabaseDeletionInfo
-): InternalCommand<DatabaseDeletionInfo>
+): CommandEnvelope
 
-sealed interface DatabaseDeletionError
+sealed interface DatabaseDeletionError: ErrorBody
 
 data class DatabaseDeleted(
     override val id: EventId,
     override val databaseId: DatabaseId,
     override val data: DatabaseDeletionInfo
-): InternalEvent<DatabaseDeletionInfo>
+): EventEnvelope, DatabaseEvent
 
 // Streams & Indexes
 
@@ -263,6 +282,7 @@ data class Event(
     val type: EventType,
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
+    val databaseId: DatabaseId,
     val stream: StreamName,
 ) {
     override fun equals(other: Any?): Boolean {
@@ -295,32 +315,34 @@ data class Event(
 
 typealias BatchId = UUID
 
+sealed interface BatchEvent
+
 data class ProposedBatch(
     val id: BatchId,
     val databaseName: DatabaseName,
     val events: Iterable<ProposedEvent>
-)
+): CommandBody
 
 // TODO: as-of/revision?
 data class Batch(
     val id: BatchId,
     val databaseId: DatabaseId,
     val events: Iterable<Event>
-)
+): EventBody
 
 data class TransactBatch(
     override val id: CommandId,
     override val databaseId: DatabaseId,
     override val data: ProposedBatch
-): InternalCommand<ProposedBatch>
+): CommandEnvelope
 
-sealed interface BatchTransactionError
+sealed interface BatchTransactionError: ErrorBody
 
 data class BatchTransacted(
     override val id: EventId,
     override val databaseId: DatabaseId,
     override val data: Batch
-): InternalEvent<Batch>
+): EventEnvelope, BatchEvent
 
 // Errors
 

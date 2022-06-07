@@ -16,6 +16,6 @@ dependencies {
     implementation(project(":domain"))
     implementation(project(":util"))
 
-    implementation("org.apache.kafka:kafka-streams:3.1.0")
+    implementation("org.apache.kafka:kafka-streams:3.2.0")
     implementation("io.cloudevents:cloudevents-api:2.3.0")
 }

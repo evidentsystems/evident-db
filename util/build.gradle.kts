@@ -12,7 +12,7 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib"))
 
-    compileOnly("org.apache.kafka:kafka-streams:3.1.0")
+    compileOnly("org.apache.kafka:kafka-streams:3.2.0")
     implementation("io.cloudevents:cloudevents-protobuf:2.3.0")
     implementation("io.cloudevents:cloudevents-kafka:2.3.0")
 }

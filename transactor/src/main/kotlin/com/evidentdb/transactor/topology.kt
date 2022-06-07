@@ -48,6 +48,7 @@ object Topology {
                 }.getOrHandle { error ->
                     ErrorEnvelope(
                         EventId.randomUUID(),
+                        command.id,
                         databaseId,
                         error
                     )

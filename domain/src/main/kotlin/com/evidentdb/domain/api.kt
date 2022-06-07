@@ -139,6 +139,7 @@ interface Transactor {
                 val database = DatabaseRecord(id, availableName)
                 DatabaseCreated(
                     EventId.randomUUID(),
+                    command.id,
                     id,
                     DatabaseCreatedInfo(database)
                 )
@@ -159,6 +160,7 @@ interface Transactor {
                 ).bind()
                 DatabaseRenamed(
                     EventId.randomUUID(),
+                    command.id,
                     databaseId,
                     command.data
                 )
@@ -173,7 +175,12 @@ interface Transactor {
                     databaseStore,
                     command.data.name
                 ).bind()
-                DatabaseDeleted(EventId.randomUUID(), databaseId, command.data)
+                DatabaseDeleted(
+                    EventId.randomUUID(),
+                    command.id,
+                    databaseId,
+                    command.data
+                )
             }
         }
 
@@ -192,6 +199,7 @@ interface Transactor {
                 ).bind()
                 BatchTransacted(
                     EventId.randomUUID(),
+                    command.id,
                     databaseId,
                     transactedBatch
                 )

@@ -29,14 +29,14 @@ sealed interface EventEnvelope {
     val id: EventId
     val type: EventType
         get() = "com.evidentdb.command.${this.javaClass.name}"
-    val causationId: CommandId
+    val commandId: CommandId
     val databaseId: DatabaseId
     val data: EventBody
 }
 
 data class ErrorEnvelope(
     override val id: EventId,
-    override val causationId: CommandId,
+    override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: ErrorBody
 ): EventEnvelope
@@ -75,7 +75,7 @@ data class DatabaseCreatedInfo(val database: DatabaseRecord): EventBody
 
 data class DatabaseCreated(
     override val id: EventId,
-    override val causationId: CommandId,
+    override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: DatabaseCreatedInfo
 ): EventEnvelope, DatabaseEvent
@@ -95,7 +95,7 @@ sealed interface DatabaseRenameError: ErrorBody
 
 data class DatabaseRenamed(
     override val id: EventId,
-    override val causationId: CommandId,
+    override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: DatabaseRenameInfo
 ): EventEnvelope, DatabaseEvent
@@ -114,7 +114,7 @@ sealed interface DatabaseDeletionError: ErrorBody
 
 data class DatabaseDeleted(
     override val id: EventId,
-    override val causationId: CommandId,
+    override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: DatabaseDeletionInfo
 ): EventEnvelope, DatabaseEvent
@@ -345,7 +345,7 @@ sealed interface BatchTransactionError: ErrorBody
 
 data class BatchTransacted(
     override val id: EventId,
-    override val causationId: CommandId,
+    override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: Batch
 ): EventEnvelope, BatchEvent

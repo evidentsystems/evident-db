@@ -12,9 +12,9 @@ interface DatabaseStore {
     suspend fun exists(name: DatabaseName): Boolean =
         get(name) != null
 
-    suspend fun get(databaseId: DatabaseId): DatabaseRecord?
-    suspend fun get(name: DatabaseName): DatabaseRecord?
-    suspend fun all(): Iterable<DatabaseRecord>
+    suspend fun get(databaseId: DatabaseId): Database?
+    suspend fun get(name: DatabaseName): Database?
+    suspend fun all(): Set<Database>
 }
 
 interface StreamStore {
@@ -27,7 +27,7 @@ interface StreamStore {
     // Reads from both stream definition and stream events stores
     suspend fun get(databaseId: DatabaseId, name: StreamName): Stream?
     // Reads from stream events store
-    suspend fun eventIds(databaseId: DatabaseId, name: StreamName): Iterable<EventId>?
+    suspend fun getWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
     // Reads from: database streams, stream definition, stream events stores
     suspend fun all(databaseId: DatabaseId): Set<Stream>
 }
@@ -104,8 +104,8 @@ interface Service {
             commandBroker.transactBatch(command).bind()
         }
 
-    suspend fun getCatalog(): Set<DatabaseRecord> = TODO()
-    suspend fun getDatabase(name: DatabaseName): DatabaseRecord = TODO()
+    suspend fun getCatalog(): Set<Database> = TODO()
+    suspend fun getDatabase(name: DatabaseName): Database = TODO()
     suspend fun getDatabaseStreams(name: DatabaseName): Set<Stream> = TODO()
     suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream = TODO()
     suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): Iterable<Event> = TODO()
@@ -136,7 +136,7 @@ interface Transactor {
                     command.data.name
                 ).bind()
                 val id = DatabaseId.randomUUID()
-                val database = DatabaseRecord(id, availableName)
+                val database = Database(id, availableName)
                 DatabaseCreated(
                     EventId.randomUUID(),
                     command.id,
@@ -154,7 +154,7 @@ interface Transactor {
                     databaseStore,
                     command.data.oldName
                 ).bind()
-                val availableNewName = validateDatabaseNameNotTaken(
+                validateDatabaseNameNotTaken(
                     databaseStore,
                     command.data.newName
                 ).bind()

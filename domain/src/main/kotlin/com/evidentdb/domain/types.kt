@@ -50,16 +50,16 @@ typealias DatabaseRevision = Long
 
 sealed interface DatabaseEvent
 
-interface Database
+interface IDatabase
 
-class EmptyDatabase: Database
+class EmptyDatabase: IDatabase
 
-data class DatabaseRecord(
+data class Database(
     val id: DatabaseId,
     val name: DatabaseName,
     // val created: TenantRevision,
     // val revision: DatabaseRevision
-): Database
+): IDatabase
 
 data class CreateDatabaseInfo(val name: DatabaseName): CommandBody
 
@@ -71,7 +71,7 @@ data class CreateDatabase(
 
 sealed interface DatabaseCreationError: ErrorBody
 
-data class DatabaseCreatedInfo(val database: DatabaseRecord): EventBody
+data class DatabaseCreatedInfo(val database: Database): EventBody
 
 data class DatabaseCreated(
     override val id: EventId,
@@ -122,7 +122,7 @@ data class DatabaseDeleted(
 // Streams & Indexes
 
 typealias StreamName = String
-typealias DatabaseStreamName = String
+typealias StreamKey = String
 typealias StreamRevision = Long
 typealias StreamEntityId = String
 
@@ -161,24 +161,36 @@ data class EntityStream(
     val entityId: StreamEntityId
 ): Stream
 
-interface StreamWithEventIds: Stream {
-    val eventIds: Iterable<EventId>
+interface StreamWithEvents: Stream {
+    val events: Iterable<Event>
+
+    companion object {
+        fun create(
+            databaseId: DatabaseId,
+            name: StreamName,
+            revision: StreamRevision = 0,
+            events: Iterable<Event>
+        ): StreamWithEvents {
+            // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
+            TODO()
+        }
+    }
 }
 
-data class SimpleStreamWithEventIds(
+data class SimpleStreamWithEvents(
     override val databaseId: DatabaseId,
     override val name: StreamName,
     override val revision: StreamRevision,
-    override val eventIds: Iterable<EventId>
-): StreamWithEventIds
+    override val events: Iterable<Event>
+): StreamWithEvents
 
-data class EntityStreamWithEventIds(
+data class EntityStreamWithEvents(
     override val databaseId: DatabaseId,
     override val name: StreamName,
     override val revision: StreamRevision,
     val entityId: StreamEntityId,
-    override val eventIds: Iterable<EventId>
-): StreamWithEventIds
+    override val events: Iterable<Event>
+): StreamWithEvents
 
 // Events & Batches
 

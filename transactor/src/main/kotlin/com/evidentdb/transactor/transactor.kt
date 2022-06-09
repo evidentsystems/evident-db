@@ -1,24 +1,25 @@
 package com.evidentdb.transactor
 
+import arrow.core.Either
 import com.evidentdb.domain.*
 import org.apache.kafka.common.serialization.Serdes
-import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
+import org.apache.kafka.streams.state.KeyValueStore
 
-typealias DatabaseKeyValueStore = ReadOnlyKeyValueStore<DatabaseId, Database>
-typealias DatabaseNameLookup = ReadOnlyKeyValueStore<DatabaseName, DatabaseId>
-typealias StreamKeyValueStore = ReadOnlyKeyValueStore<StreamKey, List<EventId>>
-typealias EventKeyValueStore = ReadOnlyKeyValueStore<EventId, Event>
+typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
+typealias DatabaseNameLookupStore = KeyValueStore<DatabaseName, DatabaseId>
+typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
+typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
-class KafkaDatabaseStore(
+class KafkaDatabaseReadModel(
     private val databaseStore: DatabaseKeyValueStore,
-    private val databaseNameLookup: DatabaseNameLookup
-): DatabaseStore {
+    private val databaseNameLookupStore: DatabaseNameLookupStore
+): DatabaseReadModel {
     override suspend fun get(databaseId: DatabaseId): Database? {
         return databaseStore.get(databaseId)
     }
 
     override suspend fun get(name: DatabaseName): Database? {
-        return databaseStore.get(databaseNameLookup.get(name))
+        return databaseStore.get(databaseNameLookupStore.get(name))
     }
 
     override suspend fun all(): Set<Database> {
@@ -31,10 +32,9 @@ class KafkaDatabaseStore(
     }
 }
 
-class KafkaStreamStore(
-    private val streamStore: StreamKeyValueStore,
-    private val eventStore: EventKeyValueStore
-): StreamStore {
+class KafkaStreamReadModel(
+    private val streamStore: StreamKeyValueStore
+): StreamReadModel {
     override suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
         val eventIds = streamStore.get(buildStreamKey(databaseId, name))
         return if (eventIds == null)
@@ -43,7 +43,7 @@ class KafkaStreamStore(
             StreamState.AtRevision(eventIds.count().toLong())
     }
 
-    override suspend fun get(databaseId: DatabaseId, name: StreamName): Stream? {
+    override suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
         val eventIds = streamStore.get(buildStreamKey(databaseId, name))
         return if (eventIds == null)
             null
@@ -51,20 +51,7 @@ class KafkaStreamStore(
             Stream.create(databaseId, name, eventIds.count().toLong())
     }
 
-    override suspend fun getWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
-        return if (eventIds == null)
-            null
-        else
-            StreamWithEvents.create(
-                databaseId,
-                name,
-                eventIds.count().toLong(),
-                eventIds.map { eventStore.get(it)!! }
-            )
-    }
-
-    override suspend fun all(databaseId: DatabaseId): Set<Stream> {
+    override suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
         val ret = mutableSetOf<Stream>()
         streamStore.prefixScan(databaseId, Serdes.UUID().serializer())
             .use { streamIterator ->
@@ -84,16 +71,41 @@ class KafkaStreamStore(
 }
 
 class KafkaStreamsTransactor: Transactor {
-    override lateinit var databaseStore: DatabaseStore
-    override lateinit var streamStore: StreamStore
+    override lateinit var databaseReadModel: DatabaseReadModel
+    override lateinit var streamReadModel: StreamReadModel
+    lateinit var databaseKeyValueStore: DatabaseKeyValueStore
+    lateinit var databaseNameLookupStoreKeyValueStore: DatabaseNameLookupStore
+    lateinit var streamKeyValueStore: StreamKeyValueStore
 
     fun init(
         databaseStore: DatabaseKeyValueStore,
-        databaseNameLookup: DatabaseNameLookup,
-        streamStore: StreamKeyValueStore,
-        eventStore: EventKeyValueStore
+        databaseNameLookupStore: DatabaseNameLookupStore,
+        streamStore: StreamKeyValueStore
     ) {
-        this.databaseStore = KafkaDatabaseStore(databaseStore, databaseNameLookup)
-        this.streamStore = KafkaStreamStore(streamStore, eventStore)
+        this.databaseKeyValueStore = databaseStore
+        this.databaseNameLookupStoreKeyValueStore = databaseNameLookupStore
+        this.streamKeyValueStore = streamStore
+        this.databaseReadModel = KafkaDatabaseReadModel(databaseKeyValueStore, databaseNameLookupStoreKeyValueStore)
+        this.streamReadModel = KafkaStreamReadModel(streamKeyValueStore)
+    }
+
+    // TODO: add storing of result entities
+    override fun handleCreateDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> {
+        return super.handleCreateDatabase(command)
+    }
+
+    // TODO: add storing of result entities
+    override fun handleRenameDatabase(command: RenameDatabase): Either<DatabaseRenameError, DatabaseRenamed> {
+        return super.handleRenameDatabase(command)
+    }
+
+    // TODO: add storing of result entities
+    override fun handleDeleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> {
+        return super.handleDeleteDatabase(command)
+    }
+
+    // TODO: add storing of result entities
+    override fun handleTransactBatch(command: TransactBatch): Either<BatchTransactionError, BatchTransacted> {
+        return super.handleTransactBatch(command)
     }
 }

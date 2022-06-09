@@ -92,13 +92,13 @@ fun validateStreamState(
 
 suspend fun validateProposedEvent(
     databaseId: DatabaseId,
-    streamStore: StreamStore,
+    streamReadModel: StreamReadModel,
     event: ProposedEvent
 ): Either<StreamStateConflictError, Event> =
     either {
         val validEvent = validateStreamState(
             databaseId,
-            streamStore.streamState(databaseId, event.stream),
+            streamReadModel.streamState(databaseId, event.stream),
             event
         ).bind()
         // TODO: add to other index stream(s)
@@ -107,11 +107,11 @@ suspend fun validateProposedEvent(
 
 suspend fun validateProposedBatch(
     databaseId: DatabaseId,
-    streamStore: StreamStore,
+    streamReadModel: StreamReadModel,
     batch: ProposedBatch
 ): Either<BatchTransactionError, Batch> {
     val (errors, events) = batch.events.map{
-        validateProposedEvent(databaseId, streamStore, it)
+        validateProposedEvent(databaseId, streamReadModel, it)
     }.separateEither()
     return if (errors.isEmpty())
             Batch(batch.id, databaseId, events).right()

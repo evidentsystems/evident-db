@@ -6,7 +6,7 @@ import kotlinx.coroutines.runBlocking
 
 // TODO: pervasive offset tracking from system/tenent-level event-log offset down to database and stream revisions
 
-interface DatabaseStore {
+interface DatabaseReadModel {
     suspend fun exists(databaseId: DatabaseId): Boolean =
         get(databaseId) != null
     suspend fun exists(name: DatabaseName): Boolean =
@@ -17,28 +17,28 @@ interface DatabaseStore {
     suspend fun all(): Set<Database>
 }
 
-interface StreamStore {
-    // Reads from stream definition store
-    suspend fun exists(databaseId: DatabaseId, name: StreamName): Boolean =
-        get(databaseId, name) != null
-
+ interface StreamReadModel {
     // Reads from both stream definition and stream events stores
     suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
     // Reads from both stream definition and stream events stores
-    suspend fun get(databaseId: DatabaseId, name: StreamName): Stream?
-    // Reads from stream events store
-    suspend fun getWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
+    suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream?
     // Reads from: database streams, stream definition, stream events stores
-    suspend fun all(databaseId: DatabaseId): Set<Stream>
+    suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream>
 }
 
-interface EventStore {
-    suspend fun get(id: EventId): Event?
+interface StreamWithEventReadModel: StreamReadModel {
+    suspend fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
+}
+
+interface EventReadModel {
+    suspend fun batch(id: BatchId): Batch?
+    suspend fun event(id: EventId): Event?
 }
 
 // TODO: Consistency levels!!!
+// TODO: persist batch identity
 interface Service {
-    val databaseStore: DatabaseStore
+    val databaseReadModel: DatabaseReadModel
     val commandBroker: CommandBroker
 
     suspend fun createDatabase(proposedName: DatabaseName)
@@ -59,7 +59,7 @@ interface Service {
     ): Either<DatabaseRenameError, DatabaseRenamed> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 oldName
             ).bind()
             val validNewName = validateDatabaseName(newName).bind()
@@ -75,7 +75,7 @@ interface Service {
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 name
             ).bind()
             val command = DeleteDatabase(
@@ -92,7 +92,7 @@ interface Service {
     ): Either<BatchTransactionError, BatchTransacted> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 databaseName
             ).bind()
             val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
@@ -124,15 +124,15 @@ interface CommandBroker {
 }
 
 interface Transactor {
-    val databaseStore: DatabaseStore
-    val streamStore: StreamStore
+    val databaseReadModel: DatabaseReadModel
+    val streamReadModel: StreamReadModel
 
     fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
         runBlocking {
             either {
                 val availableName = validateDatabaseNameNotTaken(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.name
                 ).bind()
                 val id = DatabaseId.randomUUID()
@@ -151,11 +151,11 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.oldName
                 ).bind()
                 validateDatabaseNameNotTaken(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.newName
                 ).bind()
                 DatabaseRenamed(
@@ -172,7 +172,7 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.name
                 ).bind()
                 DatabaseDeleted(
@@ -189,12 +189,12 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.databaseName
                 ).bind()
                 val transactedBatch = validateProposedBatch(
                     databaseId,
-                    streamStore,
+                    streamReadModel,
                     command.data
                 ).bind()
                 BatchTransacted(

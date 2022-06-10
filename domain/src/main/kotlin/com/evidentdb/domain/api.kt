@@ -8,13 +8,13 @@ import kotlinx.coroutines.runBlocking
 
 interface DatabaseReadModel {
     suspend fun exists(databaseId: DatabaseId): Boolean =
-        get(databaseId) != null
+        database(databaseId) != null
     suspend fun exists(name: DatabaseName): Boolean =
-        get(name) != null
+        database(name) != null
 
-    suspend fun get(databaseId: DatabaseId): Database?
-    suspend fun get(name: DatabaseName): Database?
-    suspend fun all(): Set<Database>
+    suspend fun database(databaseId: DatabaseId): Database?
+    suspend fun database(name: DatabaseName): Database?
+    suspend fun catalog(): Set<Database>
 }
 
  interface StreamReadModel {
@@ -26,7 +26,7 @@ interface DatabaseReadModel {
     suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream>
 }
 
-interface StreamWithEventReadModel: StreamReadModel {
+interface StreamWithEventsReadModel: StreamReadModel {
     suspend fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
 }
 

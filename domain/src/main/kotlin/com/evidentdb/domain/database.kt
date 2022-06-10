@@ -22,5 +22,5 @@ suspend fun lookupDatabaseIdFromDatabaseName(
     databaseReadModel: DatabaseReadModel,
     name: DatabaseName
 ) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseReadModel.get(name)?.id?.right()
+    databaseReadModel.database(name)?.id?.right()
         ?: DatabaseNotFoundError(name).left()

@@ -108,7 +108,7 @@ interface Service {
     suspend fun getDatabase(name: DatabaseName): Database = TODO()
     suspend fun getDatabaseStreams(name: DatabaseName): Set<Stream> = TODO()
     suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream = TODO()
-    suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): Iterable<Event> = TODO()
+    suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): List<Event> = TODO()
     suspend fun getEvent(id: EventId): Event = TODO()
 }
 
@@ -123,7 +123,7 @@ interface CommandBroker {
             : Either<BatchTransactionError, BatchTransacted>
 }
 
-interface Transactor {
+interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
     val streamReadModel: StreamReadModel
 
@@ -205,4 +205,67 @@ interface Transactor {
                 )
             }
         }
+}
+
+object EventHandler {
+    fun databaseUpdate(event: EventEnvelope)
+            : Pair<DatabaseId, Database?>? {
+        val databaseId = event.databaseId
+        val newDatabase = when (event) {
+            is DatabaseCreated -> event.data.database
+            is DatabaseDeleted -> null
+            is DatabaseRenamed -> Database(
+                databaseId,
+                event.data.newName
+            )
+            else -> return null
+        }
+
+        return Pair(databaseId, newDatabase)
+    }
+
+    fun databaseNameLookupUpdate(event: EventEnvelope)
+            : Pair<DatabaseName, DatabaseId?>? {
+        return when (event) {
+            is DatabaseCreated -> Pair(
+                event.data.database.name,
+                event.databaseId
+            )
+            is DatabaseDeleted -> Pair(
+                event.data.name,
+                null
+            )
+            is DatabaseRenamed -> Pair(
+                event.data.newName,
+                event.databaseId
+            )
+            else -> return null
+        }
+    }
+
+    fun streamEventIdsToAppend(event: EventEnvelope)
+            : LinkedHashMap<StreamKey, List<EventId>>? {
+        val databaseId = event.databaseId
+        return when (event) {
+            is BatchTransacted -> {
+                val result = LinkedHashMap<StreamKey, List<EventId>>()
+                for (evt in event.data.events) {
+                    val eventIds = result.getOrPut(
+                        buildStreamKey(databaseId, evt.stream)
+                    ) { mutableListOf() } as MutableList<EventId>
+                    eventIds.add(evt.id)
+                }
+                result
+            }
+            else -> null
+        }
+    }
+
+    fun eventsToIndex(event: EventEnvelope)
+            : List<Pair<EventId, Event>>? {
+        return when (event) {
+            is BatchTransacted -> event.data.events.map { Pair(it.id, it) }
+            else -> null
+        }
+    }
 }

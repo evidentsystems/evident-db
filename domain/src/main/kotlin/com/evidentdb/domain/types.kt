@@ -50,16 +50,12 @@ typealias DatabaseRevision = Long
 
 sealed interface DatabaseEvent
 
-interface IDatabase
-
-class EmptyDatabase: IDatabase
-
 data class Database(
     val id: DatabaseId,
     val name: DatabaseName,
     // val created: TenantRevision,
     // val revision: DatabaseRevision
-): IDatabase
+)
 
 data class CreateDatabaseInfo(val name: DatabaseName): CommandBody
 
@@ -162,14 +158,14 @@ data class EntityStream(
 ): Stream
 
 interface StreamWithEvents: Stream {
-    val events: Iterable<Event>
+    val events: List<Event>
 
     companion object {
         fun create(
             databaseId: DatabaseId,
             name: StreamName,
             revision: StreamRevision = 0,
-            events: Iterable<Event>
+            events: List<Event>
         ): StreamWithEvents {
             // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
             TODO()
@@ -181,7 +177,7 @@ data class SimpleStreamWithEvents(
     override val databaseId: DatabaseId,
     override val name: StreamName,
     override val revision: StreamRevision,
-    override val events: Iterable<Event>
+    override val events: List<Event>
 ): StreamWithEvents
 
 data class EntityStreamWithEvents(
@@ -189,7 +185,7 @@ data class EntityStreamWithEvents(
     override val name: StreamName,
     override val revision: StreamRevision,
     val entityId: StreamEntityId,
-    override val events: Iterable<Event>
+    override val events: List<Event>
 ): StreamWithEvents
 
 // Events & Batches
@@ -337,14 +333,14 @@ sealed interface BatchEvent
 data class ProposedBatch(
     val id: BatchId,
     val databaseName: DatabaseName,
-    val events: Iterable<ProposedEvent>
+    val events: List<ProposedEvent>
 ): CommandBody
 
 // TODO: as-of/revision?
 data class Batch(
     val id: BatchId,
     val databaseId: DatabaseId,
-    val events: Iterable<Event>
+    val events: List<Event>
 ): EventBody
 
 data class TransactBatch(
@@ -374,8 +370,8 @@ data class InvalidStreamName(val streamName: StreamName): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
 data class InvalidEventAttribute(val attributeKey: EventAttributeKey): EventInvalidation
 
-data class InvalidEventError(val event: UnvalidatedProposedEvent, val errors: Iterable<EventInvalidation>)
-data class InvalidEventsError(val errors: Iterable<InvalidEventError>): BatchTransactionError
+data class InvalidEventError(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
+data class InvalidEventsError(val errors: List<InvalidEventError>): BatchTransactionError
 
 data class StreamStateConflictError(val event: ProposedEvent)
-data class StreamStateConflictsError(val errors: Iterable<StreamStateConflictError>): BatchTransactionError
+data class StreamStateConflictsError(val errors: List<StreamStateConflictError>): BatchTransactionError

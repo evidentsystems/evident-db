@@ -43,7 +43,7 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
     }.mapLeft { InvalidEventError(event, it) }
 
 fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
-        : Validated<InvalidEventsError, Iterable<ProposedEvent>> {
+        : Validated<InvalidEventsError, List<ProposedEvent>> {
     val (errors, validatedEvents) = events.map(::validateUnvalidatedProposedEvent).separateValidated()
     return if (errors.isEmpty())
         validatedEvents.valid()

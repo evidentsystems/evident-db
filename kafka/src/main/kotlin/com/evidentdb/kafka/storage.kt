@@ -1,4 +1,4 @@
-package com.evidentdb.transactor
+package com.evidentdb.kafka
 
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
@@ -30,9 +30,20 @@ class DatabaseStore(
         return ret
     }
 
-    suspend fun putDatabase(databaseId: DatabaseId, database: Database) {
+    fun putDatabase(databaseId: DatabaseId, database: Database) {
         databaseStore.put(databaseId, database)
-        databaseNameLookupStore.put(database.name, database.id)
+    }
+
+    fun putDatabaseName(databaseName: DatabaseName, databaseId: DatabaseId) {
+        databaseNameLookupStore.put(databaseName, databaseId)
+    }
+
+    fun deleteDatabase(databaseId: DatabaseId) {
+        databaseStore.delete(databaseId)
+    }
+
+    fun deleteDatabaseName(databaseName: DatabaseName) {
+        databaseNameLookupStore.delete(databaseName)
     }
 }
 
@@ -73,8 +84,12 @@ interface IStreamStore: StreamReadModel {
         return ret
     }
 
-    suspend fun putStream(databaseId: DatabaseId, streamName: StreamName, eventIds: List<EventId>) {
-        streamStore.put(buildStreamKey(databaseId, streamName), eventIds)
+    fun eventIds(streamKey: StreamKey): List<EventId>? =
+        streamStore.get(streamKey)
+
+    // eventIds must be the full list, not just the new ones to append
+    fun putEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
+        streamStore.put(streamKey, eventIds)
     }
 }
 
@@ -105,11 +120,10 @@ class EventStore(
         TODO("Not yet implemented")
     }
 
-    override suspend fun event(id: EventId): Event? {
-        TODO("Not yet implemented")
-    }
+    override suspend fun event(id: EventId): Event? =
+        eventStore.get(id)
 
-    suspend fun putEvent(eventId: EventId, event: Event) {
+    fun putEvent(eventId: EventId, event: Event) {
         eventStore.put(eventId, event)
     }
 }

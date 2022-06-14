@@ -327,6 +327,7 @@ data class Event(
 }
 
 typealias BatchId = UUID
+typealias BatchKey = String
 
 sealed interface BatchEvent
 

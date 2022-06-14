@@ -9,7 +9,6 @@ import org.apache.kafka.streams.processor.StreamPartitioner
 import org.apache.kafka.streams.processor.api.*
 import org.apache.kafka.streams.state.Stores
 import java.util.*
-import kotlin.collections.LinkedHashSet
 
 object Topology {
     private const val INTERNAL_COMMAND_SOURCE = "INTERNAL_COMMANDS"
@@ -17,35 +16,29 @@ object Topology {
     private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
     private const val DATABASE_INDEXER = "DATABASE_INDEXER"
     private const val DATABASE_NAME_INDEXER = "DATABASE_NAME_INDEXER"
+    private const val BATCH_INDEXER = "BATCH_INDEXER"
     private const val STREAM_INDEXER = "STREAM_INDEXER"
     private const val EVENT_INDEXER = "EVENT_INDEXER"
 
     private const val DATABASE_STORE = "DATABASE_STORE"
     private const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
+    private const val BATCH_STORE = "BATCH_STORE"
     private const val STREAM_STORE = "STREAM_STORE"
     private const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
     private const val DATABASE_SINK = "DATABASES"
     private const val DATABASE_NAMES_SINK = "DATABASE_NAMES"
+    private const val BATCHES_SINK = "BATCHES"
     private const val STREAMS_SINK = "STREAMS"
     private const val EVENTS_SINK = "EVENTS"
-
-//    private const val DATABASES_GLOBAL = "DATABASES_GLOBAL"
-//    private const val DATABASE_NAME_GLOBAL = "DATABASE_NAME_GLOBAL"
-//    private const val STREAMS_GLOBAL = "STREAMS_GLOBAL"
-//    private const val EVENTS_GLOBAL = "EVENTS_GLOBAL"
-
-    private class DatabaseIdStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
-        override fun partition(topic: String?, key: UUID?, value: EventEnvelope?, numPartitions: Int): Int =
-            partitionByDatabaseId(value!!.databaseId, numPartitions)
-    }
 
     fun build(
         internalCommandTopic: String,
         internalEventsTopic: String,
         databasesTopic: String,
         databaseNamesTopic: String,
+        batchesTopic: String,
         streamsTopic: String,
         eventsTopic: String,
     ): Topology {
@@ -69,6 +62,11 @@ object Topology {
         topology.addProcessor(
             DATABASE_NAME_INDEXER,
             DatabaseNameIndexer::create,
+            COMMAND_PROCESSOR
+        )
+        topology.addProcessor(
+            BATCH_INDEXER,
+            BatchIndexer::create,
             COMMAND_PROCESSOR
         )
         topology.addProcessor(
@@ -103,6 +101,14 @@ object Topology {
             DATABASE_INDEXER,
             DATABASE_NAME_INDEXER,
             STREAM_INDEXER
+        )
+        topology.addStateStore(
+            Stores.keyValueStoreBuilder(
+                Stores.persistentKeyValueStore(BATCH_STORE),
+                Serdes.String(), // BatchKey
+                Serdes.ListSerde<EventId>()
+            ),
+            BATCH_INDEXER
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
@@ -151,6 +157,15 @@ object Topology {
         )
         // Read Model, compacted
         topology.addSink(
+            BATCHES_SINK,
+            batchesTopic,
+            Serdes.String().serializer(), // BatchKey
+            Serdes.ListSerde<EventId>().serializer(),
+            // TODO: partitioned on database?
+            BATCH_INDEXER
+        )
+        // Read Model, compacted
+        topology.addSink(
             STREAMS_SINK,
             streamsTopic,
             Serdes.String().serializer(), // StreamKey
@@ -169,6 +184,11 @@ object Topology {
         )
 
         return topology
+    }
+
+    private class DatabaseIdStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
+        override fun partition(topic: String?, key: UUID?, value: EventEnvelope?, numPartitions: Int): Int =
+            partitionByDatabaseId(value!!.databaseId, numPartitions)
     }
 
     private class CommandProcessor:
@@ -294,6 +314,44 @@ object Topology {
         companion object {
             fun create(): DatabaseNameIndexer {
                 return DatabaseNameIndexer()
+            }
+        }
+    }
+
+    private class BatchIndexer:
+        ContextualProcessor<EventId, EventEnvelope, BatchKey, List<EventId>>() {
+        lateinit var batchStore: BatchStore
+
+        override fun init(context: ProcessorContext<BatchKey, List<EventId>>?) {
+            super.init(context)
+            this.batchStore = BatchStore(
+                context().getStateStore(BATCH_STORE)
+            )
+        }
+
+        override fun process(record: Record<EventId, EventEnvelope>?) {
+            val event = record?.value() ?: throw IllegalStateException()
+            val result = EventHandler.batchToIndex(event)
+            if (result != null) {
+                val (batchKey, eventIds) = result
+                context().forward(
+                    Record(
+                        batchKey,
+                        eventIds,
+                        context().currentStreamTimeMs()
+                    )
+                )
+//                if (eventIds == null) {
+//                    streamStore.deleteStream(streamKey)
+//                } else {
+                batchStore.putBatchEventIds(batchKey, eventIds)
+//                }
+            }
+        }
+
+        companion object {
+            fun create(): BatchIndexer {
+                return BatchIndexer()
             }
         }
     }

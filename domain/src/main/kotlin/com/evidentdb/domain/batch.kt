@@ -3,6 +3,27 @@ package com.evidentdb.domain
 import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
+import java.net.URI
+import java.util.*
+
+const val BATCH_URI_PATH_PREFIX = "/batches/"
+
+fun buildBatchKey(databaseId: DatabaseId, batchId: BatchId): String =
+    URI(
+        "evdb",
+        databaseId.toString(),
+        "${BATCH_URI_PATH_PREFIX}${batchId}",
+        null
+    ).toString()
+
+
+fun parseBatchKey(batchKey: BatchKey) : Pair<DatabaseId, BatchId> {
+    val uri = URI(batchKey)
+    return Pair(
+        DatabaseId.fromString(uri.host),
+        BatchId.fromString(uri.path.substring(BATCH_URI_PATH_PREFIX.length))
+    )
+}
 
 fun validateEventType(eventType: EventType)
         : ValidatedNel<InvalidEventType, EventType> =

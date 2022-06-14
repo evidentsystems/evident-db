@@ -7,6 +7,7 @@ import java.net.URI
 import java.util.*
 
 const val STREAM_ENTITY_DELIMITER = '/'
+const val STREAM_URI_PATH_PREFIX = "/streams/"
 
 // TODO: naming rules?
 fun validateStreamName(streamName: StreamName)
@@ -22,12 +23,11 @@ fun parseStreamName(streamName: StreamName)
     return Pair(segments[0], segments[1])
 }
 
-
 fun buildStreamKey(databaseId: DatabaseId, streamName: StreamName): String =
     URI(
         "evdb",
         databaseId.toString(),
-        "/${streamName}",
+        "${STREAM_URI_PATH_PREFIX}${streamName}",
         null
     ).toString()
 
@@ -37,6 +37,6 @@ fun parseStreamKey(streamKey: StreamKey)
     val uri = URI(streamKey)
     return Pair(
         UUID.fromString(uri.host),
-        uri.path.substring(1)
+        uri.path.substring(STREAM_URI_PATH_PREFIX.length)
     )
 }

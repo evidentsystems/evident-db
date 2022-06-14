@@ -17,7 +17,12 @@ interface DatabaseReadModel {
     suspend fun catalog(): Set<Database>
 }
 
- interface StreamReadModel {
+interface BatchReadModel {
+    suspend fun batch(databaseId: DatabaseId, id: BatchId): Batch?
+    suspend fun batchEventIds(batchKey: BatchKey): List<EventId>?
+}
+
+interface StreamReadModel {
     suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
     suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream?
     suspend fun streamEventIds(streamKey: StreamKey): List<EventId>?
@@ -29,12 +34,10 @@ interface StreamWithEventsReadModel: StreamReadModel {
 }
 
 interface EventReadModel {
-    suspend fun batch(id: BatchId): Batch?
     suspend fun event(id: EventId): Event?
 }
 
 // TODO: Consistency levels!!!
-// TODO: persist batch identity
 interface Service {
     val databaseReadModel: DatabaseReadModel
     val commandBroker: CommandBroker
@@ -238,6 +241,16 @@ object EventHandler {
                 event.databaseId
             )
             else -> return null
+        }
+    }
+
+    fun batchToIndex(event: EventEnvelope): Pair<BatchKey, List<EventId>>? {
+        return when (event) {
+            is BatchTransacted -> Pair(
+                buildBatchKey(event.databaseId, event.data.id),
+                event.data.events.map { it.id }
+            )
+            else -> null
         }
     }
 

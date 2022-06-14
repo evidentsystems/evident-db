@@ -6,6 +6,7 @@ import com.evidentdb.domain.*
 
 typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
 typealias DatabaseNameLookupStore = KeyValueStore<DatabaseName, DatabaseId>
+typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
@@ -44,6 +45,22 @@ class DatabaseStore(
 
     fun deleteDatabaseName(databaseName: DatabaseName) {
         databaseNameLookupStore.delete(databaseName)
+    }
+}
+
+class BatchStore(
+    private val batchStore: BatchKeyValueStore
+): BatchReadModel {
+    override suspend fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun batchEventIds(batchKey: BatchKey): List<EventId>? =
+        batchStore.get(batchKey)
+
+    // eventIds must be the full list, not just the new ones to append
+    fun putBatchEventIds(batchKey: BatchKey, eventIds: List<EventId>) {
+        batchStore.put(batchKey, eventIds)
     }
 }
 
@@ -117,10 +134,6 @@ class StreamWithEventsStore(
 class EventStore(
     private val eventStore: EventKeyValueStore
 ): EventReadModel {
-    override suspend fun batch(id: BatchId): Batch? {
-        TODO("Not yet implemented")
-    }
-
     override suspend fun event(id: EventId): Event? =
         eventStore.get(id)
 

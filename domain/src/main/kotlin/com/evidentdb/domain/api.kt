@@ -18,11 +18,9 @@ interface DatabaseReadModel {
 }
 
  interface StreamReadModel {
-    // Reads from both stream definition and stream events stores
     suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
-    // Reads from both stream definition and stream events stores
     suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream?
-    // Reads from: database streams, stream definition, stream events stores
+    suspend fun streamEventIds(streamKey: StreamKey): List<EventId>?
     suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream>
 }
 
@@ -243,29 +241,43 @@ object EventHandler {
         }
     }
 
-    fun streamEventIdsToAppend(event: EventEnvelope)
-            : LinkedHashMap<StreamKey, List<EventId>>? {
-        val databaseId = event.databaseId
-        return when (event) {
-            is BatchTransacted -> {
-                val result = LinkedHashMap<StreamKey, List<EventId>>()
-                for (evt in event.data.events) {
-                    val eventIds = result.getOrPut(
-                        buildStreamKey(databaseId, evt.stream)
-                    ) { mutableListOf() } as MutableList<EventId>
-                    eventIds.add(evt.id)
+    fun streamEventIdsToUpdate(
+        streamReadModel: StreamReadModel,
+        event: EventEnvelope
+    ): LinkedHashMap<StreamKey, List<EventId>>? =
+        runBlocking {
+            val databaseId = event.databaseId
+            when (event) {
+                is BatchTransacted -> {
+                    val updates = LinkedHashMap<StreamKey, List<EventId>>()
+                    for (evt in event.data.events) {
+                        val eventIds = updates.getOrPut(
+                            buildStreamKey(databaseId, evt.stream)
+                        ) { mutableListOf() } as MutableList<EventId>
+                        eventIds.add(evt.id)
+                    }
+                    val result = LinkedHashMap<StreamKey, List<EventId>>(
+                        event.data.events.size
+                    )
+                    for ((streamKey, eventIds) in updates) {
+                        val idempotentEventIds = LinkedHashSet(
+                            streamReadModel
+                                .streamEventIds(streamKey)
+                                .orEmpty()
+                        )
+                        for (eventId in eventIds)
+                            idempotentEventIds.add(eventId)
+                        result[streamKey] = idempotentEventIds.toList()
+                    }
+                    result
                 }
-                result
+                else -> null
             }
-            else -> null
         }
-    }
 
-    fun eventsToIndex(event: EventEnvelope)
-            : List<Pair<EventId, Event>>? {
-        return when (event) {
+    fun eventsToIndex(event: EventEnvelope): List<Pair<EventId, Event>>? =
+        when (event) {
             is BatchTransacted -> event.data.events.map { Pair(it.id, it) }
             else -> null
         }
-    }
 }

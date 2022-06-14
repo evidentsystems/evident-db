@@ -311,26 +311,23 @@ object Topology {
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.streamEventIdsToAppend(event)
+            val result = EventHandler.streamEventIdsToUpdate(
+                streamStore,
+                event
+            )
             if (result != null) {
                 for ((streamKey, eventIds) in result) {
-                    val idempotentEventIds = LinkedHashSet(
-                        streamStore.eventIds(streamKey).orEmpty()
-                    )
-                    for (eventId in eventIds)
-                        idempotentEventIds.add(eventId)
-                    val resultEventIds = idempotentEventIds.toList()
                     context().forward(
                         Record(
                             streamKey,
-                            resultEventIds,
+                            eventIds,
                             context().currentStreamTimeMs()
                         )
                     )
 //                if (eventIds == null) {
 //                    streamStore.deleteStream(streamKey)
 //                } else {
-                    streamStore.putEventIds(streamKey, resultEventIds)
+                    streamStore.putStreamEventIds(streamKey, eventIds)
 //                }
                 }
             }

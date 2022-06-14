@@ -84,11 +84,12 @@ interface IStreamStore: StreamReadModel {
         return ret
     }
 
-    fun eventIds(streamKey: StreamKey): List<EventId>? =
+    override suspend fun streamEventIds(streamKey: StreamKey)
+            : List<EventId>? =
         streamStore.get(streamKey)
 
     // eventIds must be the full list, not just the new ones to append
-    fun putEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
+    fun putStreamEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
         streamStore.put(streamKey, eventIds)
     }
 }

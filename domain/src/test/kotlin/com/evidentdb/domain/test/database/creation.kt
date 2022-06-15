@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
 
 class CreationTests {
     @Test
-    fun `reject a database creation proposal due to invalid database name`() =
+    fun `reject a database creation proposal due to invalid database name`(): Unit =
         runBlocking {
             val service = InMemoryService.empty()
             val result = service.createDatabase("")
@@ -20,7 +20,7 @@ class CreationTests {
         }
 
     @Test
-    fun `reject a database creation proposal due to already existing name`() =
+    fun `reject a database creation proposal due to already existing name`(): Unit =
         runBlocking {
             val databaseName = "foo"
             val database = Database(DatabaseId.randomUUID(), databaseName)
@@ -31,7 +31,7 @@ class CreationTests {
         }
 
     @Test
-    fun `accept a database creation proposal`() =
+    fun `accept a database creation proposal`(): Unit =
         runBlocking {
             val databaseName = "foo"
             val service = InMemoryService.empty()

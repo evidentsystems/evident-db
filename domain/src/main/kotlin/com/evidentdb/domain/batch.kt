@@ -4,7 +4,6 @@ import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
 import java.net.URI
-import java.util.*
 
 const val BATCH_URI_PATH_PREFIX = "/batches/"
 
@@ -25,6 +24,7 @@ fun parseBatchKey(batchKey: BatchKey) : Pair<DatabaseId, BatchId> {
     )
 }
 
+// TODO: regex validation?
 fun validateEventType(eventType: EventType)
         : ValidatedNel<InvalidEventType, EventType> =
     if (eventType.isNotEmpty())
@@ -64,8 +64,12 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
     }.mapLeft { InvalidEventError(event, it) }
 
 fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
-        : Validated<InvalidEventsError, List<ProposedEvent>> {
-    val (errors, validatedEvents) = events.map(::validateUnvalidatedProposedEvent).separateValidated()
+        : Validated<InvalidBatchError, List<ProposedEvent>> {
+    if (events.toList().isEmpty())
+        return NoEventsProvided.invalid()
+    val (errors, validatedEvents) = events
+        .map(::validateUnvalidatedProposedEvent)
+        .separateValidated()
     return if (errors.isEmpty())
         validatedEvents.valid()
     else

@@ -365,6 +365,10 @@ data class InvalidDatabaseNameError(val name: DatabaseName): DatabaseCreationErr
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
 data class DatabaseNotFoundError(val oldName: DatabaseName): DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
 
+sealed interface InvalidBatchError: BatchTransactionError
+
+object NoEventsProvided: InvalidBatchError
+
 sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: StreamName): EventInvalidation
@@ -372,7 +376,7 @@ data class InvalidEventType(val eventType: EventType): EventInvalidation
 data class InvalidEventAttribute(val attributeKey: EventAttributeKey): EventInvalidation
 
 data class InvalidEventError(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
-data class InvalidEventsError(val errors: List<InvalidEventError>): BatchTransactionError
+data class InvalidEventsError(val errors: List<InvalidEventError>): InvalidBatchError
 
 data class StreamStateConflictError(val event: ProposedEvent)
 data class StreamStateConflictsError(val errors: List<StreamStateConflictError>): BatchTransactionError

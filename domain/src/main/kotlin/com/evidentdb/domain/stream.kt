@@ -9,7 +9,8 @@ import java.util.*
 const val STREAM_ENTITY_DELIMITER = '/'
 const val STREAM_URI_PATH_PREFIX = "/streams/"
 
-// TODO: naming rules?
+// TODO: naming rules? must be URL-friendly but provide
+// for a single delimiter for entity id
 fun validateStreamName(streamName: StreamName)
         : ValidatedNel<InvalidStreamName, StreamName> =
     if (streamName.isNotEmpty())

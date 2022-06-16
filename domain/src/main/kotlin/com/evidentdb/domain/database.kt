@@ -2,6 +2,7 @@ package com.evidentdb.domain
 
 import arrow.core.*
 
+// TODO: regex check: #"^[a-zA-Z]\w+$"
 fun validateDatabaseName(proposedName: DatabaseName)
         : Validated<InvalidDatabaseNameError, DatabaseName> =
     if (proposedName.isNotEmpty())

@@ -6,39 +6,40 @@ import kotlinx.coroutines.runBlocking
 
 // TODO: pervasive offset tracking from system/tenent-level event-log offset down to database and stream revisions
 
-interface DatabaseStore {
+interface DatabaseReadModel {
     suspend fun exists(databaseId: DatabaseId): Boolean =
-        get(databaseId) != null
+        database(databaseId) != null
     suspend fun exists(name: DatabaseName): Boolean =
-        get(name) != null
+        database(name) != null
 
-    suspend fun get(databaseId: DatabaseId): DatabaseRecord?
-    suspend fun get(name: DatabaseName): DatabaseRecord?
-    suspend fun all(): Iterable<DatabaseRecord>
+    suspend fun database(databaseId: DatabaseId): Database?
+    suspend fun database(name: DatabaseName): Database?
+    suspend fun catalog(): Set<Database>
 }
 
-interface StreamStore {
-    // Reads from stream definition store
-    suspend fun exists(databaseId: DatabaseId, name: StreamName): Boolean =
-        get(databaseId, name) != null
+interface BatchReadModel {
+    suspend fun batch(databaseId: DatabaseId, id: BatchId): Batch?
+    suspend fun batchEventIds(batchKey: BatchKey): List<EventId>?
+}
 
-    // Reads from both stream definition and stream events stores
+interface StreamReadModel {
     suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
-    // Reads from both stream definition and stream events stores
-    suspend fun get(databaseId: DatabaseId, name: StreamName): Stream?
-    // Reads from stream events store
-    suspend fun eventIds(databaseId: DatabaseId, name: StreamName): Iterable<EventId>?
-    // Reads from: database streams, stream definition, stream events stores
-    suspend fun all(databaseId: DatabaseId): Set<Stream>
+    suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream?
+    suspend fun streamEventIds(streamKey: StreamKey): List<EventId>?
+    suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream>
 }
 
-interface EventStore {
-    suspend fun get(id: EventId): Event?
+interface StreamWithEventsReadModel: StreamReadModel {
+    suspend fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
+}
+
+interface EventReadModel {
+    suspend fun event(id: EventId): Event?
 }
 
 // TODO: Consistency levels!!!
 interface Service {
-    val databaseStore: DatabaseStore
+    val databaseReadModel: DatabaseReadModel
     val commandBroker: CommandBroker
 
     suspend fun createDatabase(proposedName: DatabaseName)
@@ -59,7 +60,7 @@ interface Service {
     ): Either<DatabaseRenameError, DatabaseRenamed> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 oldName
             ).bind()
             val validNewName = validateDatabaseName(newName).bind()
@@ -75,7 +76,7 @@ interface Service {
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 name
             ).bind()
             val command = DeleteDatabase(
@@ -92,7 +93,7 @@ interface Service {
     ): Either<BatchTransactionError, BatchTransacted> =
         either {
             val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseStore,
+                databaseReadModel,
                 databaseName
             ).bind()
             val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
@@ -104,11 +105,11 @@ interface Service {
             commandBroker.transactBatch(command).bind()
         }
 
-    suspend fun getCatalog(): Set<DatabaseRecord> = TODO()
-    suspend fun getDatabase(name: DatabaseName): DatabaseRecord = TODO()
+    suspend fun getCatalog(): Set<Database> = TODO()
+    suspend fun getDatabase(name: DatabaseName): Database = TODO()
     suspend fun getDatabaseStreams(name: DatabaseName): Set<Stream> = TODO()
     suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream = TODO()
-    suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): Iterable<Event> = TODO()
+    suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): List<Event> = TODO()
     suspend fun getEvent(id: EventId): Event = TODO()
 }
 
@@ -123,20 +124,20 @@ interface CommandBroker {
             : Either<BatchTransactionError, BatchTransacted>
 }
 
-interface Transactor {
-    val databaseStore: DatabaseStore
-    val streamStore: StreamStore
+interface CommandHandler {
+    val databaseReadModel: DatabaseReadModel
+    val streamReadModel: StreamReadModel
 
     fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
         runBlocking {
             either {
                 val availableName = validateDatabaseNameNotTaken(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.name
                 ).bind()
                 val id = DatabaseId.randomUUID()
-                val database = DatabaseRecord(id, availableName)
+                val database = Database(id, availableName)
                 DatabaseCreated(
                     EventId.randomUUID(),
                     command.id,
@@ -151,11 +152,11 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.oldName
                 ).bind()
-                val availableNewName = validateDatabaseNameNotTaken(
-                    databaseStore,
+                validateDatabaseNameNotTaken(
+                    databaseReadModel,
                     command.data.newName
                 ).bind()
                 DatabaseRenamed(
@@ -172,7 +173,7 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.name
                 ).bind()
                 DatabaseDeleted(
@@ -189,12 +190,12 @@ interface Transactor {
         runBlocking {
             either {
                 val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseStore,
+                    databaseReadModel,
                     command.data.databaseName
                 ).bind()
                 val transactedBatch = validateProposedBatch(
                     databaseId,
-                    streamStore,
+                    streamReadModel,
                     command.data
                 ).bind()
                 BatchTransacted(
@@ -204,5 +205,92 @@ interface Transactor {
                     transactedBatch
                 )
             }
+        }
+}
+
+object EventHandler {
+    fun databaseUpdate(event: EventEnvelope)
+            : Pair<DatabaseId, Database?>? {
+        val databaseId = event.databaseId
+        val newDatabase = when (event) {
+            is DatabaseCreated -> event.data.database
+            is DatabaseDeleted -> null
+            is DatabaseRenamed -> Database(
+                databaseId,
+                event.data.newName
+            )
+            else -> return null
+        }
+
+        return Pair(databaseId, newDatabase)
+    }
+
+    fun databaseNameLookupUpdate(event: EventEnvelope)
+            : Pair<DatabaseName, DatabaseId?>? {
+        return when (event) {
+            is DatabaseCreated -> Pair(
+                event.data.database.name,
+                event.databaseId
+            )
+            is DatabaseDeleted -> Pair(
+                event.data.name,
+                null
+            )
+            is DatabaseRenamed -> Pair(
+                event.data.newName,
+                event.databaseId
+            )
+            else -> return null
+        }
+    }
+
+    fun batchToIndex(event: EventEnvelope): Pair<BatchKey, List<EventId>>? {
+        return when (event) {
+            is BatchTransacted -> Pair(
+                buildBatchKey(event.databaseId, event.data.id),
+                event.data.events.map { it.id }
+            )
+            else -> null
+        }
+    }
+
+    fun streamEventIdsToUpdate(
+        streamReadModel: StreamReadModel,
+        event: EventEnvelope
+    ): LinkedHashMap<StreamKey, List<EventId>>? =
+        runBlocking {
+            val databaseId = event.databaseId
+            when (event) {
+                is BatchTransacted -> {
+                    val updates = LinkedHashMap<StreamKey, List<EventId>>()
+                    for (evt in event.data.events) {
+                        val eventIds = updates.getOrPut(
+                            buildStreamKey(databaseId, evt.stream)
+                        ) { mutableListOf() } as MutableList<EventId>
+                        eventIds.add(evt.id)
+                    }
+                    val result = LinkedHashMap<StreamKey, List<EventId>>(
+                        event.data.events.size
+                    )
+                    for ((streamKey, eventIds) in updates) {
+                        val idempotentEventIds = LinkedHashSet(
+                            streamReadModel
+                                .streamEventIds(streamKey)
+                                .orEmpty()
+                        )
+                        for (eventId in eventIds)
+                            idempotentEventIds.add(eventId)
+                        result[streamKey] = idempotentEventIds.toList()
+                    }
+                    result
+                }
+                else -> null
+            }
+        }
+
+    fun eventsToIndex(event: EventEnvelope): List<Pair<EventId, Event>>? =
+        when (event) {
+            is BatchTransacted -> event.data.events.map { Pair(it.id, it) }
+            else -> null
         }
 }

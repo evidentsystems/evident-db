@@ -219,10 +219,10 @@ sealed interface EventAttributeValue {
 
 data class UnvalidatedProposedEvent(
     val type: EventType,
-    val attributes: Map<EventAttributeKey, EventAttributeValue>,
-    val data: ByteArray?,
     val stream: StreamName,
-    val streamState: ProposedEventStreamState
+    val streamState: ProposedEventStreamState = StreamState.Any,
+    val data: ByteArray? = null,
+    val attributes: Map<EventAttributeKey, EventAttributeValue> = mapOf(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -255,10 +255,10 @@ data class UnvalidatedProposedEvent(
 data class ProposedEvent(
     val id: EventId,
     val type: EventType,
-    val attributes: Map<EventAttributeKey, EventAttributeValue>,
-    val data: ByteArray?,
     val stream: StreamName,
-    val streamState: ProposedEventStreamState
+    val streamState: ProposedEventStreamState = StreamState.Any,
+    val data: ByteArray? = null,
+    val attributes: Map<EventAttributeKey, EventAttributeValue> = mapOf(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -56,10 +56,10 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
         ProposedEvent(
             EventId.randomUUID(),
             event.type,
-            event.attributes,
-            event.data,
             event.stream,
-            event.streamState
+            event.streamState,
+            event.data,
+            event.attributes
         )
     }.mapLeft { InvalidEventError(event, it) }
 

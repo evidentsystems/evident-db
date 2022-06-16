@@ -4,11 +4,15 @@ import arrow.core.Either
 import com.evidentdb.domain.*
 
 class InMemoryDatabaseReadModel(
-    private val databases: Map<DatabaseId, Database> = mapOf(),
+    databases: Iterable<Database> = listOf()
 ): DatabaseReadModel {
-    private val databaseNames = databases.values.fold(
-        mutableMapOf<DatabaseName, DatabaseId>()
-    ) { acc, database ->
+    private val databases: Map<DatabaseId, Database> =
+        databases.fold(mutableMapOf()) { acc, database ->
+        acc[database.id] = database
+        acc
+    }
+    private val databaseNames: Map<DatabaseName, DatabaseId> =
+        databases.fold(mutableMapOf()) { acc, database ->
         acc[database.name] = database.id
         acc
     }
@@ -24,8 +28,13 @@ class InMemoryDatabaseReadModel(
 }
 
 class InMemoryStreamReadModel(
-    private val streams: Map<StreamKey, List<EventId>> = mapOf()
+    streams: Iterable<Stream>
 ): StreamReadModel {
+    private val streams: Map<StreamKey, List<EventId>> =
+        streams.fold(mutableMapOf()) { acc, stream ->
+            acc[buildStreamKey(stream.databaseId, stream.name)] = listOf()
+            acc
+        }
 
     override suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
         val eventIds = streams[buildStreamKey(databaseId, name)] ?: return StreamState.NoStream
@@ -52,16 +61,16 @@ class InMemoryStreamReadModel(
 }
 
 class InMemoryCommandHandler(
-    databases: Map<DatabaseId, Database>,
-    streams: Map<StreamKey, List<EventId>>,
+    databases: List<Database>,
+    streams: List<Stream>,
 ): CommandHandler {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
     override val streamReadModel = InMemoryStreamReadModel(streams)
 }
 
 class InMemoryCommandBroker(
-    databases: Map<DatabaseId, Database>,
-    streams: Map<StreamKey, List<EventId>>,
+    databases: List<Database>,
+    streams: List<Stream>,
 ): CommandBroker {
     private val commandHandler = InMemoryCommandHandler(databases, streams)
 
@@ -79,13 +88,13 @@ class InMemoryCommandBroker(
 }
 
 class InMemoryService(
-    databases: Map<DatabaseId, Database>,
-    streams: Map<StreamKey, List<EventId>>,
+    databases: List<Database>,
+    streams: List<Stream>,
 ): Service {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
     override val commandBroker = InMemoryCommandBroker(databases, streams)
 
     companion object {
-        fun empty(): InMemoryService = InMemoryService(mapOf(), mapOf())
+        fun empty(): InMemoryService = InMemoryService(listOf(), listOf())
     }
 }

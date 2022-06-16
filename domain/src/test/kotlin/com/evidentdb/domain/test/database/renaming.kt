@@ -12,10 +12,7 @@ class RenamingTests {
         runBlocking {
             val databaseName = "foo"
             val database = Database(DatabaseId.randomUUID(), databaseName)
-            val service = InMemoryService(
-                mapOf(Pair(database.id, database)),
-                mapOf()
-            )
+            val service = InMemoryService(listOf(database), listOf())
             val result = service.renameDatabase(databaseName,"")
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
@@ -31,13 +28,7 @@ class RenamingTests {
             val database1 = Database(DatabaseId.randomUUID(), database1Name)
             val database2Name = "bar"
             val database2 = Database(DatabaseId.randomUUID(), database2Name)
-            val service = InMemoryService(
-                mapOf(
-                    Pair(database1.id, database1),
-                    Pair(database2.id, database2),
-                ),
-                mapOf()
-            )
+            val service = InMemoryService(listOf(database1, database2), listOf())
             val result = service.renameDatabase(database1Name, database2Name)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is DatabaseNameAlreadyExistsError) }
@@ -57,10 +48,7 @@ class RenamingTests {
         runBlocking {
             val databaseName = "foo"
             val database = Database(DatabaseId.randomUUID(), databaseName)
-            val service = InMemoryService(
-                mapOf(Pair(database.id, database)),
-                mapOf()
-            )
+            val service = InMemoryService(listOf(database), listOf())
             val result = service.renameDatabase(databaseName, "bar")
             Assertions.assertTrue(result.isRight())
             result.map {

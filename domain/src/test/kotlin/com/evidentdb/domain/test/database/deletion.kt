@@ -25,8 +25,8 @@ class DeletionTests {
             val databaseName = "foo"
             val database = Database(DatabaseId.randomUUID(), databaseName)
             val service = InMemoryService(
-                mapOf(Pair(database.id, database)),
-                mapOf()
+                listOf(database),
+                listOf()
             )
             val result = service.deleteDatabase(databaseName)
             Assertions.assertTrue(result.isRight())

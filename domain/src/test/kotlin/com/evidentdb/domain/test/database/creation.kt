@@ -24,7 +24,7 @@ class CreationTests {
         runBlocking {
             val databaseName = "foo"
             val database = Database(DatabaseId.randomUUID(), databaseName)
-            val service = InMemoryService(mapOf(Pair(database.id, database)), mapOf())
+            val service = InMemoryService(listOf(database), listOf())
             val result = service.createDatabase(databaseName)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is DatabaseNameAlreadyExistsError) }

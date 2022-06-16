@@ -125,10 +125,10 @@ typealias StreamEntityId = String
 sealed interface ProposedEventStreamState
 
 sealed interface StreamState {
-    object NoStream : StreamState, ProposedEventStreamState
-    object StreamExists : ProposedEventStreamState
+    object Any: ProposedEventStreamState
+    object StreamExists: ProposedEventStreamState
+    object NoStream: StreamState, ProposedEventStreamState
     data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
-    object Any : ProposedEventStreamState
 }
 
 interface Stream {

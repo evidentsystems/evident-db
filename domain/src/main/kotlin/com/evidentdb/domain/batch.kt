@@ -78,7 +78,7 @@ fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>
 
 fun validateStreamState(
     databaseId: DatabaseId,
-    streamState: StreamState,
+    currentStreamState: StreamState,
     event: ProposedEvent
 ): Validated<StreamStateConflictError, Event> {
     val valid = Event(
@@ -92,19 +92,19 @@ fun validateStreamState(
     val invalid = StreamStateConflictError(event).invalid()
     return when (event.streamState) {
         is StreamState.NoStream ->
-            when(streamState) {
+            when(currentStreamState) {
                 is StreamState.NoStream -> valid
                 else -> invalid
             }
         is StreamState.StreamExists ->
-            when(streamState) {
+            when(currentStreamState) {
                 is StreamState.AtRevision -> valid
                 else -> invalid
             }
         is StreamState.AtRevision ->
-            when(streamState) {
+            when(currentStreamState) {
                 is StreamState.AtRevision -> {
-                    if (streamState.revision == event.streamState.revision)
+                    if (currentStreamState.revision == event.streamState.revision)
                         valid
                     else
                         invalid

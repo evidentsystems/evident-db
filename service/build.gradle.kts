@@ -14,7 +14,7 @@ dependencies {
     implementation("io.arrow-kt:arrow-core:1.0.1")
 
     implementation(project(":domain"))
-    implementation(project(":kafka"))
+    implementation(project(":adapters"))
 
     implementation("org.apache.kafka:kafka-streams:3.2.0")
 }

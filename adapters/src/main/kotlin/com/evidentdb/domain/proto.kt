@@ -118,7 +118,7 @@ fun EventBody.toProto(): Message =
         is StreamStateConflictsError -> this.toProto()
     }
 
-fun Database.toProto(): ByteArray =
+fun Database.toByteArray(): ByteArray =
     TODO("Replace return type with more specific generated class")
 
 fun databaseFromProto(data: ByteArray): Database =

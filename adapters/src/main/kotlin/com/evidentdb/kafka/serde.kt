@@ -192,7 +192,7 @@ class DatabaseSerde: Serde<Database> {
 
     class DatabaseSerializer : Serializer<Database> {
         override fun serialize(topic: String?, data: Database?): ByteArray =
-            data?.toProto()?.toByteArray() ?: byteArrayOf()
+            data?.toByteArray() ?: byteArrayOf()
     }
 
     class DatabaseDeserializer : Deserializer<Database> {

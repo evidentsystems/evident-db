@@ -1,5 +1,2 @@
 rootProject.name = "evident-db"
-include("domain")
-include("kafka")
-include("service")
-include("transactor")
+include("domain", "kafka", "service", "transactor")

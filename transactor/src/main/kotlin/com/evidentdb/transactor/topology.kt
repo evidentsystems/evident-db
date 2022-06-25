@@ -46,86 +46,89 @@ object Topology {
 
         topology.addSource(
             INTERNAL_COMMAND_SOURCE,
-            internalCommandTopic
+            Serdes.UUID().deserializer(),
+            CommandEnvelopeSerde.CommandEnvelopeDeserializer(),
+            internalCommandTopic,
         )
 
         topology.addProcessor(
             COMMAND_PROCESSOR,
             CommandProcessor::create,
-            INTERNAL_COMMAND_SOURCE
+            INTERNAL_COMMAND_SOURCE,
         )
         topology.addProcessor(
             DATABASE_INDEXER,
             DatabaseIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             DATABASE_NAME_INDEXER,
             DatabaseNameIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             BATCH_INDEXER,
             BatchIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             STREAM_INDEXER,
             StreamIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             EVENT_INDEXER,
             EventIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
 
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_STORE),
                 Serdes.UUID(), // DatabaseId
-                DatabaseSerde()
+                DatabaseSerde(),
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             DATABASE_NAME_INDEXER,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_NAME_LOOKUP),
                 Serdes.String(), // DatabaseName
-                Serdes.UUID()    // DatabaseId
+                Serdes.UUID(),    // DatabaseId
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             DATABASE_NAME_INDEXER,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
                 Serdes.String(), // BatchKey
-                Serdes.ListSerde<EventId>()
+                Serdes.ListSerde<EventId>(),
             ),
-            BATCH_INDEXER
+            BATCH_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
                 Serdes.String(), // StreamKey
-                Serdes.ListSerde<EventId>()
+                Serdes.ListSerde<EventId>(),
             ),
             COMMAND_PROCESSOR,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(EVENT_STORE),
                 Serdes.UUID(), // EventId
-                EventSerde()
+                EventSerde(),
             ),
-            STREAM_INDEXER
+            STREAM_INDEXER,
+            EVENT_INDEXER,
         )
 
         // Event Log
@@ -135,7 +138,7 @@ object Topology {
             Serdes.UUID().serializer(),
             EventEnvelopeSerde().serializer(),
             DatabaseIdStreamPartitioner(),
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         // Read Model, compacted
         topology.addSink(
@@ -144,7 +147,7 @@ object Topology {
             Serdes.UUID().serializer(),
             DatabaseSerde().serializer(),
             // TODO: already partitioned on databaseId, since key
-            DATABASE_INDEXER
+            DATABASE_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
@@ -153,7 +156,7 @@ object Topology {
             Serdes.String().serializer(), // DatabaseName
             Serdes.UUID().serializer(),   // DatabaseId
             // TODO: partitioned on database?
-            DATABASE_NAME_INDEXER
+            DATABASE_NAME_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
@@ -162,7 +165,7 @@ object Topology {
             Serdes.String().serializer(), // BatchKey
             Serdes.ListSerde<EventId>().serializer(),
             // TODO: partitioned on database?
-            BATCH_INDEXER
+            BATCH_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
@@ -171,7 +174,7 @@ object Topology {
             Serdes.String().serializer(), // StreamKey
             Serdes.ListSerde<EventId>().serializer(),
             // TODO: partitioned on database?
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         // User-space event log
         topology.addSink(
@@ -180,7 +183,7 @@ object Topology {
             Serdes.UUID().serializer(), // EventId
             EventSerde().serializer(),
             // TODO: partitioned on database?
-            EVENT_INDEXER
+            EVENT_INDEXER,
         )
 
         return topology

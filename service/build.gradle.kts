@@ -11,4 +11,14 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    implementation("io.arrow-kt:arrow-core:1.0.1")
+
+    implementation(project(":domain"))
+    implementation(project(":kafka"))
+
+    implementation("org.apache.kafka:kafka-streams:3.2.0")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

@@ -2,6 +2,7 @@ package com.evidentdb.domain
 
 import java.net.URI
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.*
 
 // Internal Command & Event wrappers
@@ -28,7 +29,7 @@ sealed interface ErrorBody: EventBody
 sealed interface EventEnvelope {
     val id: EventId
     val type: EventType
-        get() = "com.evidentdb.command.${this.javaClass.name}"
+        get() = "com.evidentdb.event.${this.javaClass.name}"
     val commandId: CommandId
     val databaseId: DatabaseId
     val data: EventBody
@@ -39,7 +40,10 @@ data class ErrorEnvelope(
     override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: ErrorBody
-): EventEnvelope
+): EventEnvelope {
+    override val type: EventType
+        get() = "com.evidentdb.error.${data.javaClass.name}"
+}
 
 // Database
 
@@ -57,12 +61,12 @@ data class Database(
     // val revision: DatabaseRevision
 )
 
-data class CreateDatabaseInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
 
 data class CreateDatabase(
     override val id: CommandId,
     override val databaseId: DatabaseId,
-    override val data: CreateDatabaseInfo
+    override val data: DatabaseCreationInfo
 ): CommandEnvelope
 
 sealed interface DatabaseCreationError: ErrorBody
@@ -190,15 +194,16 @@ data class EntityStreamWithEvents(
 
 // Events & Batches
 
+// TODO: constraints per https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md#naming-conventions
 typealias EventAttributeKey = String
 
 sealed interface EventAttributeValue {
     data class BooleanValue(val value: Boolean): EventAttributeValue
-    data class IntegerValue(val value: Long): EventAttributeValue
+    data class IntegerValue(val value: Int): EventAttributeValue
     data class StringValue(val value: String): EventAttributeValue
     data class UriValue(val value: URI): EventAttributeValue
     data class UriRefValue(val value: URI): EventAttributeValue
-    data class TimestampValue(val value: Instant)
+    data class TimestampValue(val value: Instant): EventAttributeValue
     data class ByteArrayValue(val value: ByteArray): EventAttributeValue {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -214,6 +219,23 @@ sealed interface EventAttributeValue {
         override fun hashCode(): Int {
             return value.contentHashCode()
         }
+    }
+
+    companion object {
+        fun create(value: Any): EventAttributeValue =
+            when(value) {
+                is Boolean -> BooleanValue(value)
+                is Int -> IntegerValue(value)
+                is String -> StringValue(value)
+                is URI -> if (value.isAbsolute)
+                    UriValue(value)
+                else
+                    UriRefValue(value)
+                is Instant -> TimestampValue(value)
+                is OffsetDateTime -> TimestampValue(value.toInstant())
+                is ByteArray -> ByteArrayValue(value)
+                else -> throw IllegalArgumentException("Can't create an EventAttributeValue from ${value}")
+            }
     }
 }
 
@@ -296,7 +318,7 @@ data class Event(
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
     val databaseId: DatabaseId,
-    val stream: StreamName,
+    val stream: String?,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -367,7 +389,7 @@ data class DatabaseNotFoundError(val oldName: DatabaseName): DatabaseRenameError
 
 sealed interface InvalidBatchError: BatchTransactionError
 
-object NoEventsProvided: InvalidBatchError
+object NoEventsProvidedError: InvalidBatchError
 
 sealed interface EventInvalidation
 

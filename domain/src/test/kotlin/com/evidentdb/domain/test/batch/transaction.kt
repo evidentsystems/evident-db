@@ -24,7 +24,7 @@ class TransactionTests {
             val service = InMemoryService(listOf(database), listOf())
             val result = service.transactBatch(databaseName, listOf())
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is NoEventsProvided) }
+            result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
         }
 
     @Test

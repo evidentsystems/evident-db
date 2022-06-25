@@ -1,6 +1,13 @@
 package com.evidentdb.domain
 
 import arrow.core.*
+import java.net.URI
+
+fun databaseUri(id: DatabaseId): URI =
+    URI("evidentdb", id.toString(), null)
+
+fun databaseIdFromUri(uri: URI): DatabaseId =
+    DatabaseId.fromString(uri.schemeSpecificPart)
 
 // TODO: regex check: #"^[a-zA-Z]\w+$"
 fun validateDatabaseName(proposedName: DatabaseName)

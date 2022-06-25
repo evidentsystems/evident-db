@@ -32,6 +32,7 @@ fun validateEventType(eventType: EventType)
     else
         InvalidEventType(eventType).invalidNel()
 
+// TODO: regex validation?
 fun validateEventAttribute(attributeKey: EventAttributeKey)
         : ValidatedNel<InvalidEventAttribute, EventAttributeKey> =
     if (attributeKey.isNotEmpty())
@@ -66,7 +67,7 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
 fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
         : Validated<InvalidBatchError, List<ProposedEvent>> {
     if (events.toList().isEmpty())
-        return NoEventsProvided.invalid()
+        return NoEventsProvidedError.invalid()
     val (errors, validatedEvents) = events
         .map(::validateUnvalidatedProposedEvent)
         .separateValidated()

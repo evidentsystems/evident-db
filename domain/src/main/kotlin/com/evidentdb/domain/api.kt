@@ -49,7 +49,7 @@ interface Service {
             val command = CreateDatabase(
                 CommandId.randomUUID(),
                 DatabaseId.randomUUID(),
-                CreateDatabaseInfo(name)
+                DatabaseCreationInfo(name)
             )
             commandBroker.createDatabase(command).bind()
         }

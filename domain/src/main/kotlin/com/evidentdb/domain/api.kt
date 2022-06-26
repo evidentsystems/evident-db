@@ -265,7 +265,7 @@ object EventHandler {
                     val updates = LinkedHashMap<StreamKey, List<EventId>>()
                     for (evt in event.data.events) {
                         val eventIds = updates.getOrPut(
-                            buildStreamKey(databaseId, evt.stream)
+                            buildStreamKey(databaseId, evt.stream!!)
                         ) { mutableListOf() } as MutableList<EventId>
                         eventIds.add(evt.id)
                     }

@@ -8,15 +8,21 @@ import io.cloudevents.CloudEventData
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.kafka.CloudEventDeserializer
 import io.cloudevents.kafka.CloudEventSerializer
-import io.cloudevents.protobuf.ProtoCloudEventData
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.Deserializer
 import org.apache.kafka.common.serialization.Serde
 import org.apache.kafka.common.serialization.Serializer
 import java.time.ZoneOffset
 
-fun protoCloudEventData(message: Message): CloudEventData =
-    ProtoCloudEventData.wrap(Any.pack(message))
+class ProtoCloudEventData(val message: Any): CloudEventData {
+    override fun toBytes(): ByteArray =
+        message.toByteArray()
+
+    companion object {
+        fun wrap(message: Message) =
+            ProtoCloudEventData(Any.pack(message))
+    }
+}
 
 interface EvidentDbSerializer<T>: Serializer<T> {
     val cloudEventSerializer: CloudEventSerializer
@@ -55,7 +61,7 @@ class CommandEnvelopeSerde: Serde<CommandEnvelope> {
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.databaseId))
                 .withType(content.type)
-                .withData(protoCloudEventData(content.data.toProto()))
+                .withData(ProtoCloudEventData.wrap(content.data.toProto()))
                 .build()
     }
 
@@ -106,7 +112,7 @@ class EventEnvelopeSerde: Serde<EventEnvelope> {
                 .withSource(databaseUri(content.databaseId))
                 .withType(content.type)
                 // TODO: commandId (via extension)
-                .withData(protoCloudEventData(content.data.toProto()))
+                .withData(ProtoCloudEventData.wrap(content.data.toProto()))
                 .build()
     }
 

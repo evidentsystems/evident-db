@@ -5,6 +5,8 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.*
 
+// TODO: Anti-corruption layer via public constructors/static-initializers!!!
+
 // Internal Command & Event wrappers
 
 typealias CommandId = UUID
@@ -318,7 +320,7 @@ data class Event(
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
     val databaseId: DatabaseId,
-    val stream: String?,
+    val stream: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

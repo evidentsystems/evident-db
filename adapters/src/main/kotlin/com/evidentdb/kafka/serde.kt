@@ -68,7 +68,7 @@ class CommandEnvelopeSerde: Serde<CommandEnvelope> {
     class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope> {
         // TODO: extract to domain?
         override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
-            val message = (cloudEvent.data as ProtoCloudEventData).message as Any
+            val message = Any.parseFrom(cloudEvent.data!!.toBytes())
             val commandId = CommandId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {
@@ -118,7 +118,7 @@ class EventEnvelopeSerde: Serde<EventEnvelope> {
 
     class EventEnvelopeDeserializer: EvidentDbDeserializer<EventEnvelope> {
         override fun fromCloudEvent(cloudEvent: CloudEvent): EventEnvelope {
-            val message = (cloudEvent.data as ProtoCloudEventData).message as Any
+            val message = Any.parseFrom(cloudEvent.data!!.toBytes())
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {

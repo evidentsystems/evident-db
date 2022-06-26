@@ -19,7 +19,7 @@ class DatabaseStore(
     }
 
     override suspend fun database(name: DatabaseName): Database? {
-        return databaseStore.get(databaseNameLookupStore.get(name))
+        return databaseNameLookupStore.get(name)?.let { databaseStore.get(it) }
     }
 
     override suspend fun catalog(): Set<Database> {

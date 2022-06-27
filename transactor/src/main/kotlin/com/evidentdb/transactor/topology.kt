@@ -20,11 +20,11 @@ object Topology {
     private const val STREAM_INDEXER = "STREAM_INDEXER"
     private const val EVENT_INDEXER = "EVENT_INDEXER"
 
-    private const val DATABASE_STORE = "DATABASE_STORE"
-    private const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
-    private const val BATCH_STORE = "BATCH_STORE"
-    private const val STREAM_STORE = "STREAM_STORE"
-    private const val EVENT_STORE = "EVENT_STORE"
+    const val DATABASE_STORE = "DATABASE_STORE"
+    const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
+    const val BATCH_STORE = "BATCH_STORE"
+    const val STREAM_STORE = "STREAM_STORE"
+    const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
     private const val DATABASE_SINK = "DATABASES"

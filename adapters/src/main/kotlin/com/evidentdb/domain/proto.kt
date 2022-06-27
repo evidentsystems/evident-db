@@ -15,6 +15,7 @@ import com.evidentdb.domain.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeleti
 import com.evidentdb.domain.v1.proto.ProposedBatch        as ProtoProposedBatch
 import com.evidentdb.domain.v1.proto.ProposedEvent        as ProtoProposedEvent
 import com.evidentdb.domain.v1.proto.ProposedEventStreamState
+import com.evidentdb.domain.v1.proto.Database             as ProtoDatabase
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 
@@ -24,6 +25,11 @@ fun databaseCreationInfoFromProto(message: Any): DatabaseCreationInfo {
         proto.name
     )
 }
+
+fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
+    ProtoDatabaseCreationInfo.newBuilder()
+        .setName(this.name)
+        .build()
 
 fun databaseCreatedInfoFromProto(message: Any): DatabaseCreatedInfo {
     val proto = message.unpack(ProtoDatabaseCreatedInfo::class.java)
@@ -35,9 +41,13 @@ fun databaseCreatedInfoFromProto(message: Any): DatabaseCreatedInfo {
     )
 }
 
-fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
-    ProtoDatabaseCreationInfo.newBuilder()
-        .setName(this.name)
+fun DatabaseCreatedInfo.toProto(): ProtoDatabaseCreatedInfo =
+    ProtoDatabaseCreatedInfo.newBuilder()
+        .setDatabase(
+            ProtoDatabase.newBuilder()
+                .setId(this.database.id.toString())
+                .setName(this.database.name)
+        )
         .build()
 
 fun databaseRenameInfoFromProto(message: Any): DatabaseRenameInfo {
@@ -239,7 +249,16 @@ fun EventBody.toProto(): Message =
     }
 
 fun Database.toByteArray(): ByteArray =
-    TODO("Replace return type with more specific generated class")
+    ProtoDatabase.newBuilder()
+        .setId(this.id.toString())
+        .setName(this.name)
+        .build()
+        .toByteArray()
 
-fun databaseFromProto(data: ByteArray): Database =
-    TODO()
+fun databaseFromProto(data: ByteArray): Database {
+    val proto = ProtoDatabase.parseFrom(data)
+    return Database(
+        DatabaseId.fromString(proto.id),
+        proto.name
+    )
+}

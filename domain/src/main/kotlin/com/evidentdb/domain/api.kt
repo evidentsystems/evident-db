@@ -136,7 +136,7 @@ interface CommandHandler {
                     databaseReadModel,
                     command.data.name
                 ).bind()
-                val id = DatabaseId.randomUUID()
+                val id = command.databaseId
                 val database = Database(id, availableName)
                 DatabaseCreated(
                     EventId.randomUUID(),

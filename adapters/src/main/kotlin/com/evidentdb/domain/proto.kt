@@ -98,7 +98,7 @@ fun proposedBatchFromProto(message: Any): ProposedBatch {
                     CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
                     CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
                     CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
-                    else -> throw IllegalArgumentException("Error parsing proposed event data from protobuf")
+                    else -> null
                 },
                 event.attributesMap.mapValues { (_, v) ->
                     when(v.attrCase) {
@@ -138,10 +138,9 @@ fun ProposedBatch.toProto(): ProtoProposedBatch =
                 is StreamState.StreamExists ->
                     builder.streamState = ProposedEventStreamState.StreamExists
             }
-            builder.event = CloudEvent.newBuilder()
+            val eventBuilder = CloudEvent.newBuilder()
                 .setId(it.id.toString())
                 .setType(it.type)
-                .setBinaryData(ByteString.copyFrom(it.data))
                 .putAllAttributes(it.attributes.mapValues { (_, v) ->
                     val attrBuilder = CloudEventAttributeValue.newBuilder()
                     when(v) {
@@ -163,7 +162,10 @@ fun ProposedBatch.toProto(): ProtoProposedBatch =
                     }
                     attrBuilder.build()
                 })
-                .build()
+
+            if (it.data != null)
+                eventBuilder.binaryData = ByteString.copyFrom(it.data)
+            builder.event = eventBuilder.build()
 
             builder.build()
         })

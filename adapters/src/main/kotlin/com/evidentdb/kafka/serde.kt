@@ -79,7 +79,6 @@ class CommandEnvelopeSerde:
     }
 
     class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope>() {
-        // TODO: extract to domain?
         override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
             val dataBytes = cloudEvent.data!!.toBytes()
             val commandId = CommandId.fromString(cloudEvent.id)
@@ -130,65 +129,66 @@ class EventEnvelopeSerde:
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
+            val commandId = eventId // serialize and deserialize w/in cloudEvent
             return when (cloudEvent.type.split('.').last()) {
                 "DatabaseCreated" -> DatabaseCreated(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     databaseCreatedInfoFromBytes(dataBytes)
                 )
                 "DatabaseRenamed" -> DatabaseRenamed(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     databaseRenameInfoFromBytes(dataBytes)
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     databaseDeletionInfoFromBytes(dataBytes)
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     batchFromBytes(dataBytes)
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     invalidDatabaseNameErrorFromBytes(dataBytes)
                 )
                 "DatabaseNameAlreadyExistsError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     databaseNameAlreadyExistsErrorFromBytes(dataBytes)
                 )
                 "DatabaseNotFoundError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     databaseNotFoundErrorFromBytes(dataBytes)
                 )
                 "NoEventsProvidedError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     noEventsProvidedErrorFromBytes(dataBytes)
                 )
                 "InvalidEventsError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     invalidEventsErrorFromBytes(dataBytes)
                 )
                 "StreamStateConflictsError" -> ErrorEnvelope(
                     eventId,
-                    eventId, // TODO: commandId
+                    commandId,
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )

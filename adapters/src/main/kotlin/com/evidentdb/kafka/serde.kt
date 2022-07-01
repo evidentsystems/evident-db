@@ -13,6 +13,9 @@ import org.apache.kafka.common.header.internals.RecordHeaders
 import org.apache.kafka.common.serialization.*
 import java.time.ZoneOffset
 
+// TODO: extract to/from CloudEvent functions into a separate cloudevent adapter
+// TODO: harmonize/DRY cloudevent adapter with protobuf adapter
+
 class ListSerde<Inner> : Serdes.WrapperSerde<List<Inner>> {
     constructor() : super(ListSerializer<Inner>(), ListDeserializer<Inner>())
     constructor(serializer: ListSerializer<Inner>, deserializer: ListDeserializer<Inner>) : super(serializer, deserializer)
@@ -85,22 +88,22 @@ class CommandEnvelopeSerde:
                 "CreateDatabase" -> CreateDatabase(
                     commandId,
                     databaseId,
-                    databaseCreationInfoFromProto(dataBytes),
+                    databaseCreationInfoFromBytes(dataBytes),
                 )
                 "RenameDatabase" -> RenameDatabase(
                     commandId,
                     databaseId,
-                    databaseRenameInfoFromProto(dataBytes),
+                    databaseRenameInfoFromBytes(dataBytes),
                 )
                 "DeleteDatabase" -> DeleteDatabase(
                     commandId,
                     databaseId,
-                    databaseDeletionInfoFromProto(dataBytes),
+                    databaseDeletionInfoFromBytes(dataBytes),
                 )
                 "TransactBatch" -> TransactBatch(
                     commandId,
                     databaseId,
-                    proposedBatchFromProto(dataBytes)
+                    proposedBatchFromBytes(dataBytes)
                 )
                 else -> throw IllegalArgumentException("unknown command type ${cloudEvent.type}")
             }
@@ -132,62 +135,62 @@ class EventEnvelopeSerde:
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseCreatedInfoFromProto(dataBytes)
+                    databaseCreatedInfoFromBytes(dataBytes)
                 )
                 "DatabaseRenamed" -> DatabaseRenamed(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseRenameInfoFromProto(dataBytes)
+                    databaseRenameInfoFromBytes(dataBytes)
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseDeletionInfoFromProto(dataBytes)
+                    databaseDeletionInfoFromBytes(dataBytes)
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    batchFromProto(dataBytes)
+                    batchFromBytes(dataBytes)
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    invalidDatabaseNameErrorFromProto(dataBytes)
+                    invalidDatabaseNameErrorFromBytes(dataBytes)
                 )
                 "DatabaseNameAlreadyExistsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseNameAlreadyExistsErrorFromProto(dataBytes)
+                    databaseNameAlreadyExistsErrorFromBytes(dataBytes)
                 )
                 "DatabaseNotFoundError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseNotFoundErrorFromProto(dataBytes)
+                    databaseNotFoundErrorFromBytes(dataBytes)
                 )
                 "NoEventsProvidedError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    noEventsProvidedErrorFromProto(dataBytes)
+                    noEventsProvidedErrorFromBytes(dataBytes)
                 )
                 "InvalidEventsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    invalidEventsErrorFromProto(dataBytes)
+                    invalidEventsErrorFromBytes(dataBytes)
                 )
                 "StreamStateConflictsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    streamStateConflictsErrorFromProto(dataBytes)
+                    streamStateConflictsErrorFromBytes(dataBytes)
                 )
                 else -> throw IllegalArgumentException("unknown event type ${cloudEvent.type}")
             }
@@ -203,7 +206,7 @@ class DatabaseSerde: Serdes.WrapperSerde<Database>(DatabaseSerializer(), Databas
 
     class DatabaseDeserializer : Deserializer<Database> {
         override fun deserialize(topic: String?, data: ByteArray?): Database? =
-            data?.let { databaseFromProto(it) }
+            data?.let { databaseFromBytes(it) }
     }
 }
 
@@ -244,6 +247,7 @@ class EventSerde: Serdes.WrapperSerde<Event>(EventSerializer(), EventDeserialize
         override fun fromCloudEvent(cloudEvent: CloudEvent): Event =
             Event(
                 EventId.fromString(cloudEvent.id),
+                databaseIdFromUri(cloudEvent.source),
                 cloudEvent.type,
                 cloudEvent.attributeNames.fold(mutableMapOf()) { acc, k ->
                     cloudEvent.getAttribute(k)?.let {
@@ -252,7 +256,6 @@ class EventSerde: Serdes.WrapperSerde<Event>(EventSerializer(), EventDeserialize
                     acc
                 },
                 cloudEvent.data?.toBytes(),
-                databaseIdFromUri(cloudEvent.source),
                 cloudEvent.subject
             )
     }

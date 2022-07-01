@@ -50,8 +50,14 @@ message ProposedEvent {
 
 message ProposedBatch {
   string id = 1;
-  string databaseName = 2;
+  string databaseId = 2; // TODO: databaseId?
   repeated ProposedEvent events = 3;
+}
+
+message Batch {
+  string id = 1;
+  string databaseId = 2;
+  repeated io.cloudevents.v1.CloudEvent events = 3;
 }
 
 message CommandEnvelope {

@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test
 import java.util.*
 
 class TopologyTests {
+    // TODO: test all failure cases from domain tests
+
     @Test
     fun `topology creates a database`(): Unit =
         runBlocking {

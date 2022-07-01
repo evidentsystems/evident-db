@@ -59,8 +59,8 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
             event.type,
             event.stream,
             event.streamState,
-            event.data,
-            event.attributes
+            event.attributes,
+            event.data
         )
     }.mapLeft { InvalidEventError(event, it) }
 
@@ -84,10 +84,10 @@ fun validateStreamState(
 ): Validated<StreamStateConflictError, Event> {
     val valid = Event(
         event.id,
+        databaseId,
         event.type,
         event.attributes,
         event.data,
-        databaseId,
         event.stream
     ).valid()
     val invalid = StreamStateConflictError(event).invalid()

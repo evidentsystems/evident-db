@@ -8,12 +8,15 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
 class BatchTests {
+    // TODO: test all error cases from domain tests
+
     @Test
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(Topology.DATABASE_STORE)
-            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.DATABASE_NAME_LOOKUP)
+            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(Topology.BATCH_STORE)
+            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.STREAM_STORE)
+            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -44,7 +47,7 @@ class BatchTests {
                 UnvalidatedProposedEvent(
                     "event.stream.revision",
                     existingStreamName,
-                    StreamState.AtRevision(0)
+                    StreamState.AtRevision(1)
                 ),
                 UnvalidatedProposedEvent(
                     "event.stream.no-error",
@@ -56,5 +59,6 @@ class BatchTests {
             result.map {
                 Assertions.assertEquals(it.data.events.size, 4)
             }
+            TODO("test storage state")
         }
 }

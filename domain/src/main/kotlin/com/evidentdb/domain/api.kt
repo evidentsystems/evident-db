@@ -100,7 +100,7 @@ interface Service {
             val command = TransactBatch(
                 CommandId.randomUUID(),
                 databaseId,
-                ProposedBatch(BatchId.randomUUID(), databaseName, validatedEvents)
+                ProposedBatch(BatchId.randomUUID(), databaseId, validatedEvents)
             )
             commandBroker.transactBatch(command).bind()
         }
@@ -189,10 +189,7 @@ interface CommandHandler {
             : Either<BatchTransactionError, BatchTransacted> =
         runBlocking {
             either {
-                val databaseId = lookupDatabaseIdFromDatabaseName(
-                    databaseReadModel,
-                    command.data.databaseName
-                ).bind()
+                val databaseId = command.data.databaseId
                 val transactedBatch = validateProposedBatch(
                     databaseId,
                     streamReadModel,

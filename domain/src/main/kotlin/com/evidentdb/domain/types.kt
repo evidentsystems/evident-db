@@ -281,8 +281,8 @@ data class ProposedEvent(
     val type: EventType,
     val stream: StreamName,
     val streamState: ProposedEventStreamState = StreamState.Any,
-    val data: ByteArray? = null,
     val attributes: Map<EventAttributeKey, EventAttributeValue> = mapOf(),
+    val data: ByteArray? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -316,10 +316,10 @@ data class ProposedEvent(
 
 data class Event(
     val id: EventId,
+    val databaseId: DatabaseId,
     val type: EventType,
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
-    val databaseId: DatabaseId,
     val stream: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
@@ -357,7 +357,7 @@ sealed interface BatchEvent
 
 data class ProposedBatch(
     val id: BatchId,
-    val databaseName: DatabaseName,
+    val databaseId: DatabaseId,
     val events: List<ProposedEvent>
 ): CommandBody
 

@@ -9,6 +9,9 @@ fun databaseUri(id: DatabaseId): URI =
 fun databaseIdFromUri(uri: URI): DatabaseId =
     DatabaseId.fromString(uri.schemeSpecificPart)
 
+fun databaseIdFromUriString(uri: String): DatabaseId =
+    databaseIdFromUri(URI.create(uri))
+
 // TODO: regex check: #"^[a-zA-Z]\w+$"
 fun validateDatabaseName(proposedName: DatabaseName)
         : Validated<InvalidDatabaseNameError, DatabaseName> =

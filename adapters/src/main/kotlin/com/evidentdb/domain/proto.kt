@@ -1,6 +1,5 @@
 package com.evidentdb.domain
 
-import com.google.protobuf.Any
 import com.google.protobuf.Message
 import io.cloudevents.v1.proto.CloudEvent
 import java.net.URI
@@ -19,8 +18,8 @@ import com.evidentdb.domain.v1.proto.Database             as ProtoDatabase
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 
-fun databaseCreationInfoFromProto(message: Any): DatabaseCreationInfo {
-    val proto = message.unpack(ProtoDatabaseCreationInfo::class.java)
+fun databaseCreationInfoFromProto(bytes: ByteArray): DatabaseCreationInfo {
+    val proto = ProtoDatabaseCreationInfo.parseFrom(bytes)
     return DatabaseCreationInfo(
         proto.name
     )
@@ -31,8 +30,8 @@ fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
         .setName(this.name)
         .build()
 
-fun databaseCreatedInfoFromProto(message: Any): DatabaseCreatedInfo {
-    val proto = message.unpack(ProtoDatabaseCreatedInfo::class.java)
+fun databaseCreatedInfoFromProto(bytes: ByteArray): DatabaseCreatedInfo {
+    val proto = ProtoDatabaseCreatedInfo.parseFrom(bytes)
     return DatabaseCreatedInfo(
         Database(
             DatabaseId.fromString(proto.database.id),
@@ -50,8 +49,8 @@ fun DatabaseCreatedInfo.toProto(): ProtoDatabaseCreatedInfo =
         )
         .build()
 
-fun databaseRenameInfoFromProto(message: Any): DatabaseRenameInfo {
-    val proto = message.unpack(ProtoDatabaseRenameInfo::class.java)
+fun databaseRenameInfoFromProto(bytes: ByteArray): DatabaseRenameInfo {
+    val proto = ProtoDatabaseRenameInfo.parseFrom(bytes)
     return DatabaseRenameInfo(
         proto.oldName,
         proto.newName,
@@ -64,8 +63,8 @@ fun DatabaseRenameInfo.toProto(): ProtoDatabaseRenameInfo =
         .setNewName(this.newName)
         .build()
 
-fun databaseDeletionInfoFromProto(message: Any): DatabaseDeletionInfo {
-    val proto = message.unpack(ProtoDatabaseDeletionInfo::class.java)
+fun databaseDeletionInfoFromProto(bytes: ByteArray): DatabaseDeletionInfo {
+    val proto = ProtoDatabaseDeletionInfo.parseFrom(bytes)
     return DatabaseDeletionInfo(
         proto.name
     )
@@ -76,8 +75,8 @@ fun DatabaseDeletionInfo.toProto(): ProtoDatabaseDeletionInfo =
         .setName(this.name)
         .build()
 
-fun proposedBatchFromProto(message: Any): ProposedBatch {
-    val proto = message.unpack(ProtoProposedBatch::class.java)
+fun proposedBatchFromProto(bytes: ByteArray): ProposedBatch {
+    val proto = ProtoProposedBatch.parseFrom(bytes)
     return ProposedBatch(
         BatchId.fromString(proto.id),
         proto.databaseName,
@@ -183,7 +182,7 @@ fun Batch.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun batchFromProto(message: Any): Batch {
+fun batchFromProto(bytes: ByteArray): Batch {
     TODO()
 }
 
@@ -191,7 +190,7 @@ fun InvalidDatabaseNameError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun invalidDatabaseNameErrorFromProto(message: Any): InvalidDatabaseNameError {
+fun invalidDatabaseNameErrorFromProto(bytes: ByteArray): InvalidDatabaseNameError {
     TODO()
 }
 
@@ -199,7 +198,7 @@ fun DatabaseNameAlreadyExistsError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun databaseNameAlreadyExistsErrorFromProto(message: Any): DatabaseNameAlreadyExistsError {
+fun databaseNameAlreadyExistsErrorFromProto(bytes: ByteArray): DatabaseNameAlreadyExistsError {
     TODO()
 }
 
@@ -207,7 +206,7 @@ fun DatabaseNotFoundError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun databaseNotFoundErrorFromProto(message: Any): DatabaseNotFoundError {
+fun databaseNotFoundErrorFromProto(bytes: ByteArray): DatabaseNotFoundError {
     TODO()
 }
 
@@ -215,7 +214,7 @@ fun NoEventsProvidedError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun noEventsProvidedErrorFromProto(message: Any): NoEventsProvidedError {
+fun noEventsProvidedErrorFromProto(bytes: ByteArray): NoEventsProvidedError {
     TODO()
 }
 
@@ -223,7 +222,7 @@ fun InvalidEventsError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun invalidEventsErrorFromProto(message: Any): InvalidEventsError {
+fun invalidEventsErrorFromProto(bytes: ByteArray): InvalidEventsError {
     TODO()
 }
 
@@ -231,7 +230,7 @@ fun StreamStateConflictsError.toProto(): Message {
     TODO("Replace return type with more specific generated class")
 }
 
-fun streamStateConflictsErrorFromProto(message: Any): StreamStateConflictsError {
+fun streamStateConflictsErrorFromProto(bytes: ByteArray): StreamStateConflictsError {
     TODO()
 }
 

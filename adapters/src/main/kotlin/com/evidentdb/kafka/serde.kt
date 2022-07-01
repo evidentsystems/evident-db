@@ -1,61 +1,71 @@
 package com.evidentdb.kafka
 
 import com.evidentdb.domain.*
-import com.google.protobuf.Any
-import com.google.protobuf.Message
 import io.cloudevents.CloudEvent
-import io.cloudevents.CloudEventData
 import io.cloudevents.core.builder.CloudEventBuilder
+import io.cloudevents.core.message.Encoding
 import io.cloudevents.kafka.CloudEventDeserializer
 import io.cloudevents.kafka.CloudEventSerializer
+import io.cloudevents.protobuf.ProtoCloudEventData
+import io.cloudevents.protobuf.ProtobufFormat
 import org.apache.kafka.common.header.Headers
-import org.apache.kafka.common.serialization.Deserializer
-import org.apache.kafka.common.serialization.Serde
-import org.apache.kafka.common.serialization.Serializer
+import org.apache.kafka.common.header.internals.RecordHeaders
+import org.apache.kafka.common.serialization.*
 import java.time.ZoneOffset
 
-class ProtoCloudEventData(val message: Any): CloudEventData {
-    override fun toBytes(): ByteArray =
-        message.toByteArray()
+class ListSerde<Inner> : Serdes.WrapperSerde<List<Inner>> {
+    constructor() : super(ListSerializer<Inner>(), ListDeserializer<Inner>())
+    constructor(serializer: ListSerializer<Inner>, deserializer: ListDeserializer<Inner>) : super(serializer, deserializer)
+}
+
+fun <Inner> listSerde(serde: Serde<Inner>) = ListSerde(
+    ListSerializer(serde.serializer()),
+    ListDeserializer(ArrayList<Inner>().javaClass, serde.deserializer())
+)
+
+abstract class EvidentDbSerializer<T>: Serializer<T> {
+    private val serializer = CloudEventSerializer()
+
+    abstract fun toCloudEvent(content: T): CloudEvent
+
+    override fun configure(configs: MutableMap<String, *>?, isKey: Boolean) {
+        super.configure(configs, isKey)
+        serializer.configure(configs, isKey)
+    }
+
+    // When calling the two-arity, we assume it's for Stores, not Topics
+    override fun serialize(topic: String?, data: T): ByteArray? =
+        serialize(topic, RecordHeaders(), data)
+
+    // When calling the three-arity, we assume it's for Topics, not Stores
+    override fun serialize(topic: String?, headers: Headers?, data: T): ByteArray? =
+        serializer.serialize(topic, headers, toCloudEvent(data))
 
     companion object {
-        fun wrap(message: Message) =
-            ProtoCloudEventData(Any.pack(message))
+        fun structuredConfig() =
+            mutableMapOf(
+                CloudEventSerializer.ENCODING_CONFIG to Encoding.STRUCTURED,
+                CloudEventSerializer.EVENT_FORMAT_CONFIG to ProtobufFormat()
+            )
     }
 }
 
-interface EvidentDbSerializer<T>: Serializer<T> {
-    val cloudEventSerializer: CloudEventSerializer
-        get() = CloudEventSerializer()
-    fun toCloudEvent(content: T): CloudEvent
+abstract class EvidentDbDeserializer<T>: Deserializer<T> {
+    private val deserializer = CloudEventDeserializer()
 
-    override fun serialize(topic: String?, data: T): ByteArray =
-        throw NotImplementedError("this serializer requires the 3-arity implementation")
-
-    override fun serialize(topic: String?, headers: Headers?, data: T): ByteArray =
-        cloudEventSerializer.serialize(topic, headers, toCloudEvent(data))
-}
-
-interface EvidentDbDeserializer<T>: Deserializer<T> {
-    val cloudEventDeserializer: CloudEventDeserializer
-        get() = CloudEventDeserializer()
-    fun fromCloudEvent(cloudEvent: CloudEvent): T
+    abstract fun fromCloudEvent(cloudEvent: CloudEvent): T
 
     override fun deserialize(topic: String?, data: ByteArray?): T =
-        throw NotImplementedError("this deserializer requires the 3-arity implementation")
+        deserialize(topic, null, data)
 
     override fun deserialize(topic: String?, headers: Headers?, data: ByteArray?): T =
-        fromCloudEvent(cloudEventDeserializer.deserialize(topic, headers, data))
+        fromCloudEvent(deserializer.deserialize(topic, headers, data))
 }
 
-class CommandEnvelopeSerde: Serde<CommandEnvelope> {
-    override fun serializer(): Serializer<CommandEnvelope> =
-        CommandEnvelopeSerializer()
+class CommandEnvelopeSerde:
+    Serdes.WrapperSerde<CommandEnvelope>(CommandEnvelopeSerializer(), CommandEnvelopeDeserializer()) {
 
-    override fun deserializer(): Deserializer<CommandEnvelope> =
-        CommandEnvelopeDeserializer()
-
-    class CommandEnvelopeSerializer: EvidentDbSerializer<CommandEnvelope> {
+    class CommandEnvelopeSerializer: EvidentDbSerializer<CommandEnvelope>() {
         override fun toCloudEvent(content: CommandEnvelope): CloudEvent =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
@@ -65,32 +75,32 @@ class CommandEnvelopeSerde: Serde<CommandEnvelope> {
                 .build()
     }
 
-    class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope> {
+    class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope>() {
         // TODO: extract to domain?
         override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
-            val message = Any.parseFrom(cloudEvent.data!!.toBytes())
+            val dataBytes = cloudEvent.data!!.toBytes()
             val commandId = CommandId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {
                 "CreateDatabase" -> CreateDatabase(
                     commandId,
                     databaseId,
-                    databaseCreationInfoFromProto(message),
+                    databaseCreationInfoFromProto(dataBytes),
                 )
                 "RenameDatabase" -> RenameDatabase(
                     commandId,
                     databaseId,
-                    databaseRenameInfoFromProto(message),
+                    databaseRenameInfoFromProto(dataBytes),
                 )
                 "DeleteDatabase" -> DeleteDatabase(
                     commandId,
                     databaseId,
-                    databaseDeletionInfoFromProto(message),
+                    databaseDeletionInfoFromProto(dataBytes),
                 )
                 "TransactBatch" -> TransactBatch(
                     commandId,
                     databaseId,
-                    proposedBatchFromProto(message)
+                    proposedBatchFromProto(dataBytes)
                 )
                 else -> throw IllegalArgumentException("unknown command type ${cloudEvent.type}")
             }
@@ -98,14 +108,10 @@ class CommandEnvelopeSerde: Serde<CommandEnvelope> {
     }
 }
 
-class EventEnvelopeSerde: Serde<EventEnvelope> {
-    override fun serializer(): Serializer<EventEnvelope> =
-        EventEnvelopeSerializer()
+class EventEnvelopeSerde:
+    Serdes.WrapperSerde<EventEnvelope>(EventEnvelopeSerializer(), EventEnvelopeDeserializer()) {
 
-    override fun deserializer(): Deserializer<EventEnvelope> =
-        EventEnvelopeDeserializer()
-
-    class EventEnvelopeSerializer : EvidentDbSerializer<EventEnvelope> {
+    class EventEnvelopeSerializer : EvidentDbSerializer<EventEnvelope>() {
         override fun toCloudEvent(content: EventEnvelope): CloudEvent  =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
@@ -116,9 +122,9 @@ class EventEnvelopeSerde: Serde<EventEnvelope> {
                 .build()
     }
 
-    class EventEnvelopeDeserializer: EvidentDbDeserializer<EventEnvelope> {
+    class EventEnvelopeDeserializer: EvidentDbDeserializer<EventEnvelope>() {
         override fun fromCloudEvent(cloudEvent: CloudEvent): EventEnvelope {
-            val message = Any.parseFrom(cloudEvent.data!!.toBytes())
+            val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {
@@ -126,62 +132,62 @@ class EventEnvelopeSerde: Serde<EventEnvelope> {
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseCreatedInfoFromProto(message)
+                    databaseCreatedInfoFromProto(dataBytes)
                 )
                 "DatabaseRenamed" -> DatabaseRenamed(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseRenameInfoFromProto(message)
+                    databaseRenameInfoFromProto(dataBytes)
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseDeletionInfoFromProto(message)
+                    databaseDeletionInfoFromProto(dataBytes)
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    batchFromProto(message)
+                    batchFromProto(dataBytes)
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    invalidDatabaseNameErrorFromProto(message)
+                    invalidDatabaseNameErrorFromProto(dataBytes)
                 )
                 "DatabaseNameAlreadyExistsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseNameAlreadyExistsErrorFromProto(message)
+                    databaseNameAlreadyExistsErrorFromProto(dataBytes)
                 )
                 "DatabaseNotFoundError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    databaseNotFoundErrorFromProto(message)
+                    databaseNotFoundErrorFromProto(dataBytes)
                 )
                 "NoEventsProvidedError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    noEventsProvidedErrorFromProto(message)
+                    noEventsProvidedErrorFromProto(dataBytes)
                 )
                 "InvalidEventsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    invalidEventsErrorFromProto(message)
+                    invalidEventsErrorFromProto(dataBytes)
                 )
                 "StreamStateConflictsError" -> ErrorEnvelope(
                     eventId,
                     eventId, // TODO: commandId
                     databaseId,
-                    streamStateConflictsErrorFromProto(message)
+                    streamStateConflictsErrorFromProto(dataBytes)
                 )
                 else -> throw IllegalArgumentException("unknown event type ${cloudEvent.type}")
             }
@@ -189,13 +195,7 @@ class EventEnvelopeSerde: Serde<EventEnvelope> {
     }
 }
 
-class DatabaseSerde: Serde<Database> {
-    override fun serializer(): Serializer<Database> =
-        DatabaseSerializer()
-
-    override fun deserializer(): Deserializer<Database> =
-        DatabaseDeserializer()
-
+class DatabaseSerde: Serdes.WrapperSerde<Database>(DatabaseSerializer(), DatabaseDeserializer()) {
     class DatabaseSerializer : Serializer<Database> {
         override fun serialize(topic: String?, data: Database?): ByteArray =
             data?.toByteArray() ?: byteArrayOf()
@@ -207,21 +207,18 @@ class DatabaseSerde: Serde<Database> {
     }
 }
 
-class EventSerde: Serde<Event> {
-    override fun serializer(): Serializer<Event> =
-        EventSerializer()
-
-    override fun deserializer(): Deserializer<Event> =
-        EventDeserializer()
-
-    class EventSerializer : EvidentDbSerializer<Event> {
+class EventSerde: Serdes.WrapperSerde<Event>(EventSerializer(), EventDeserializer()) {
+    class EventSerializer : EvidentDbSerializer<Event>() {
         override fun toCloudEvent(content: Event): CloudEvent {
             val builder = CloudEventBuilder.v1()
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.databaseId))
                 .withType(content.type)
                 .withSubject(content.stream)
-                .withData(content.data)
+            if (content.data != null)
+                builder.withData(content.data)
+            else
+                builder.withoutData()
             for ((k, v) in content.attributes)
                 when (v) {
                     is EventAttributeValue.BooleanValue ->
@@ -243,7 +240,7 @@ class EventSerde: Serde<Event> {
         }
     }
 
-    class EventDeserializer : EvidentDbDeserializer<Event> {
+    class EventDeserializer : EvidentDbDeserializer<Event>() {
         override fun fromCloudEvent(cloudEvent: CloudEvent): Event =
             Event(
                 EventId.fromString(cloudEvent.id),

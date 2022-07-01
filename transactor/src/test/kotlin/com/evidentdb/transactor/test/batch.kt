@@ -21,7 +21,7 @@ class BatchTests {
             val existingStreamName = "my-stream"
             val initBatch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.no-stream",
+                    "event.stream.initialize",
                     existingStreamName,
                     StreamState.NoStream
                 )

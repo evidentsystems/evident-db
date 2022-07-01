@@ -17,6 +17,7 @@ dependencies {
 
     compileOnly("org.apache.kafka:kafka-streams:3.2.0")
     implementation("io.cloudevents:cloudevents-kafka:2.3.0")
+    implementation("io.cloudevents:cloudevents-protobuf:2.3.0")
     implementation("com.google.protobuf:protobuf-java:3.21.2")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")

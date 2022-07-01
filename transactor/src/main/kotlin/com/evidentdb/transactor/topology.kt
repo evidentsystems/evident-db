@@ -108,7 +108,7 @@ object Topology {
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
                 Serdes.String(), // BatchKey
-                Serdes.ListSerde<EventId>(),
+                listSerde(Serdes.UUID()),
             ),
             BATCH_INDEXER,
         )
@@ -116,16 +116,21 @@ object Topology {
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
                 Serdes.String(), // StreamKey
-                Serdes.ListSerde<EventId>(),
+                listSerde(Serdes.UUID()),
             ),
             COMMAND_PROCESSOR,
             STREAM_INDEXER,
         )
+
+        // Configure structured event serialization for storage (i.e. no headers)
+        val eventStoreSerde = EventSerde()
+        eventStoreSerde.configure(EvidentDbSerializer.structuredConfig(), false)
+
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(EVENT_STORE),
                 Serdes.UUID(), // EventId
-                EventSerde(),
+                eventStoreSerde,
             ),
             STREAM_INDEXER,
             EVENT_INDEXER,
@@ -136,7 +141,7 @@ object Topology {
             INTERNAL_EVENT_SINK,
             internalEventsTopic,
             Serdes.UUID().serializer(),
-            EventEnvelopeSerde().serializer(),
+            EventEnvelopeSerde.EventEnvelopeSerializer(),
             DatabaseIdStreamPartitioner(),
             COMMAND_PROCESSOR,
         )
@@ -145,7 +150,7 @@ object Topology {
             DATABASE_SINK,
             databasesTopic,
             Serdes.UUID().serializer(),
-            DatabaseSerde().serializer(),
+            DatabaseSerde.DatabaseSerializer(),
             // TODO: already partitioned on databaseId, since key
             DATABASE_INDEXER,
         )
@@ -163,7 +168,7 @@ object Topology {
             BATCHES_SINK,
             batchesTopic,
             Serdes.String().serializer(), // BatchKey
-            Serdes.ListSerde<EventId>().serializer(),
+            listSerde(Serdes.UUID()).serializer(),
             // TODO: partitioned on database?
             BATCH_INDEXER,
         )
@@ -172,7 +177,7 @@ object Topology {
             STREAMS_SINK,
             streamsTopic,
             Serdes.String().serializer(), // StreamKey
-            Serdes.ListSerde<EventId>().serializer(),
+            listSerde(Serdes.UUID()).serializer(),
             // TODO: partitioned on database?
             STREAM_INDEXER,
         )
@@ -181,7 +186,7 @@ object Topology {
             EVENTS_SINK,
             eventsTopic,
             Serdes.UUID().serializer(), // EventId
-            EventSerde().serializer(),
+            EventSerde.EventSerializer(),
             // TODO: partitioned on database?
             EVENT_INDEXER,
         )

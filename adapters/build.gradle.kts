@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "1.6.21"
-    id("com.google.protobuf") version "0.8.18"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.protobuf)
 }
 
 group = "com.evidentdb"
@@ -15,13 +15,13 @@ dependencies {
 
     implementation(project(":domain"))
 
-    compileOnly("org.apache.kafka:kafka-streams:3.2.0")
-    implementation("io.cloudevents:cloudevents-kafka:2.3.0")
-    implementation("io.cloudevents:cloudevents-protobuf:2.3.0")
-    implementation("com.google.protobuf:protobuf-java:3.21.2")
+    compileOnly(libs.kafka.streams)
+    implementation(libs.cloudevents.kafka)
+    implementation(libs.cloudevents.protobuf)
+    implementation(libs.protobuf.java)
 
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+    testImplementation(libs.junit.api)
+    testRuntimeOnly(libs.junit.engine)
 }
 
 tasks.test {

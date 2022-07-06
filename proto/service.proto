@@ -1,11 +1,11 @@
 syntax = "proto3";
 
+package com.evidentdb.service;
+
 option java_multiple_files = true;
-option java_package = "com.evidentdb";
+option java_package = "com.evidentdb.service";
 option java_outer_classname = "EvidentDbService";
 option objc_class_prefix = "HLW";
-
-package com.evidentdb;
 
 service EvidentDb {
   rpc catalogSubscription(FetchCatalogRequest) returns (stream Catalog)      {}

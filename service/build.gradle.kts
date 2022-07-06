@@ -1,5 +1,5 @@
 plugins {
-    kotlin("jvm") version "1.6.21"
+    alias(libs.plugins.kotlin.jvm)
 }
 
 group = "com.evidentdb"
@@ -11,12 +11,12 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("io.arrow-kt:arrow-core:1.0.1")
+    implementation(libs.arrow.core)
 
     implementation(project(":domain"))
     implementation(project(":adapters"))
 
-    implementation("org.apache.kafka:kafka-streams:3.2.0")
+    implementation(libs.kafka.streams)
 }
 
 tasks.test {

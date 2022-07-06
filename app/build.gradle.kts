@@ -12,10 +12,6 @@ plugins {
 version = "0.1"
 group = "com.evidentdb"
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     implementation(project(":domain"))
     implementation(project(":adapters"))

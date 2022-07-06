@@ -2,6 +2,10 @@ rootProject.name = "evident-db"
 include("domain", "adapters", "service", "transactor", "app")
 
 dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+    }
+
     versionCatalogs {
         create("libs") {
             version("kotlin", "1.6.21")

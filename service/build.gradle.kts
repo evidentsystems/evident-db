@@ -14,6 +14,7 @@ dependencies {
 
     implementation(project(":domain"))
     implementation(project(":adapters"))
+    protobuf(project(":adapters"))
 
     implementation(libs.kafka.streams)
 
@@ -21,6 +22,9 @@ dependencies {
     implementation(libs.grpc.stub)
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
+
+    testImplementation(libs.junit.api)
+    testRuntimeOnly(libs.junit.engine)
 }
 
 protobuf {
@@ -29,9 +33,8 @@ protobuf {
         id("grpckt") { artifact = "io.grpc:protoc-gen-grpc-kotlin:${libs.versions.grpckotlin.get()}:jdk8@jar" }
     }
     generateProtoTasks {
-        ofSourceSet("main").forEach {
-            it.plugins {
-                // Apply the "grpc" plugin whose spec is defined above, without options.
+        ofSourceSet("main").forEach { task ->
+            task.plugins {
                 id("grpc")
                 id("grpckt")
             }
@@ -42,9 +45,11 @@ protobuf {
 sourceSets {
     main {
         java {
-            srcDirs("build/generated/source/proto/main/grpc")
-            srcDirs("build/generated/source/proto/main/grpckt")
-            srcDirs("build/generated/source/proto/main/java")
+            srcDirs(
+                "build/generated/source/proto/main/grpc",
+                "build/generated/source/proto/main/java",
+                "build/generated/source/proto/main/grpckt",
+            )
         }
     }
 }

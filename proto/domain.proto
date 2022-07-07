@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package com.evidentdb.domain;
 
-import "cloudevents.proto";
-import "google/protobuf/any.proto";
+import "spec.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";
@@ -11,6 +10,7 @@ option java_package = "com.evidentdb.domain.v1.proto";
 option java_multiple_files = true;
 option php_namespace = "Com\\EvidentDB\\V1\\Proto";
 option ruby_package = "Com::EvidentDB::V1::Proto";
+option objc_class_prefix = "EDB";
 
 message DatabaseCreationInfo {
   string name = 1;
@@ -46,6 +46,11 @@ message ProposedEvent {
   ProposedEventStreamState streamState = 2;
   optional int64 at_revision = 3;
   io.cloudevents.v1.CloudEvent event = 4;
+}
+
+message BatchProposal {
+  string databaseName = 2;
+  repeated ProposedEvent events = 3;
 }
 
 message ProposedBatch {

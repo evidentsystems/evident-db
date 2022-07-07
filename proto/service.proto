@@ -2,48 +2,43 @@ syntax = "proto3";
 
 package com.evidentdb.service;
 
+import "domain.proto";
+
+option csharp_namespace = "EvidentDB.V1";
+option go_package = "evidentdb.com/genproto/v1";
+option java_package = "com.evidentdb.service.v1";
 option java_multiple_files = true;
-option java_package = "com.evidentdb.service";
 option java_outer_classname = "EvidentDbService";
-option objc_class_prefix = "HLW";
+option php_namespace = "Com\\EvidentDB\\V1\\Proto";
+option ruby_package = "Com::EvidentDB::V1::Proto";
+option objc_class_prefix = "EDB";
 
 service EvidentDb {
-  rpc catalogSubscription(FetchCatalogRequest) returns (stream Catalog)      {}
-  rpc createDatabase(CreateDatabaseRequest)    returns (CreateDatabaseReply) {}
-  rpc renameDatabase(RenameDatabaseRequest)    returns (RenameDatabaseReply) {}
-  rpc deleteDatabase(DeleteDatabaseRequest)    returns (DeleteDatabaseReply) {}
+  // Command
+  rpc createDatabase(com.evidentdb.domain.DatabaseCreationInfo) returns (CreateDatabaseReply) {}
+  rpc renameDatabase(com.evidentdb.domain.DatabaseRenameInfo)   returns (RenameDatabaseReply) {}
+  rpc deleteDatabase(com.evidentdb.domain.DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
+  rpc transactBatch(com.evidentdb.domain.BatchProposal)         returns (TransactBatchReply)  {}
+
+  // Query
 }
 
-message FetchCatalogRequest {}
-
-message Catalog {
+// TODO: enum of possibilities
+message TransactBatchReply {
 
 }
 
-message CreateDatabaseRequest {
-  string name = 1;
-}
-
-// TODO
+// TODO: enum of possibilities
 message CreateDatabaseReply {
-  string message = 1;
+
 }
 
-message RenameDatabaseRequest {
-  string oldName = 1;
-  string newName = 2;
-}
-
-// TODO
+// TODO: enum of possibilities
 message RenameDatabaseReply {
-  string message = 1;
+
 }
 
-message DeleteDatabaseRequest {
-  string name = 1;
-}
-
-// TODO
+// TODO: enum of possibilities
 message DeleteDatabaseReply {
-  string message = 1;
+
 }

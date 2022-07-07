@@ -12,8 +12,11 @@ dependencies {
     implementation(project(":domain"))
 
     compileOnly(libs.kafka.streams)
+
     implementation(libs.cloudevents.kafka)
     implementation(libs.cloudevents.protobuf)
+    protobuf(libs.cloudevents.protobuf)
+
     implementation(libs.protobuf.java)
 
     testImplementation(libs.junit.api)

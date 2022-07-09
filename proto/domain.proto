@@ -6,7 +6,7 @@ import "spec.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";
-option java_package = "com.evidentdb.domain.v1.proto";
+option java_package = "com.evidentdb.dto.v1.proto";
 option java_multiple_files = true;
 option php_namespace = "Com\\EvidentDB\\V1\\Proto";
 option ruby_package = "Com::EvidentDB::V1::Proto";
@@ -34,7 +34,7 @@ message DatabaseDeletionInfo {
   string name = 1;
 }
 
-enum ProposedEventStreamState {
+enum StreamState {
   Any = 0;
   StreamExists = 1;
   NoStream = 2;
@@ -43,7 +43,7 @@ enum ProposedEventStreamState {
 
 message ProposedEvent {
   string stream = 1;
-  ProposedEventStreamState streamState = 2;
+  StreamState streamState = 2;
   optional int64 at_revision = 3;
   io.cloudevents.v1.CloudEvent event = 4;
 }
@@ -63,4 +63,58 @@ message Batch {
   string id = 1;
   string databaseId = 2;
   repeated io.cloudevents.v1.CloudEvent events = 3;
+}
+
+// Errors
+
+message InvalidDatabaseNameError {
+  string name = 1;
+}
+
+message DatabaseNameAlreadyExistsError {
+  string name = 1;
+}
+
+message DatabaseNotFoundError {
+  string name = 1;
+}
+
+message NoEventsProvidedError {}
+
+message InvalidStreamName {
+  string streamName = 1;
+}
+
+message InvalidEventType {
+  string eventType = 1;
+}
+
+message InvalidEventAttribute {
+  string attributeKey = 1;
+}
+
+message EventInvalidation {
+  oneof invalidation {
+    InvalidStreamName invalidStreamName = 1;
+    InvalidEventType invalidEventType = 2;
+    InvalidEventAttribute invalidEventAttribute = 3;
+  }
+}
+
+message InvalidEvent {
+  ProposedEvent event = 1;
+  repeated EventInvalidation invalidations = 2;
+}
+
+message InvalidEventsError {
+  repeated InvalidEvent invalidEvents = 1;
+}
+
+message StreamStateConflict {
+  ProposedEvent event = 1;
+  StreamState streamState = 2;
+}
+
+message StreamStateConflictsError {
+  repeated StreamStateConflict conflicts = 1;
 }

@@ -48,7 +48,7 @@ fun validateEventAttributes(attributes: Map<EventAttributeKey, EventAttributeVal
     )
 
 fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
-        : Validated<InvalidEventError, ProposedEvent> =
+        : Validated<InvalidEvent, ProposedEvent> =
     validateStreamName(event.stream).zip(
         Semigroup.nonEmptyList(),
         validateEventType(event.type),
@@ -62,7 +62,7 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
             event.attributes,
             event.data
         )
-    }.mapLeft { InvalidEventError(event, it) }
+    }.mapLeft { InvalidEvent(event, it) }
 
 fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
         : Validated<InvalidBatchError, List<ProposedEvent>> {
@@ -81,7 +81,7 @@ fun validateStreamState(
     databaseId: DatabaseId,
     currentStreamState: StreamState,
     event: ProposedEvent
-): Validated<StreamStateConflictError, Event> {
+): Validated<StreamStateConflict, Event> {
     val valid = Event(
         event.id,
         databaseId,
@@ -90,7 +90,10 @@ fun validateStreamState(
         event.data,
         event.stream
     ).valid()
-    val invalid = StreamStateConflictError(event).invalid()
+    val invalid = StreamStateConflict(
+        event,
+        currentStreamState
+    ).invalid()
     return when (event.streamState) {
         is StreamState.NoStream ->
             when(currentStreamState) {
@@ -120,7 +123,7 @@ suspend fun validateProposedEvent(
     databaseId: DatabaseId,
     streamReadModel: StreamReadModel,
     event: ProposedEvent
-): Either<StreamStateConflictError, Event> =
+): Either<StreamStateConflict, Event> =
     either {
         val validEvent = validateStreamState(
             databaseId,

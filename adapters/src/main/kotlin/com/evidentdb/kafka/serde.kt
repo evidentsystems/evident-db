@@ -1,6 +1,7 @@
 package com.evidentdb.kafka
 
 import com.evidentdb.domain.*
+import com.evidentdb.dto.*
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.core.message.Encoding

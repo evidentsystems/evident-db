@@ -55,8 +55,11 @@ class TopologyTestDriverCommandBroker(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseCreated -> event.right()
-            is DatabaseCreationError -> event.left()
-            else -> throw IllegalStateException("Invalid event returned from createDatabase")
+            is ErrorEnvelope -> when(val data = event.data) {
+                is DatabaseCreationError -> data.left()
+                else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
+            }
+            else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
         }
     }
 
@@ -65,8 +68,11 @@ class TopologyTestDriverCommandBroker(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseRenamed -> event.right()
-            is DatabaseRenameError -> event.left()
-            else -> throw IllegalStateException("Invalid event returned from renameDatabase")
+            is ErrorEnvelope -> when(val data = event.data) {
+                is DatabaseRenameError -> data.left()
+                else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
+            }
+            else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
         }
     }
 
@@ -76,8 +82,11 @@ class TopologyTestDriverCommandBroker(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseDeleted -> event.right()
-            is DatabaseDeletionError -> event.left()
-            else -> throw IllegalStateException("Invalid event returned from deleteDatabase")
+            is ErrorEnvelope -> when(val data = event.data) {
+                is DatabaseDeletionError -> data.left()
+                else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
+            }
+            else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
         }
     }
 
@@ -87,8 +96,11 @@ class TopologyTestDriverCommandBroker(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is BatchTransacted -> event.right()
-            is BatchTransactionError -> event.left()
-            else -> throw IllegalStateException("Invalid event returned from transactBatch")
+            is ErrorEnvelope -> when(val data = event.data) {
+                is BatchTransactionError -> data.left()
+                else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
+            }
+            else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
         }
     }
 

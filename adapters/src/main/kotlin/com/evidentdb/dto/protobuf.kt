@@ -1,5 +1,6 @@
-package com.evidentdb.domain
+package com.evidentdb.dto
 
+import com.evidentdb.domain.*
 import com.google.protobuf.Message
 import io.cloudevents.v1.proto.CloudEvent
 import java.net.URI
@@ -7,15 +8,23 @@ import io.cloudevents.v1.proto.CloudEvent.CloudEventAttributeValue.AttrCase as A
 import io.cloudevents.v1.proto.CloudEvent.CloudEventAttributeValue
 import java.nio.charset.Charset
 import java.time.Instant
-import com.evidentdb.domain.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
-import com.evidentdb.domain.v1.proto.DatabaseCreatedInfo  as ProtoDatabaseCreatedInfo
-import com.evidentdb.domain.v1.proto.DatabaseRenameInfo   as ProtoDatabaseRenameInfo
-import com.evidentdb.domain.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
-import com.evidentdb.domain.v1.proto.ProposedBatch        as ProtoProposedBatch
-import com.evidentdb.domain.v1.proto.ProposedEvent        as ProtoProposedEvent
-import com.evidentdb.domain.v1.proto.Batch                as ProtoBatch
-import com.evidentdb.domain.v1.proto.ProposedEventStreamState
-import com.evidentdb.domain.v1.proto.Database             as ProtoDatabase
+import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
+import com.evidentdb.dto.v1.proto.DatabaseCreatedInfo  as ProtoDatabaseCreatedInfo
+import com.evidentdb.dto.v1.proto.DatabaseRenameInfo   as ProtoDatabaseRenameInfo
+import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
+import com.evidentdb.dto.v1.proto.ProposedBatch        as ProtoProposedBatch
+import com.evidentdb.dto.v1.proto.ProposedEvent        as ProtoProposedEvent
+import com.evidentdb.dto.v1.proto.Batch                as ProtoBatch
+import com.evidentdb.dto.v1.proto.StreamState          as ProtoStreamState
+import com.evidentdb.dto.v1.proto.Database             as ProtoDatabase
+import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError       as ProtoInvalidDatabaseNameError
+import com.evidentdb.dto.v1.proto.DatabaseNameAlreadyExistsError as ProtoDatabaseNameAlreadyExistsError
+import com.evidentdb.dto.v1.proto.DatabaseNotFoundError          as ProtoDatabaseNotFoundError
+import com.evidentdb.dto.v1.proto.NoEventsProvidedError          as ProtoNoEventsProvidedError
+import com.evidentdb.dto.v1.proto.EventInvalidation              as ProtoEventInvalidation
+import com.evidentdb.dto.v1.proto.InvalidEvent                   as ProtoInvalidEvent
+import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalidEventsError
+import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 
@@ -32,7 +41,7 @@ fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
         .setName(this.name)
         .build()
 
-fun databaseCreattedInfoFromProto(proto: ProtoDatabaseCreatedInfo) =
+fun databaseCreatedInfoFromProto(proto: ProtoDatabaseCreatedInfo) =
     DatabaseCreatedInfo(
         Database(
             DatabaseId.fromString(proto.database.id),
@@ -41,7 +50,7 @@ fun databaseCreattedInfoFromProto(proto: ProtoDatabaseCreatedInfo) =
     )
 
 fun databaseCreatedInfoFromBytes(bytes: ByteArray): DatabaseCreatedInfo =
-    databaseCreattedInfoFromProto(ProtoDatabaseCreatedInfo.parseFrom(bytes))
+    databaseCreatedInfoFromProto(ProtoDatabaseCreatedInfo.parseFrom(bytes))
 
 fun DatabaseCreatedInfo.toProto(): ProtoDatabaseCreatedInfo =
     ProtoDatabaseCreatedInfo.newBuilder()
@@ -87,10 +96,10 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
         event.type,
         proposedEvent.stream,
         when(proposedEvent.streamState) {
-            ProposedEventStreamState.Any -> StreamState.Any
-            ProposedEventStreamState.StreamExists -> StreamState.StreamExists
-            ProposedEventStreamState.NoStream -> StreamState.NoStream
-            ProposedEventStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
+            ProtoStreamState.Any -> StreamState.Any
+            ProtoStreamState.StreamExists -> StreamState.StreamExists
+            ProtoStreamState.NoStream -> StreamState.NoStream
+            ProtoStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
             else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
         },
         event.attributesMap.mapValues { (_, v) ->
@@ -131,15 +140,15 @@ fun ProposedEvent.toProto(): ProtoProposedEvent {
         .setStream(this.stream)
     when(this.streamState) {
         is StreamState.Any ->
-            builder.streamState = ProposedEventStreamState.Any
+            builder.streamState = ProtoStreamState.Any
         is StreamState.AtRevision -> {
-            builder.streamState = ProposedEventStreamState.AtRevision
+            builder.streamState = ProtoStreamState.AtRevision
             builder.atRevision = (this.streamState as StreamState.AtRevision).revision
         }
         is StreamState.NoStream ->
-            builder.streamState = ProposedEventStreamState.NoStream
+            builder.streamState = ProtoStreamState.NoStream
         is StreamState.StreamExists ->
-            builder.streamState = ProposedEventStreamState.StreamExists
+            builder.streamState = ProtoStreamState.StreamExists
     }
     val eventBuilder = CloudEvent.newBuilder()
         .setId(this.id.toString())
@@ -268,45 +277,114 @@ fun batchFromProto(proto: ProtoBatch) =
 fun batchFromBytes(bytes: ByteArray): Batch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
 
-fun InvalidDatabaseNameError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
+fun InvalidDatabaseNameError.toProto(): ProtoInvalidDatabaseNameError =
+    ProtoInvalidDatabaseNameError.newBuilder()
+        .setName(this.name)
+        .build()
+
+fun invalidDatabaseNameErrorFromProto(proto: ProtoInvalidDatabaseNameError): InvalidDatabaseNameError =
+    InvalidDatabaseNameError(proto.name)
+
+fun invalidDatabaseNameErrorFromBytes(bytes: ByteArray): InvalidDatabaseNameError =
+    invalidDatabaseNameErrorFromProto(ProtoInvalidDatabaseNameError.parseFrom(bytes))
+
+fun DatabaseNameAlreadyExistsError.toProto(): ProtoDatabaseNameAlreadyExistsError =
+    ProtoDatabaseNameAlreadyExistsError.newBuilder()
+        .setName(this.name)
+        .build()
+
+fun databaseNameAlreadyExistsErrorFromProto(proto: ProtoDatabaseNameAlreadyExistsError): DatabaseNameAlreadyExistsError =
+    DatabaseNameAlreadyExistsError(proto.name)
+
+fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlreadyExistsError =
+    databaseNameAlreadyExistsErrorFromProto(ProtoDatabaseNameAlreadyExistsError.parseFrom(bytes))
+
+fun DatabaseNotFoundError.toProto(): ProtoDatabaseNotFoundError =
+    ProtoDatabaseNotFoundError.newBuilder()
+        .setName(this.name)
+        .build()
+
+fun databaseNotFoundErrorFromProto(proto: ProtoDatabaseNotFoundError): DatabaseNotFoundError =
+    DatabaseNotFoundError(proto.name)
+
+fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError =
+    databaseNotFoundErrorFromProto(ProtoDatabaseNotFoundError.parseFrom(bytes))
+
+fun NoEventsProvidedError.toProto(): ProtoNoEventsProvidedError =
+    ProtoNoEventsProvidedError.newBuilder().build()
+
+fun noEventsProvidedErrorFromProto(proto: ProtoNoEventsProvidedError): NoEventsProvidedError =
+    NoEventsProvidedError
+
+fun noEventsProvidedErrorFromBytes(bytes: ByteArray): NoEventsProvidedError =
+    noEventsProvidedErrorFromProto(ProtoNoEventsProvidedError.parseFrom(bytes))
+
+// TODO: DRY this up a bit w/r/t ProposedEvent.toProto()
+fun UnvalidatedProposedEvent.toProto(): ProtoProposedEvent {
+    val builder = ProtoProposedEvent.newBuilder()
+        .setStream(this.stream)
+    when(this.streamState) {
+        is StreamState.Any ->
+            builder.streamState = ProtoStreamState.Any
+        is StreamState.AtRevision -> {
+            builder.streamState = ProtoStreamState.AtRevision
+            builder.atRevision = (this.streamState as StreamState.AtRevision).revision
+        }
+        is StreamState.NoStream ->
+            builder.streamState = ProtoStreamState.NoStream
+        is StreamState.StreamExists ->
+            builder.streamState = ProtoStreamState.StreamExists
+    }
+    val eventBuilder = CloudEvent.newBuilder()
+        .setType(this.type)
+        .putAllAttributes(this.attributes.mapValues { (_, v) ->
+            val attrBuilder = CloudEventAttributeValue.newBuilder()
+            when(v) {
+                is EventAttributeValue.BooleanValue ->
+                    attrBuilder.ceBoolean = v.value
+                is EventAttributeValue.ByteArrayValue ->
+                    attrBuilder.ceBytes = ByteString.copyFrom(v.value)
+                is EventAttributeValue.IntegerValue ->
+                    attrBuilder.ceInteger = v.value
+                is EventAttributeValue.StringValue ->
+                    attrBuilder.ceString = v.value
+                is EventAttributeValue.TimestampValue ->
+                    attrBuilder.ceTimestamp = Timestamp.newBuilder()
+                        .setSeconds(v.value.epochSecond)
+                        .setNanos(v.value.nano)
+                        .build()
+                is EventAttributeValue.UriRefValue -> attrBuilder.ceUriRef = v.value.toString()
+                is EventAttributeValue.UriValue -> attrBuilder.ceUri = v.value.toString()
+            }
+            attrBuilder.build()
+        })
+
+    if (this.data != null)
+        eventBuilder.binaryData = ByteString.copyFrom(this.data)
+    builder.event = eventBuilder.build()
+
+    return builder.build()
 }
 
-fun invalidDatabaseNameErrorFromBytes(bytes: ByteArray): InvalidDatabaseNameError {
-    TODO()
-}
+fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
+    ProtoInvalidEventsError.newBuilder()
+        .addAllInvalidEvents(this.invalidEvents.map {
+            ProtoInvalidEvent.newBuilder()
+                .setEvent(it.event.toProto())
+                .addAllInvalidations(this.invalidEvents.map {
+                    val builder = ProtoEventInvalidation.newBuilder()
+                    TODO("Finish this")
+                    builder.build()
+                })
+                .build()
+        })
+        .build()
 
-fun DatabaseNameAlreadyExistsError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
-}
+fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsError =
+    TODO("Construct InvalidEventsError")
 
-fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlreadyExistsError {
-    TODO()
-}
-
-fun DatabaseNotFoundError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
-}
-
-fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError {
-    TODO()
-}
-
-fun NoEventsProvidedError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
-}
-
-fun noEventsProvidedErrorFromBytes(bytes: ByteArray): NoEventsProvidedError {
-    TODO()
-}
-
-fun InvalidEventsError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
-}
-
-fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEventsError {
-    TODO()
-}
+fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEventsError =
+    invalidEventsErrorFromProto(ProtoInvalidEventsError.parseFrom(bytes))
 
 fun StreamStateConflictsError.toProto(): Message {
     TODO("Replace return type with more specific generated class")

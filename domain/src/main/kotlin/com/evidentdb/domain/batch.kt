@@ -59,8 +59,8 @@ fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
             event.type,
             event.stream,
             event.streamState,
-            event.attributes,
-            event.data
+            event.data,
+            event.attributes
         )
     }.mapLeft { InvalidEvent(event, it) }
 

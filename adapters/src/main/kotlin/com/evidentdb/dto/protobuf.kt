@@ -1,6 +1,7 @@
 package com.evidentdb.dto
 
 import com.evidentdb.domain.*
+import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.*
 import com.google.protobuf.Message
 import io.cloudevents.v1.proto.CloudEvent
 import java.net.URI
@@ -24,6 +25,7 @@ import com.evidentdb.dto.v1.proto.NoEventsProvidedError          as ProtoNoEvent
 import com.evidentdb.dto.v1.proto.EventInvalidation              as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InvalidEvent                   as ProtoInvalidEvent
 import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalidEventsError
+import com.evidentdb.dto.v1.proto.StreamStateConflict            as ProtoStreamStateConflict
 import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
@@ -102,6 +104,12 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
             ProtoStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
             else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
         },
+        when(event.dataCase) {
+            CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
+            CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
+            CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
+            else -> null
+        },
         event.attributesMap.mapValues { (_, v) ->
             when (v.attrCase) {
                 AttrCase.CE_BOOLEAN -> EventAttributeValue.BooleanValue(v.ceBoolean)
@@ -115,12 +123,6 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
                 )
                 else -> throw IllegalArgumentException("Error parsing proposed event attribute value from protobuf")
             }
-        },
-        when(event.dataCase) {
-            CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
-            CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
-            CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
-            else -> null
         }
     )
 }
@@ -366,14 +368,57 @@ fun UnvalidatedProposedEvent.toProto(): ProtoProposedEvent {
     return builder.build()
 }
 
+// TODO: DRY this up a bit w/r/t proposedEventFromProto
+fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): UnvalidatedProposedEvent {
+    val event = proposedEvent.event
+    return UnvalidatedProposedEvent(
+        event.type,
+        proposedEvent.stream,
+        when(proposedEvent.streamState) {
+            ProtoStreamState.Any -> StreamState.Any
+            ProtoStreamState.StreamExists -> StreamState.StreamExists
+            ProtoStreamState.NoStream -> StreamState.NoStream
+            ProtoStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
+            else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
+        },
+        when(event.dataCase) {
+            CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
+            CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
+            CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
+            else -> null
+        },
+        event.attributesMap.mapValues { (_, v) ->
+            when (v.attrCase) {
+                AttrCase.CE_BOOLEAN -> EventAttributeValue.BooleanValue(v.ceBoolean)
+                AttrCase.CE_INTEGER -> EventAttributeValue.IntegerValue(v.ceInteger)
+                AttrCase.CE_STRING -> EventAttributeValue.StringValue(v.ceString)
+                AttrCase.CE_BYTES -> EventAttributeValue.ByteArrayValue(v.ceBytes.toByteArray())
+                AttrCase.CE_URI -> EventAttributeValue.UriValue(URI(v.ceUri))
+                AttrCase.CE_URI_REF -> EventAttributeValue.UriRefValue(URI(v.ceUri))
+                AttrCase.CE_TIMESTAMP -> EventAttributeValue.TimestampValue(
+                    Instant.ofEpochSecond(v.ceTimestamp.seconds, v.ceTimestamp.nanos.toLong())
+                )
+                else -> throw IllegalArgumentException("Error parsing proposed event attribute value from protobuf")
+            }
+        }
+    )
+}
+
 fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
     ProtoInvalidEventsError.newBuilder()
-        .addAllInvalidEvents(this.invalidEvents.map {
+        .addAllInvalidEvents(this.invalidEvents.map { invalid ->
             ProtoInvalidEvent.newBuilder()
-                .setEvent(it.event.toProto())
-                .addAllInvalidations(this.invalidEvents.map {
+                .setEvent(invalid.event.toProto())
+                .addAllInvalidations(invalid.errors.map { error ->
                     val builder = ProtoEventInvalidation.newBuilder()
-                    TODO("Finish this")
+                    when(error) {
+                        is InvalidEventAttribute ->
+                            builder.invalidEventAttributeBuilder.attributeKey = error.attributeKey
+                        is InvalidEventType ->
+                            builder.invalidEventTypeBuilder.eventType = error.eventType
+                        is InvalidStreamName ->
+                            builder.invalidStreamNameBuilder.streamName = error.streamName
+                    }
                     builder.build()
                 })
                 .build()
@@ -381,18 +426,57 @@ fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
         .build()
 
 fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsError =
-    TODO("Construct InvalidEventsError")
+    InvalidEventsError(
+        proto.invalidEventsList.map { invalidEvent ->
+            InvalidEvent(
+                unvalidatedProposedEventFromProto(invalidEvent.event),
+                invalidEvent.invalidationsList.map { error ->
+                    when(error.invalidationCase) {
+                        INVALIDSTREAMNAME -> InvalidStreamName(error.invalidStreamName.streamName)
+                        INVALIDEVENTTYPE -> InvalidEventType(error.invalidEventType.eventType)
+                        INVALIDEVENTATTRIBUTE -> InvalidEventAttribute(error.invalidEventAttribute.attributeKey)
+                        else -> throw IllegalArgumentException("Error parsing invalid event error from protobuf")
+                    }
+                }
+            )
+        }
+    )
 
 fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEventsError =
     invalidEventsErrorFromProto(ProtoInvalidEventsError.parseFrom(bytes))
 
-fun StreamStateConflictsError.toProto(): Message {
-    TODO("Replace return type with more specific generated class")
-}
+fun StreamStateConflictsError.toProto(): ProtoStreamStateConflictsError =
+    ProtoStreamStateConflictsError.newBuilder()
+        .addAllConflicts(this.conflicts.map { conflict ->
+            val builder = ProtoStreamStateConflict.newBuilder()
+                .setEvent(conflict.event.toProto())
+            when(val state = conflict.streamState){
+                is StreamState.AtRevision -> {
+                    builder.streamState = ProtoStreamState.AtRevision
+                    builder.atRevision = state.revision
+                }
+                StreamState.NoStream -> builder.streamState = ProtoStreamState.NoStream
+            }
+            builder.build()
+        })
+        .build()
 
-fun streamStateConflictsErrorFromBytes(bytes: ByteArray): StreamStateConflictsError {
-    TODO()
-}
+fun streamStateConflictsErrorFromProto(proto: ProtoStreamStateConflictsError): StreamStateConflictsError =
+    StreamStateConflictsError(
+        proto.conflictsList.map { conflict ->
+            StreamStateConflict(
+                proposedEventFromProto(conflict.event),
+                when(conflict.streamState) {
+                    ProtoStreamState.NoStream -> StreamState.NoStream
+                    ProtoStreamState.AtRevision -> StreamState.AtRevision(conflict.atRevision)
+                    else -> throw IllegalArgumentException("Error parsing stream state error from protobuf")
+                }
+            )
+        }
+    )
+
+fun streamStateConflictsErrorFromBytes(bytes: ByteArray): StreamStateConflictsError =
+    streamStateConflictsErrorFromProto(ProtoStreamStateConflictsError.parseFrom(bytes))
 
 fun EventBody.toProto(): Message =
     when(this) {

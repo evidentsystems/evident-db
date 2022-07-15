@@ -113,6 +113,7 @@ message InvalidEventsError {
 message StreamStateConflict {
   ProposedEvent event = 1;
   StreamState streamState = 2;
+  optional int64 at_revision = 3;
 }
 
 message StreamStateConflictsError {

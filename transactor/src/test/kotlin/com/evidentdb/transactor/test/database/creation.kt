@@ -18,6 +18,7 @@ class CreationTests {
             val result = service.createDatabase("")
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is InvalidDatabaseNameError) }
+            TODO("assert new database and name not present in storage")
         }
 
     @Test

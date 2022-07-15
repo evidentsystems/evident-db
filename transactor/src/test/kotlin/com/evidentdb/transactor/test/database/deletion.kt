@@ -37,9 +37,7 @@ class DeletionTests {
             val event = service.deleteDatabase(databaseName)
 
             event.map {
-                val database = databaseStore.get(it.databaseId)
-                Assertions.assertNull(database)
-
+                Assertions.assertNull(databaseStore.get(it.databaseId))
                 Assertions.assertNull(databaseNameStore.get(databaseName))
 
                 Assertions.assertTrue(

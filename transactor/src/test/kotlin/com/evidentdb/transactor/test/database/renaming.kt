@@ -23,6 +23,7 @@ class RenamingTests {
                 println(it)
                 Assertions.assertTrue(it is InvalidDatabaseNameError)
             }
+            TODO("assert database not present in storage")
         }
 
     @Test
@@ -49,6 +50,7 @@ class RenamingTests {
             val result = service.renameDatabase("foo", "bar")
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
+            TODO("assert new database name not present in storage")
         }
 
     @Test
@@ -66,13 +68,15 @@ class RenamingTests {
             val event = service.renameDatabase(oldName, newName)
 
             event.map {
-                val database = databaseStore.get(it.databaseId)
                 Assertions.assertEquals(
                     Database(it.databaseId, newName),
-                    database
+                    databaseStore.get(it.databaseId)
                 )
 
-                Assertions.assertEquals(it.databaseId, databaseNameStore.get(newName))
+                Assertions.assertEquals(
+                    it.databaseId,
+                    databaseNameStore.get(newName)
+                )
 
                 Assertions.assertTrue(
                     driver.producedTopicNames().contains("databases")

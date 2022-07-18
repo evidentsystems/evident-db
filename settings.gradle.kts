@@ -15,6 +15,7 @@ dependencyResolutionManagement {
             version("grpc", "1.47.0")
             version("grpckotlin", "1.3.0")
             version("junit", "5.6.0")
+            version("micronaut", "3.5.3")
 
             plugin("protobuf", "com.google.protobuf").version("0.8.18")
             plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").versionRef("kotlin")

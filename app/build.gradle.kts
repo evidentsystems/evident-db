@@ -5,8 +5,12 @@ plugins {
     id("org.jetbrains.kotlin.kapt") version "1.6.21"
     id("org.jetbrains.kotlin.plugin.allopen") version "1.6.21"
     id("com.github.johnrengelman.shadow") version "7.1.1"
-    id("io.micronaut.application") version "3.2.2"
+    id("io.micronaut.application") version "3.5.0"
     id("com.google.protobuf") version "0.8.18"
+}
+
+micronaut {
+    version.set(libs.versions.micronaut)
 }
 
 version = "0.1"
@@ -18,17 +22,12 @@ dependencies {
     implementation(project(":service"))
     implementation(project(":transactor"))
 
-    implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut:micronaut-runtime")
-    implementation("io.micronaut.grpc:micronaut-grpc-runtime")
+    implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
     implementation("jakarta.annotation:jakarta.annotation-api")
-//    implementation("org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}")
-//    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}")
     runtimeOnly("ch.qos.logback:logback-classic")
     implementation("io.micronaut:micronaut-validation")
-
-    runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
 
     testImplementation("io.micronaut:micronaut-http-client")
 }

@@ -3,40 +3,48 @@ package com.evidentdb.kafka
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
 import com.evidentdb.domain.*
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 
 typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
-typealias DatabaseNameLookupStore = KeyValueStore<DatabaseName, DatabaseId>
+typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseId, Database>
+typealias DatabaseNameStore = KeyValueStore<DatabaseName, DatabaseId>
+typealias DatabaseNameLookupStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseId>
 typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
-class DatabaseStore(
-    private val databaseStore: DatabaseKeyValueStore,
-    private val databaseNameLookupStore: DatabaseNameLookupStore
-): DatabaseReadModel {
+open class DatabaseReadModelStore(
+    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore,
+    private val databaseNameLookupStore: DatabaseNameLookupStore,
+    ): DatabaseReadModel {
     override suspend fun database(databaseId: DatabaseId): Database? {
-        return databaseStore.get(databaseId)
+        return databaseLookupStore.get(databaseId)
     }
 
     override suspend fun database(name: DatabaseName): Database? {
-        return databaseNameLookupStore.get(name)?.let { databaseStore.get(it) }
+        return databaseNameLookupStore.get(name)?.let { databaseLookupStore.get(it) }
     }
 
     override suspend fun catalog(): Set<Database> {
         val ret = mutableSetOf<Database>()
-        databaseStore.all().use { databaseIterator ->
+        databaseLookupStore.all().use { databaseIterator ->
             for (kv in databaseIterator)
                 ret.add(kv.value)
         }
         return ret
     }
+}
 
+class DatabaseStore(
+    private val databaseStore: DatabaseKeyValueStore,
+    private val databaseNameStore: DatabaseNameStore
+): DatabaseReadModelStore(databaseStore, databaseNameStore) {
     fun putDatabase(databaseId: DatabaseId, database: Database) {
         databaseStore.put(databaseId, database)
     }
 
     fun putDatabaseName(databaseName: DatabaseName, databaseId: DatabaseId) {
-        databaseNameLookupStore.put(databaseName, databaseId)
+        databaseNameStore.put(databaseName, databaseId)
     }
 
     fun deleteDatabase(databaseId: DatabaseId) {
@@ -44,7 +52,7 @@ class DatabaseStore(
     }
 
     fun deleteDatabaseName(databaseName: DatabaseName) {
-        databaseNameLookupStore.delete(databaseName)
+        databaseNameStore.delete(databaseName)
     }
 }
 

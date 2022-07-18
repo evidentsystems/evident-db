@@ -7,7 +7,6 @@ import com.evidentdb.domain.*
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseStore
 import com.evidentdb.kafka.EventEnvelopeSerde
-import com.evidentdb.transactor.KafkaStreamsCommandHandler
 import com.evidentdb.transactor.Topology
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.TopologyTestDriver

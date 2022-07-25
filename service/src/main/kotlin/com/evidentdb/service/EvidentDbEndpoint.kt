@@ -3,6 +3,7 @@ package com.evidentdb.service
 import com.evidentdb.domain.*
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.DatabaseNotFoundError
+import com.evidentdb.domain.InternalServerError
 import com.evidentdb.domain.InvalidDatabaseNameError
 import com.evidentdb.domain.InvalidEventsError
 import com.evidentdb.domain.NoEventsProvidedError
@@ -27,6 +28,9 @@ class EvidentDbEndpoint(val service: Service)
                     }
                     is InvalidDatabaseNameError -> {
                         builder.invalidDatabaseNameError = it.toProto()
+                    }
+                    is InternalServerError -> {
+                        builder.internalServerError = it.toProto()
                     }
                 }
             },
@@ -53,6 +57,9 @@ class EvidentDbEndpoint(val service: Service)
                         is InvalidDatabaseNameError -> {
                             builder.invalidDatabaseNameError = it.toProto()
                         }
+                        is InternalServerError -> {
+                            builder.internalServerError = it.toProto()
+                        }
                     }
                 },
                 {
@@ -71,6 +78,9 @@ class EvidentDbEndpoint(val service: Service)
                     when(it) {
                         is DatabaseNotFoundError -> {
                             builder.databaseNotFoundError = it.toProto()
+                        }
+                        is InternalServerError -> {
+                            builder.internalServerError = it.toProto()
                         }
                     }
                 },
@@ -101,6 +111,9 @@ class EvidentDbEndpoint(val service: Service)
                         }
                         is StreamStateConflictsError -> {
                             builder.streamStateConflictError = it.toProto()
+                        }
+                        is InternalServerError -> {
+                            builder.internalServerError = it.toProto()
                         }
                     }
                 },

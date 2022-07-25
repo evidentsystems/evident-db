@@ -28,6 +28,7 @@ message CreateDatabaseReply {
     com.evidentdb.domain.Database database = 1;
     com.evidentdb.domain.InvalidDatabaseNameError invalid_database_name_error = 2;
     com.evidentdb.domain.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
+    com.evidentdb.domain.InternalServerError internal_server_error = 4;
   }
 }
 
@@ -37,6 +38,7 @@ message RenameDatabaseReply {
     com.evidentdb.domain.InvalidDatabaseNameError invalid_database_name_error = 2;
     com.evidentdb.domain.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
     com.evidentdb.domain.DatabaseNotFoundError database_not_found_error = 4;
+    com.evidentdb.domain.InternalServerError internal_server_error = 5;
   }
 }
 
@@ -44,6 +46,7 @@ message DeleteDatabaseReply {
   oneof result {
     com.evidentdb.domain.DatabaseDeletionInfo database_deletion_info = 1;
     com.evidentdb.domain.DatabaseNotFoundError database_not_found_error = 2;
+    com.evidentdb.domain.InternalServerError internal_server_error = 3;
   }
 }
 
@@ -60,5 +63,6 @@ message TransactBatchReply {
     com.evidentdb.domain.NoEventsProvidedError no_events_provided_error = 3;
     com.evidentdb.domain.InvalidEventsError invalid_events_error = 4;
     com.evidentdb.domain.StreamStateConflictsError stream_state_conflict_error = 5;
+    com.evidentdb.domain.InternalServerError internal_server_error = 6;
   }
 }

@@ -27,6 +27,7 @@ import com.evidentdb.dto.v1.proto.InvalidEvent                   as ProtoInvalid
 import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalidEventsError
 import com.evidentdb.dto.v1.proto.StreamStateConflict            as ProtoStreamStateConflict
 import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
+import com.evidentdb.dto.v1.proto.InternalServerError            as ProtoInternalServerError
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 
@@ -478,6 +479,15 @@ fun streamStateConflictsErrorFromProto(proto: ProtoStreamStateConflictsError): S
 fun streamStateConflictsErrorFromBytes(bytes: ByteArray): StreamStateConflictsError =
     streamStateConflictsErrorFromProto(ProtoStreamStateConflictsError.parseFrom(bytes))
 
+fun InternalServerError.toProto(): ProtoInternalServerError =
+    ProtoInternalServerError.newBuilder().setMessage(this.message).build()
+
+fun internalServerErrorFromProto(proto: ProtoInternalServerError): InternalServerError =
+    InternalServerError(proto.message)
+
+fun internalServerErrorFromBytes(bytes: ByteArray): InternalServerError =
+    internalServerErrorFromProto(ProtoInternalServerError.parseFrom(bytes))
+
 fun EventBody.toProto(): Message =
     when(this) {
         is DatabaseCreatedInfo -> this.toProto()
@@ -491,6 +501,7 @@ fun EventBody.toProto(): Message =
         is NoEventsProvidedError -> this.toProto()
         is InvalidEventsError -> this.toProto()
         is StreamStateConflictsError -> this.toProto()
+        is InternalServerError -> this.toProto()
     }
 
 fun Database.toProto(): ProtoDatabase =

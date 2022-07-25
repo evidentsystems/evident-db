@@ -404,3 +404,4 @@ data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBat
 
 data class StreamStateConflict(val event: ProposedEvent, val streamState: StreamState)
 data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>): BatchTransactionError
+data class InternalServerError(val message: String): DatabaseCreationError, DatabaseRenameError, DatabaseDeletionError, BatchTransactionError

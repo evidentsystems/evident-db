@@ -119,3 +119,7 @@ message StreamStateConflict {
 message StreamStateConflictsError {
   repeated StreamStateConflict conflicts = 1;
 }
+
+message InternalServerError {
+  string message = 1;
+}

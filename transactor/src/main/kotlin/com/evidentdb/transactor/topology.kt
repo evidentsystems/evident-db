@@ -3,6 +3,7 @@ package com.evidentdb.transactor
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
+import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
@@ -217,7 +218,7 @@ object Topology {
             this.transactor = KafkaStreamsCommandHandler()
         }
 
-        override fun process(record: Record<CommandId, CommandEnvelope>?) {
+        override fun process(record: Record<CommandId, CommandEnvelope>?) = runBlocking {
             val command = record?.value() ?: throw IllegalStateException()
             val event = when (command) {
                 is CreateDatabase -> transactor.handleCreateDatabase(command)

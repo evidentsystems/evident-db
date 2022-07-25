@@ -17,15 +17,15 @@ open class DatabaseReadModelStore(
     private val databaseLookupStore: DatabaseReadOnlyKeyValueStore,
     private val databaseNameLookupStore: DatabaseNameLookupStore,
     ): DatabaseReadModel {
-    override suspend fun database(databaseId: DatabaseId): Database? {
+    override fun database(databaseId: DatabaseId): Database? {
         return databaseLookupStore.get(databaseId)
     }
 
-    override suspend fun database(name: DatabaseName): Database? {
+    override fun database(name: DatabaseName): Database? {
         return databaseNameLookupStore.get(name)?.let { databaseLookupStore.get(it) }
     }
 
-    override suspend fun catalog(): Set<Database> {
+    override fun catalog(): Set<Database> {
         val ret = mutableSetOf<Database>()
         databaseLookupStore.all().use { databaseIterator ->
             for (kv in databaseIterator)
@@ -59,11 +59,11 @@ class DatabaseStore(
 class BatchStore(
     private val batchStore: BatchKeyValueStore
 ): BatchReadModel {
-    override suspend fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
+    override fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
         TODO("Not yet implemented")
     }
 
-    override suspend fun batchEventIds(batchKey: BatchKey): List<EventId>? =
+    override fun batchEventIds(batchKey: BatchKey): List<EventId>? =
         batchStore.get(batchKey)
 
     // eventIds must be the full list, not just the new ones to append
@@ -75,7 +75,7 @@ class BatchStore(
 interface IStreamStore: StreamReadModel {
     val streamStore: StreamKeyValueStore
 
-    override suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
+    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
         val eventIds = streamStore.get(buildStreamKey(databaseId, name))
         return if (eventIds == null)
             StreamState.NoStream
@@ -83,7 +83,7 @@ interface IStreamStore: StreamReadModel {
             StreamState.AtRevision(eventIds.count().toLong())
     }
 
-    override suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
+    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
         val eventIds = streamStore.get(buildStreamKey(databaseId, name))
         return if (eventIds == null)
             null
@@ -91,7 +91,7 @@ interface IStreamStore: StreamReadModel {
             Stream.create(databaseId, name, eventIds.count().toLong())
     }
 
-    override suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
+    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
         val ret = mutableSetOf<Stream>()
         streamStore.prefixScan(databaseId, Serdes.UUID().serializer())
             .use { streamIterator ->
@@ -109,7 +109,7 @@ interface IStreamStore: StreamReadModel {
         return ret
     }
 
-    override suspend fun streamEventIds(streamKey: StreamKey)
+    override fun streamEventIds(streamKey: StreamKey)
             : List<EventId>? =
         streamStore.get(streamKey)
 
@@ -125,7 +125,7 @@ class StreamWithEventsStore(
     override val streamStore: StreamKeyValueStore,
     private val eventStore: EventKeyValueStore
 ): IStreamStore, StreamWithEventsReadModel {
-    override suspend fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
+    override fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
         val eventIds = streamStore.get(buildStreamKey(databaseId, name))
         return if (eventIds == null)
             null
@@ -142,7 +142,7 @@ class StreamWithEventsStore(
 class EventStore(
     private val eventStore: EventKeyValueStore
 ): EventReadModel {
-    override suspend fun event(id: EventId): Event? =
+    override fun event(id: EventId): Event? =
         eventStore.get(id)
 
     fun putEvent(eventId: EventId, event: Event) {

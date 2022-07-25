@@ -17,13 +17,13 @@ class InMemoryDatabaseReadModel(
         acc
     }
 
-    override suspend fun database(databaseId: DatabaseId): Database? =
+    override fun database(databaseId: DatabaseId): Database? =
         databases[databaseId]
 
-    override suspend fun database(name: DatabaseName): Database? =
+    override fun database(name: DatabaseName): Database? =
         databases[databaseNames[name]]
 
-    override suspend fun catalog(): Set<Database> =
+    override fun catalog(): Set<Database> =
         databases.values.toSet()
 }
 
@@ -36,20 +36,20 @@ class InMemoryStreamReadModel(
             acc
         }
 
-    override suspend fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
+    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
         val eventIds = streams[buildStreamKey(databaseId, name)] ?: return StreamState.NoStream
         return StreamState.AtRevision(eventIds.size.toLong())
     }
 
-    override suspend fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
+    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
         val eventIds = streams[buildStreamKey(databaseId, name)] ?: return null
         return Stream.create(databaseId, name, eventIds.size.toLong())
     }
 
-    override suspend fun streamEventIds(streamKey: StreamKey): List<EventId>? =
+    override fun streamEventIds(streamKey: StreamKey): List<EventId>? =
         streams[streamKey]
 
-    override suspend fun databaseStreams(databaseId: DatabaseId): Set<Stream> =
+    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> =
         streams.map { (streamKey, eventIds) ->
             val (dbId, name) = parseStreamKey(streamKey)
             if (dbId == databaseId) {

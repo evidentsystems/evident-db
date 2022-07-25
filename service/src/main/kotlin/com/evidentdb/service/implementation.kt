@@ -10,18 +10,22 @@ import arrow.core.right
 import com.evidentdb.domain.*
 import com.evidentdb.domain.CommandBroker
 import com.evidentdb.kafka.DatabaseReadModelStore
+import com.evidentdb.kafka.partitionByDatabaseId
 import kotlinx.coroutines.CompletableDeferred
+import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.KafkaConsumer
-import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.*
+import org.apache.kafka.common.Cluster
+import org.apache.kafka.common.errors.WakeupException
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StoreQueryParameters
 import org.apache.kafka.streams.state.QueryableStoreTypes
 import java.lang.RuntimeException
 import java.time.Duration
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
-private suspend inline fun <reified K: Any, reified V : Any> KafkaProducer<K, V>.publish(record: ProducerRecord<K, V>) =
+private suspend inline fun <reified K: Any, reified V : Any> Producer<K, V>.publish(record: ProducerRecord<K, V>) =
     suspendCoroutine<RecordMetadata> { continuation ->
         val callback = Callback { metadata, exception ->
             if (metadata == null) {
@@ -33,26 +37,54 @@ private suspend inline fun <reified K: Any, reified V : Any> KafkaProducer<K, V>
         this.send(record, callback)
     }
 
+class DatabaseIdPartitioner: Partitioner {
+    override fun partition(
+        topic: String?,
+        key: Any?,
+        keyBytes: ByteArray?,
+        value: Any?,
+        valueBytes: ByteArray?,
+        cluster: Cluster?
+    ): Int =
+        when(value) {
+            is CommandEnvelope -> partitionByDatabaseId(value.databaseId, cluster?.partitionCountForTopic(topic)!!)
+            is EventEnvelope   -> partitionByDatabaseId(value.databaseId, cluster?.partitionCountForTopic(topic)!!)
+            else -> 0
+        }
+
+    override fun configure(configs: MutableMap<String, *>?) {}
+    override fun close() {}
+}
+
 class KafkaCommandBroker(
-    producerConfig: ProducerConfig,
-    consumerConfig: ConsumerConfig,
-    timeout: Duration,
+    producerConfig: Properties,
+    consumerConfig: Properties,
+    private val timeout: Duration,
     private val commandTopic: String,
     private val eventTopic: String,
-): CommandBroker {
+) : CommandBroker, AutoCloseable {
     private val running = AtomicBoolean(true)
     private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
-    private val producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig.values())
-    private val consumer = KafkaConsumer<EventId,   EventEnvelope>  (consumerConfig.values())
+    private val producer: Producer<CommandId, CommandEnvelope>
+    private val consumer: Consumer<EventId, EventEnvelope>
 
-    // TODO: close/cleanup when done
     init {
+        producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::javaClass
+        this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig)
+
+        this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig)
         thread {
-            consumer.subscribe(listOf(eventTopic))
-            while (running.get()) {
-                consumer.poll(timeout).forEach { record ->
-                    inFlight.remove(record.value().commandId)?.complete(record.value())
+            try {
+                consumer.subscribe(listOf(eventTopic))
+                while (running.get()) {
+                    consumer.poll(timeout).forEach { record ->
+                        inFlight.remove(record.value().commandId)?.complete(record.value())
+                    }
                 }
+            } catch (e: WakeupException) {
+                if (running.get()) throw e
+            } finally {
+                consumer.close()
             }
         }
     }
@@ -113,6 +145,12 @@ class KafkaCommandBroker(
         }.bind()
     }
 
+    override fun close() {
+        running.set(false)
+        consumer.wakeup()
+        producer.close(timeout)
+    }
+
     private suspend fun publishCommand(command: CommandEnvelope): Either<InternalServerError, CompletableDeferred<EventEnvelope>> {
         val deferred = CompletableDeferred<EventEnvelope>()
         inFlight[command.id] = deferred
@@ -128,8 +166,8 @@ class KafkaCommandBroker(
 }
 
 class KafkaService(
-    producerConfig: ProducerConfig,
-    consumerConfig: ConsumerConfig,
+    producerConfig: Properties,
+    consumerConfig: Properties,
     brokerTimeout: Duration,
     commandTopic: String,
     eventTopic: String,
@@ -137,7 +175,7 @@ class KafkaService(
     streams: KafkaStreams,
     databaseStoreName: String,
     databaseNameStoreName: String,
-): Service {
+): Service, AutoCloseable {
     override val databaseReadModel = DatabaseReadModelStore(
         streams.store(StoreQueryParameters.fromNameAndType(
                     databaseStoreName,
@@ -152,4 +190,8 @@ class KafkaService(
         ),
     )
     override val commandBroker = KafkaCommandBroker(producerConfig, consumerConfig, brokerTimeout, commandTopic, eventTopic)
+
+    override fun close() {
+        commandBroker.close()
+    }
 }

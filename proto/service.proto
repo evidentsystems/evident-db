@@ -23,22 +23,42 @@ service EvidentDb {
   // Query
 }
 
-// TODO: enum of possibilities
-message TransactBatchReply {
-
-}
-
-// TODO: enum of possibilities
 message CreateDatabaseReply {
-
+  oneof result {
+    com.evidentdb.domain.Database database = 1;
+    com.evidentdb.domain.InvalidDatabaseNameError invalid_database_name_error = 2;
+    com.evidentdb.domain.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
+  }
 }
 
-// TODO: enum of possibilities
 message RenameDatabaseReply {
-
+  oneof result {
+    com.evidentdb.domain.DatabaseRenameInfo database_rename_info = 1;
+    com.evidentdb.domain.InvalidDatabaseNameError invalid_database_name_error = 2;
+    com.evidentdb.domain.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
+    com.evidentdb.domain.DatabaseNotFoundError database_not_found_error = 4;
+  }
 }
 
-// TODO: enum of possibilities
 message DeleteDatabaseReply {
+  oneof result {
+    com.evidentdb.domain.DatabaseDeletionInfo database_deletion_info = 1;
+    com.evidentdb.domain.DatabaseNotFoundError database_not_found_error = 2;
+  }
+}
 
+message BatchResult {
+  string id = 1;
+  string databaseId = 2;
+  repeated string event_ids = 3;
+}
+
+message TransactBatchReply {
+  oneof result {
+    BatchResult batch_result = 1;
+    com.evidentdb.domain.DatabaseNotFoundError database_not_found_error = 2;
+    com.evidentdb.domain.NoEventsProvidedError no_events_provided_error = 3;
+    com.evidentdb.domain.InvalidEventsError invalid_events_error = 4;
+    com.evidentdb.domain.StreamStateConflictsError stream_state_conflict_error = 5;
+  }
 }

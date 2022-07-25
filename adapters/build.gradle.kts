@@ -23,6 +23,16 @@ dependencies {
     testRuntimeOnly(libs.junit.engine)
 }
 
+sourceSets {
+    main {
+        java {
+            srcDirs(
+                "build/generated/source/proto/main/java",
+            )
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }

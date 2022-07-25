@@ -14,7 +14,6 @@ dependencies {
 
     implementation(project(":domain"))
     implementation(project(":adapters"))
-    protobuf(project(":adapters"))
 
     implementation(libs.kafka.streams)
 
@@ -46,8 +45,8 @@ sourceSets {
     main {
         java {
             srcDirs(
-                "build/generated/source/proto/main/grpc",
                 "build/generated/source/proto/main/java",
+                "build/generated/source/proto/main/grpc",
                 "build/generated/source/proto/main/grpckt",
             )
         }

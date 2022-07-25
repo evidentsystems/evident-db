@@ -493,12 +493,14 @@ fun EventBody.toProto(): Message =
         is StreamStateConflictsError -> this.toProto()
     }
 
-fun Database.toByteArray(): ByteArray =
+fun Database.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
         .setId(this.id.toString())
         .setName(this.name)
         .build()
-        .toByteArray()
+
+fun Database.toByteArray(): ByteArray =
+    this.toProto().toByteArray()
 
 fun databaseFromProto(proto: ProtoDatabase) =
     Database(

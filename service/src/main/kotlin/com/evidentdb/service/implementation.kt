@@ -9,14 +9,19 @@ import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
 import com.evidentdb.domain.CommandBroker
+import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseReadModelStore
+import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.kafka.partitionByDatabaseId
 import kotlinx.coroutines.CompletableDeferred
 import org.apache.kafka.clients.consumer.Consumer
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.*
 import org.apache.kafka.common.Cluster
 import org.apache.kafka.common.errors.WakeupException
+import org.apache.kafka.common.serialization.UUIDDeserializer
+import org.apache.kafka.common.serialization.UUIDSerializer
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StoreQueryParameters
 import org.apache.kafka.streams.state.QueryableStoreTypes
@@ -57,8 +62,7 @@ class DatabaseIdPartitioner: Partitioner {
 }
 
 class KafkaCommandBroker(
-    producerConfig: Properties,
-    consumerConfig: Properties,
+    kafkaBootstrapServers: String,
     private val timeout: Duration,
     private val commandTopic: String,
     private val eventTopic: String,
@@ -69,10 +73,21 @@ class KafkaCommandBroker(
     private val consumer: Consumer<EventId, EventEnvelope>
 
     init {
+        val producerConfig = Properties()
+        producerConfig[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
+        // TODO: configurable CLIENT_ID
         producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::javaClass
-        this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig)
+        producerConfig[ProducerConfig.COMPRESSION_TYPE_CONFIG] = "snappy"     // TODO: configurable?
+        producerConfig[ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG] = 30 * 1000 // TODO: configurable?
+        this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig, UUIDSerializer(), CommandEnvelopeSerde.CommandEnvelopeSerializer())
 
-        this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig)
+        val consumerConfig = Properties()
+        consumerConfig[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
+        // TODO: configurable CLIENT_ID
+        consumerConfig[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
+        consumerConfig[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = false
+        consumerConfig[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = false
+        this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig, UUIDDeserializer(), EventEnvelopeSerde.EventEnvelopeDeserializer())
         thread {
             try {
                 consumer.subscribe(listOf(eventTopic))
@@ -166,8 +181,7 @@ class KafkaCommandBroker(
 }
 
 class KafkaService(
-    producerConfig: Properties,
-    consumerConfig: Properties,
+    kafkaBootstrapServers: String,
     brokerTimeout: Duration,
     commandTopic: String,
     eventTopic: String,
@@ -189,7 +203,7 @@ class KafkaService(
             )
         ),
     )
-    override val commandBroker = KafkaCommandBroker(producerConfig, consumerConfig, brokerTimeout, commandTopic, eventTopic)
+    override val commandBroker = KafkaCommandBroker(kafkaBootstrapServers, brokerTimeout, commandTopic, eventTopic)
 
     override fun close() {
         commandBroker.close()

@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.protobuf)
 }
 
@@ -15,12 +15,17 @@ dependencies {
 
     implementation(libs.cloudevents.kafka)
     implementation(libs.cloudevents.protobuf)
-    protobuf(libs.cloudevents.protobuf)
 
     implementation(libs.protobuf.java)
 
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)
+}
+
+kotlin {
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of("${project.properties["java.version"]}"))
+    }
 }
 
 sourceSets {

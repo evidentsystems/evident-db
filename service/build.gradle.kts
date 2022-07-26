@@ -1,7 +1,7 @@
 import com.google.protobuf.gradle.*
 
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.protobuf)
 }
 
@@ -25,6 +25,12 @@ dependencies {
 
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)
+}
+
+kotlin {
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of("${project.properties["java.version"]}"))
+    }
 }
 
 protobuf {

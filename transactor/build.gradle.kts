@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("org.jetbrains.kotlin.jvm")
 }
 
 group = "com.evidentdb"
@@ -19,6 +19,12 @@ dependencies {
     testImplementation(libs.kafka.streams.test.utils)
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)
+}
+
+kotlin {
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of("${project.properties["java.version"]}"))
+    }
 }
 
 tasks.test {

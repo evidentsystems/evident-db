@@ -1,7 +1,7 @@
 package com.evidentdb.transactor.test.database
 
 import com.evidentdb.domain.*
-import com.evidentdb.transactor.Topology
+import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverService
 import com.evidentdb.transactor.test.driver
 import kotlinx.coroutines.runBlocking
@@ -57,8 +57,8 @@ class RenamingTests {
     fun `topology renames a database`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(Topology.DATABASE_STORE)
-            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.DATABASE_NAME_LOOKUP)
+            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.DATABASE_STORE)
+            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.DATABASE_NAME_LOOKUP)
             val service = TopologyTestDriverService(driver)
             val oldName = "foo"
             val newName = "bar"

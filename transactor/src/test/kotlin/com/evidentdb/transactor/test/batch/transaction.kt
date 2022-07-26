@@ -2,7 +2,7 @@ package com.evidentdb.transactor.test.batch
 
 import com.evidentdb.domain.*
 import com.evidentdb.dto.v1.proto.Database
-import com.evidentdb.transactor.Topology
+import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverService
 import com.evidentdb.transactor.test.driver
 import kotlinx.coroutines.runBlocking
@@ -68,9 +68,9 @@ class TransactionTests {
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(Topology.BATCH_STORE)
-            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.EVENT_STORE)
+            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.BATCH_STORE)
+            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.STREAM_STORE)
+            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -125,9 +125,9 @@ class TransactionTests {
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(Topology.BATCH_STORE)
-            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(Topology.EVENT_STORE)
+            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.BATCH_STORE)
+            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.STREAM_STORE)
+            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)

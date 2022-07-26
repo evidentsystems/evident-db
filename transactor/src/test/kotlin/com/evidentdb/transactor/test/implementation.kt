@@ -7,7 +7,7 @@ import com.evidentdb.domain.*
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseStore
 import com.evidentdb.kafka.EventEnvelopeSerde
-import com.evidentdb.transactor.Topology
+import com.evidentdb.transactor.TransactorTopology
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.TopologyTestDriver
 
@@ -20,7 +20,7 @@ const val STREAMS_TOPIC = "streams"
 const val EVENTS_TOPIC = "events"
 
 fun topology() =
-    Topology.build(
+    TransactorTopology.build(
         INTERNAL_COMMAND_TOPIC,
         INTERNAL_EVENTS_TOPIC,
         DATABASES_TOPIC,
@@ -33,9 +33,9 @@ fun topology() =
 fun driver(): TopologyTestDriver =
     TopologyTestDriver(topology())
 
-class TopologyTestDriverCommandBroker(
+class TopologyTestDriverCommandManager(
     driver: TopologyTestDriver
-): CommandBroker {
+): CommandManager {
     private val inputTopic =
         driver.createInputTopic(
             INTERNAL_COMMAND_TOPIC,
@@ -109,8 +109,8 @@ class TopologyTestDriverService(
     driver: TopologyTestDriver
 ): Service {
     override val databaseReadModel = DatabaseStore(
-        driver.getKeyValueStore(Topology.DATABASE_STORE),
-        driver.getKeyValueStore(Topology.DATABASE_NAME_LOOKUP),
+        driver.getKeyValueStore(TransactorTopology.DATABASE_STORE),
+        driver.getKeyValueStore(TransactorTopology.DATABASE_NAME_LOOKUP),
     )
-    override val commandBroker = TopologyTestDriverCommandBroker(driver)
+    override val commandManager = TopologyTestDriverCommandManager(driver)
 }

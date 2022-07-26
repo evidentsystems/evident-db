@@ -8,12 +8,12 @@ import jakarta.inject.Inject
 @MicronautTest
 class AppTest {
 
-    @Inject
-    lateinit var application: EmbeddedApplication<*>
-
-    @Test
-    fun testItWorks() {
-        Assertions.assertTrue(application.isRunning)
-    }
+//    @Inject
+//    lateinit var application: EmbeddedApplication<*>
+//
+//    @Test
+//    fun testItWorks() {
+//        Assertions.assertTrue(application.isRunning)
+//    }
 
 }

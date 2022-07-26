@@ -39,7 +39,7 @@ interface EventReadModel {
 // TODO: Consistency levels!!!
 interface Service {
     val databaseReadModel: DatabaseReadModel
-    val commandBroker: CommandBroker
+    val commandManager: CommandManager
 
     suspend fun createDatabase(proposedName: DatabaseName)
             : Either<DatabaseCreationError, DatabaseCreated> =
@@ -50,7 +50,7 @@ interface Service {
                 DatabaseId.randomUUID(),
                 DatabaseCreationInfo(name)
             )
-            commandBroker.createDatabase(command).bind()
+            commandManager.createDatabase(command).bind()
         }
 
     suspend fun renameDatabase(
@@ -68,7 +68,7 @@ interface Service {
                 databaseId,
                 DatabaseRenameInfo(oldName, validNewName)
             )
-            commandBroker.renameDatabase(command).bind()
+            commandManager.renameDatabase(command).bind()
         }
 
     suspend fun deleteDatabase(name: DatabaseName)
@@ -83,7 +83,7 @@ interface Service {
                 databaseId,
                 DatabaseDeletionInfo(name)
             )
-            commandBroker.deleteDatabase(command).bind()
+            commandManager.deleteDatabase(command).bind()
         }
 
     suspend fun transactBatch(
@@ -101,7 +101,7 @@ interface Service {
                 databaseId,
                 ProposedBatch(BatchId.randomUUID(), databaseId, validatedEvents)
             )
-            commandBroker.transactBatch(command).bind()
+            commandManager.transactBatch(command).bind()
         }
 
     suspend fun getCatalog(): Set<Database> = TODO()
@@ -112,7 +112,7 @@ interface Service {
     suspend fun getEvent(id: EventId): Event = TODO()
 }
 
-interface CommandBroker {
+interface CommandManager {
     suspend fun createDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated>
     suspend fun renameDatabase(command: RenameDatabase)

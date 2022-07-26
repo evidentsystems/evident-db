@@ -8,7 +8,7 @@ import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
-import com.evidentdb.domain.CommandBroker
+import com.evidentdb.domain.CommandManager
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseReadModelStore
 import com.evidentdb.kafka.EventEnvelopeSerde
@@ -61,16 +61,20 @@ class DatabaseIdPartitioner: Partitioner {
     override fun close() {}
 }
 
-class KafkaCommandBroker(
+class KafkaCommandManager(
     kafkaBootstrapServers: String,
-    private val timeout: Duration,
-    private val commandTopic: String,
-    private val eventTopic: String,
-) : CommandBroker, AutoCloseable {
+    private val internalCommandsTopic: String,
+    private val internalEventsTopic: String,
+) : CommandManager, AutoCloseable {
     private val running = AtomicBoolean(true)
     private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
     private val producer: Producer<CommandId, CommandEnvelope>
     private val consumer: Consumer<EventId, EventEnvelope>
+
+    companion object {
+        // TODO: configurable?
+        private val CONSUMER_TIMEOUT = Duration.ofMillis(5000)
+    }
 
     init {
         val producerConfig = Properties()
@@ -90,9 +94,9 @@ class KafkaCommandBroker(
         this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig, UUIDDeserializer(), EventEnvelopeSerde.EventEnvelopeDeserializer())
         thread {
             try {
-                consumer.subscribe(listOf(eventTopic))
+                consumer.subscribe(listOf(internalEventsTopic))
                 while (running.get()) {
-                    consumer.poll(timeout).forEach { record ->
+                    consumer.poll(CONSUMER_TIMEOUT).forEach { record ->
                         inFlight.remove(record.value().commandId)?.complete(record.value())
                     }
                 }
@@ -163,7 +167,7 @@ class KafkaCommandBroker(
     override fun close() {
         running.set(false)
         consumer.wakeup()
-        producer.close(timeout)
+        producer.close(Duration.ofMillis(5000)) // TODO: configurable?
     }
 
     private suspend fun publishCommand(command: CommandEnvelope): Either<InternalServerError, CompletableDeferred<EventEnvelope>> {
@@ -171,7 +175,7 @@ class KafkaCommandBroker(
         inFlight[command.id] = deferred
 
         try {
-            producer.publish(ProducerRecord(commandTopic, command.id, command))
+            producer.publish(ProducerRecord(internalCommandsTopic, command.id, command))
         } catch (e: RuntimeException) {
             return InternalServerError("Unknown exception was thrown: $e").left()
         }
@@ -182,9 +186,8 @@ class KafkaCommandBroker(
 
 class KafkaService(
     kafkaBootstrapServers: String,
-    brokerTimeout: Duration,
-    commandTopic: String,
-    eventTopic: String,
+    internalCommandsTopic: String,
+    internalEventsTopic: String,
 
     streams: KafkaStreams,
     databaseStoreName: String,
@@ -203,9 +206,9 @@ class KafkaService(
             )
         ),
     )
-    override val commandBroker = KafkaCommandBroker(kafkaBootstrapServers, brokerTimeout, commandTopic, eventTopic)
+    override val commandManager = KafkaCommandManager(kafkaBootstrapServers, internalCommandsTopic, internalEventsTopic)
 
     override fun close() {
-        commandBroker.close()
+        commandManager.close()
     }
 }

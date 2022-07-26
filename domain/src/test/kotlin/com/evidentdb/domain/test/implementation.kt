@@ -68,10 +68,10 @@ class InMemoryCommandHandler(
     override val streamReadModel = InMemoryStreamReadModel(streams)
 }
 
-class InMemoryCommandBroker(
+class InMemoryCommandManager(
     databases: List<Database>,
     streams: List<Stream>,
-): CommandBroker {
+): CommandManager {
     private val commandHandler = InMemoryCommandHandler(databases, streams)
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> =
@@ -92,7 +92,7 @@ class InMemoryService(
     streams: List<Stream>,
 ): Service {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val commandBroker = InMemoryCommandBroker(databases, streams)
+    override val commandManager = InMemoryCommandManager(databases, streams)
 
     companion object {
         fun empty(): InMemoryService = InMemoryService(listOf(), listOf())

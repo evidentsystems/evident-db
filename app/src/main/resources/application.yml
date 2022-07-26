@@ -1,3 +1,30 @@
 micronaut:
   application:
-    name: app
+    name: evident-db
+evidentdb:
+
+kafka:
+  bootstrap:
+    servers: localhost:9092
+  topics:
+    internal-commands:
+      name: evidentdb-internal-commands
+      partitions: 12
+    internal-events:
+      name: evidentdb-internal-events
+      partitions: 12
+    databases:
+      name: evidentdb-databases
+      partitions: 12
+    database-names:
+      name: evidentdb-database-names
+      partitions: 12
+    batches:
+      name: evidentdb-batches
+      partitions: 12
+    streams:
+      name: evidentdb-streams
+      partitions: 12
+    events:
+      name: evidentdb-events
+      partitions: 12

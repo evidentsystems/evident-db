@@ -11,7 +11,7 @@ import org.apache.kafka.streams.processor.api.*
 import org.apache.kafka.streams.state.Stores
 import java.util.*
 
-object Topology {
+object TransactorTopology {
     private const val INTERNAL_COMMAND_SOURCE = "INTERNAL_COMMANDS"
 
     private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
@@ -35,7 +35,7 @@ object Topology {
     private const val EVENTS_SINK = "EVENTS"
 
     fun build(
-        internalCommandTopic: String,
+        internalCommandsTopic: String,
         internalEventsTopic: String,
         databasesTopic: String,
         databaseNamesTopic: String,
@@ -49,7 +49,7 @@ object Topology {
             INTERNAL_COMMAND_SOURCE,
             Serdes.UUID().deserializer(),
             CommandEnvelopeSerde.CommandEnvelopeDeserializer(),
-            internalCommandTopic,
+            internalCommandsTopic,
         )
 
         topology.addProcessor(

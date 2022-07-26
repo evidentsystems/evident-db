@@ -17,8 +17,6 @@ version = "0.1"
 group = "com.evidentdb"
 
 dependencies {
-    implementation(project(":domain"))
-    implementation(project(":adapters"))
     implementation(project(":service"))
     implementation(project(":transactor"))
 

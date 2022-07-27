@@ -1,10 +1,12 @@
 package com.evidentdb.kafka
 
+import com.evidentdb.cloudevents.CommandIdExtension
 import com.evidentdb.domain.*
 import com.evidentdb.dto.*
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.core.message.Encoding
+import io.cloudevents.core.provider.ExtensionProvider
 import io.cloudevents.kafka.CloudEventDeserializer
 import io.cloudevents.kafka.CloudEventSerializer
 import io.cloudevents.protobuf.ProtoCloudEventData
@@ -120,7 +122,7 @@ class EventEnvelopeSerde:
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.databaseId))
                 .withType(content.type)
-                // TODO: commandId (via extension)
+                .withExtension(CommandIdExtension(content.commandId))
                 .withData(ProtoCloudEventData.wrap(content.data.toProto()))
                 .build()
     }
@@ -130,7 +132,7 @@ class EventEnvelopeSerde:
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
-            val commandId = eventId // serialize and deserialize w/in cloudEvent
+            val commandId = ExtensionProvider.getInstance().parseExtension(CommandIdExtension::class.java, cloudEvent)!!.commandId
             return when (cloudEvent.type.split('.').last()) {
                 "DatabaseCreated" -> DatabaseCreated(
                     eventId,

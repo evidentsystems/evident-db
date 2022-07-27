@@ -81,8 +81,7 @@ class KafkaCommandManager(
         val producerConfig = Properties()
         producerConfig[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
         // TODO: configurable CLIENT_ID
-        producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::javaClass
-        producerConfig[ProducerConfig.COMPRESSION_TYPE_CONFIG] = "snappy"     // TODO: configurable?
+        producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::class.java
         producerConfig[ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG] = 30 * 1000 // TODO: configurable?
         this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig, UUIDSerializer(), CommandEnvelopeSerde.CommandEnvelopeSerializer())
 

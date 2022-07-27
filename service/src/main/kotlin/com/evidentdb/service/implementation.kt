@@ -19,6 +19,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.*
 import org.apache.kafka.common.Cluster
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.WakeupException
 import org.apache.kafka.common.serialization.UUIDDeserializer
 import org.apache.kafka.common.serialization.UUIDSerializer
@@ -94,7 +95,9 @@ class KafkaCommandManager(
         this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig, UUIDDeserializer(), EventEnvelopeSerde.EventEnvelopeDeserializer())
         thread {
             try {
-                consumer.subscribe(listOf(internalEventsTopic))
+                consumer.assign(consumer.listTopics()[internalEventsTopic]!!.map {
+                    TopicPartition(it.topic(), it.partition())
+                })
                 while (running.get()) {
                     consumer.poll(CONSUMER_TIMEOUT).forEach { record ->
                         inFlight.remove(record.value().commandId)?.complete(record.value())

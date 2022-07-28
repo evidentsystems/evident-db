@@ -19,7 +19,7 @@ dependencies {
     implementation(libs.kafka.streams)
 
     implementation(libs.protobuf.java)
-    implementation(libs.grpc.stub)
+    compileOnly(libs.grpc.stub)
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
 

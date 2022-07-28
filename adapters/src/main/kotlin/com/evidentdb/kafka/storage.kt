@@ -1,0 +1,151 @@
+package com.evidentdb.kafka
+
+import org.apache.kafka.common.serialization.Serdes
+import org.apache.kafka.streams.state.KeyValueStore
+import com.evidentdb.domain.*
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
+
+typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
+typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseId, Database>
+typealias DatabaseNameStore = KeyValueStore<DatabaseName, DatabaseId>
+typealias DatabaseNameLookupStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseId>
+typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
+typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
+typealias EventKeyValueStore = KeyValueStore<EventId, Event>
+
+open class DatabaseReadModelStore(
+    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore,
+    private val databaseNameLookupStore: DatabaseNameLookupStore,
+    ): DatabaseReadModel {
+    override fun database(databaseId: DatabaseId): Database? {
+        return databaseLookupStore.get(databaseId)
+    }
+
+    override fun database(name: DatabaseName): Database? {
+        return databaseNameLookupStore.get(name)?.let { databaseLookupStore.get(it) }
+    }
+
+    override fun catalog(): Set<Database> {
+        val ret = mutableSetOf<Database>()
+        databaseLookupStore.all().use { databaseIterator ->
+            for (kv in databaseIterator)
+                ret.add(kv.value)
+        }
+        return ret
+    }
+}
+
+class DatabaseStore(
+    private val databaseStore: DatabaseKeyValueStore,
+    private val databaseNameStore: DatabaseNameStore
+): DatabaseReadModelStore(databaseStore, databaseNameStore) {
+    fun putDatabase(databaseId: DatabaseId, database: Database) {
+        databaseStore.put(databaseId, database)
+    }
+
+    fun putDatabaseName(databaseName: DatabaseName, databaseId: DatabaseId) {
+        databaseNameStore.put(databaseName, databaseId)
+    }
+
+    fun deleteDatabase(databaseId: DatabaseId) {
+        databaseStore.delete(databaseId)
+    }
+
+    fun deleteDatabaseName(databaseName: DatabaseName) {
+        databaseNameStore.delete(databaseName)
+    }
+}
+
+class BatchStore(
+    private val batchStore: BatchKeyValueStore
+): BatchReadModel {
+    override fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
+        TODO("Not yet implemented")
+    }
+
+    override fun batchEventIds(batchKey: BatchKey): List<EventId>? =
+        batchStore.get(batchKey)
+
+    // eventIds must be the full list, not just the new ones to append
+    fun putBatchEventIds(batchKey: BatchKey, eventIds: List<EventId>) {
+        batchStore.put(batchKey, eventIds)
+    }
+}
+
+interface IStreamStore: StreamReadModel {
+    val streamStore: StreamKeyValueStore
+
+    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
+        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+        return if (eventIds == null)
+            StreamState.NoStream
+        else
+            StreamState.AtRevision(eventIds.count().toLong())
+    }
+
+    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
+        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+        return if (eventIds == null)
+            null
+        else
+            Stream.create(databaseId, name, eventIds.count().toLong())
+    }
+
+    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
+        val ret = mutableSetOf<Stream>()
+        streamStore.prefixScan(databaseId, Serdes.UUID().serializer())
+            .use { streamIterator ->
+                for (kv in streamIterator) {
+                    val parsedKey = parseStreamKey(kv.key)
+                    ret.add(
+                        Stream.create(
+                            parsedKey.first,
+                            parsedKey.second,
+                            kv.value.count().toLong()
+                        )
+                    )
+                }
+            }
+        return ret
+    }
+
+    override fun streamEventIds(streamKey: StreamKey)
+            : List<EventId>? =
+        streamStore.get(streamKey)
+
+    // eventIds must be the full list, not just the new ones to append
+    fun putStreamEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
+        streamStore.put(streamKey, eventIds)
+    }
+}
+
+class StreamStore(override val streamStore: StreamKeyValueStore): IStreamStore
+
+class StreamWithEventsStore(
+    override val streamStore: StreamKeyValueStore,
+    private val eventStore: EventKeyValueStore
+): IStreamStore, StreamWithEventsReadModel {
+    override fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
+        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+        return if (eventIds == null)
+            null
+        else
+            StreamWithEvents.create(
+                databaseId,
+                name,
+                eventIds.count().toLong(),
+                eventIds.map { eventStore.get(it)!! }
+            )
+    }
+}
+
+class EventStore(
+    private val eventStore: EventKeyValueStore
+): EventReadModel {
+    override fun event(id: EventId): Event? =
+        eventStore.get(id)
+
+    fun putEvent(eventId: EventId, event: Event) {
+        eventStore.put(eventId, event)
+    }
+}

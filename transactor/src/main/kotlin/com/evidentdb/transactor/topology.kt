@@ -3,6 +3,7 @@ package com.evidentdb.transactor
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
+import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
@@ -10,7 +11,7 @@ import org.apache.kafka.streams.processor.api.*
 import org.apache.kafka.streams.state.Stores
 import java.util.*
 
-object Topology {
+object TransactorTopology {
     private const val INTERNAL_COMMAND_SOURCE = "INTERNAL_COMMANDS"
 
     private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
@@ -20,11 +21,11 @@ object Topology {
     private const val STREAM_INDEXER = "STREAM_INDEXER"
     private const val EVENT_INDEXER = "EVENT_INDEXER"
 
-    private const val DATABASE_STORE = "DATABASE_STORE"
-    private const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
-    private const val BATCH_STORE = "BATCH_STORE"
-    private const val STREAM_STORE = "STREAM_STORE"
-    private const val EVENT_STORE = "EVENT_STORE"
+    const val DATABASE_STORE = "DATABASE_STORE"
+    const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
+    const val BATCH_STORE = "BATCH_STORE"
+    const val STREAM_STORE = "STREAM_STORE"
+    const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
     private const val DATABASE_SINK = "DATABASES"
@@ -34,7 +35,7 @@ object Topology {
     private const val EVENTS_SINK = "EVENTS"
 
     fun build(
-        internalCommandTopic: String,
+        internalCommandsTopic: String,
         internalEventsTopic: String,
         databasesTopic: String,
         databaseNamesTopic: String,
@@ -46,86 +47,94 @@ object Topology {
 
         topology.addSource(
             INTERNAL_COMMAND_SOURCE,
-            internalCommandTopic
+            Serdes.UUID().deserializer(),
+            CommandEnvelopeSerde.CommandEnvelopeDeserializer(),
+            internalCommandsTopic,
         )
 
         topology.addProcessor(
             COMMAND_PROCESSOR,
             CommandProcessor::create,
-            INTERNAL_COMMAND_SOURCE
+            INTERNAL_COMMAND_SOURCE,
         )
         topology.addProcessor(
             DATABASE_INDEXER,
             DatabaseIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             DATABASE_NAME_INDEXER,
             DatabaseNameIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             BATCH_INDEXER,
             BatchIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             STREAM_INDEXER,
             StreamIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         topology.addProcessor(
             EVENT_INDEXER,
             EventIndexer::create,
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
 
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_STORE),
                 Serdes.UUID(), // DatabaseId
-                DatabaseSerde()
+                DatabaseSerde(),
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             DATABASE_NAME_INDEXER,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_NAME_LOOKUP),
                 Serdes.String(), // DatabaseName
-                Serdes.UUID()    // DatabaseId
+                Serdes.UUID(),    // DatabaseId
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             DATABASE_NAME_INDEXER,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
                 Serdes.String(), // BatchKey
-                Serdes.ListSerde<EventId>()
+                listSerde(Serdes.UUID()),
             ),
-            BATCH_INDEXER
+            BATCH_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
                 Serdes.String(), // StreamKey
-                Serdes.ListSerde<EventId>()
+                listSerde(Serdes.UUID()),
             ),
             COMMAND_PROCESSOR,
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
+
+        // Configure structured event serialization for storage (i.e. no headers)
+        val eventStoreSerde = EventSerde()
+        eventStoreSerde.configure(EvidentDbSerializer.structuredConfig(), false)
+
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(EVENT_STORE),
                 Serdes.UUID(), // EventId
-                EventSerde()
+                eventStoreSerde,
             ),
-            STREAM_INDEXER
+            STREAM_INDEXER,
+            EVENT_INDEXER,
         )
 
         // Event Log
@@ -133,18 +142,18 @@ object Topology {
             INTERNAL_EVENT_SINK,
             internalEventsTopic,
             Serdes.UUID().serializer(),
-            EventEnvelopeSerde().serializer(),
+            EventEnvelopeSerde.EventEnvelopeSerializer(),
             DatabaseIdStreamPartitioner(),
-            COMMAND_PROCESSOR
+            COMMAND_PROCESSOR,
         )
         // Read Model, compacted
         topology.addSink(
             DATABASE_SINK,
             databasesTopic,
             Serdes.UUID().serializer(),
-            DatabaseSerde().serializer(),
+            DatabaseSerde.DatabaseSerializer(),
             // TODO: already partitioned on databaseId, since key
-            DATABASE_INDEXER
+            DATABASE_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
@@ -153,34 +162,34 @@ object Topology {
             Serdes.String().serializer(), // DatabaseName
             Serdes.UUID().serializer(),   // DatabaseId
             // TODO: partitioned on database?
-            DATABASE_NAME_INDEXER
+            DATABASE_NAME_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
             BATCHES_SINK,
             batchesTopic,
             Serdes.String().serializer(), // BatchKey
-            Serdes.ListSerde<EventId>().serializer(),
+            listSerde(Serdes.UUID()).serializer(),
             // TODO: partitioned on database?
-            BATCH_INDEXER
+            BATCH_INDEXER,
         )
         // Read Model, compacted
         topology.addSink(
             STREAMS_SINK,
             streamsTopic,
             Serdes.String().serializer(), // StreamKey
-            Serdes.ListSerde<EventId>().serializer(),
+            listSerde(Serdes.UUID()).serializer(),
             // TODO: partitioned on database?
-            STREAM_INDEXER
+            STREAM_INDEXER,
         )
         // User-space event log
         topology.addSink(
             EVENTS_SINK,
             eventsTopic,
             Serdes.UUID().serializer(), // EventId
-            EventSerde().serializer(),
+            EventSerde.EventSerializer(),
             // TODO: partitioned on database?
-            EVENT_INDEXER
+            EVENT_INDEXER,
         )
 
         return topology
@@ -209,7 +218,7 @@ object Topology {
             this.transactor = KafkaStreamsCommandHandler()
         }
 
-        override fun process(record: Record<CommandId, CommandEnvelope>?) {
+        override fun process(record: Record<CommandId, CommandEnvelope>?) = runBlocking {
             val command = record?.value() ?: throw IllegalStateException()
             val event = when (command) {
                 is CreateDatabase -> transactor.handleCreateDatabase(command)

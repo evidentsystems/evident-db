@@ -2,7 +2,10 @@ package com.evidentdb.domain
 
 import java.net.URI
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.*
+
+// TODO: Anti-corruption layer via public constructors/static-initializers!!!
 
 // Internal Command & Event wrappers
 
@@ -28,7 +31,7 @@ sealed interface ErrorBody: EventBody
 sealed interface EventEnvelope {
     val id: EventId
     val type: EventType
-        get() = "com.evidentdb.command.${this.javaClass.name}"
+        get() = "com.evidentdb.event.${this.javaClass.name}"
     val commandId: CommandId
     val databaseId: DatabaseId
     val data: EventBody
@@ -39,7 +42,10 @@ data class ErrorEnvelope(
     override val commandId: CommandId,
     override val databaseId: DatabaseId,
     override val data: ErrorBody
-): EventEnvelope
+): EventEnvelope {
+    override val type: EventType
+        get() = "com.evidentdb.error.${data.javaClass.name}"
+}
 
 // Database
 
@@ -57,12 +63,12 @@ data class Database(
     // val revision: DatabaseRevision
 )
 
-data class CreateDatabaseInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
 
 data class CreateDatabase(
     override val id: CommandId,
     override val databaseId: DatabaseId,
-    override val data: CreateDatabaseInfo
+    override val data: DatabaseCreationInfo
 ): CommandEnvelope
 
 sealed interface DatabaseCreationError: ErrorBody
@@ -190,15 +196,16 @@ data class EntityStreamWithEvents(
 
 // Events & Batches
 
+// TODO: constraints per https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md#naming-conventions
 typealias EventAttributeKey = String
 
 sealed interface EventAttributeValue {
     data class BooleanValue(val value: Boolean): EventAttributeValue
-    data class IntegerValue(val value: Long): EventAttributeValue
+    data class IntegerValue(val value: Int): EventAttributeValue
     data class StringValue(val value: String): EventAttributeValue
     data class UriValue(val value: URI): EventAttributeValue
     data class UriRefValue(val value: URI): EventAttributeValue
-    data class TimestampValue(val value: Instant)
+    data class TimestampValue(val value: Instant): EventAttributeValue
     data class ByteArrayValue(val value: ByteArray): EventAttributeValue {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -214,6 +221,23 @@ sealed interface EventAttributeValue {
         override fun hashCode(): Int {
             return value.contentHashCode()
         }
+    }
+
+    companion object {
+        fun create(value: Any): EventAttributeValue =
+            when(value) {
+                is Boolean -> BooleanValue(value)
+                is Int -> IntegerValue(value)
+                is String -> StringValue(value)
+                is URI -> if (value.isAbsolute)
+                    UriValue(value)
+                else
+                    UriRefValue(value)
+                is Instant -> TimestampValue(value)
+                is OffsetDateTime -> TimestampValue(value.toInstant())
+                is ByteArray -> ByteArrayValue(value)
+                else -> throw IllegalArgumentException("Can't create an EventAttributeValue from ${value}")
+            }
     }
 }
 
@@ -292,11 +316,11 @@ data class ProposedEvent(
 
 data class Event(
     val id: EventId,
+    val databaseId: DatabaseId,
     val type: EventType,
     val attributes: Map<EventAttributeKey, EventAttributeValue>,
     val data: ByteArray?,
-    val databaseId: DatabaseId,
-    val stream: StreamName,
+    val stream: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -333,7 +357,7 @@ sealed interface BatchEvent
 
 data class ProposedBatch(
     val id: BatchId,
-    val databaseName: DatabaseName,
+    val databaseId: DatabaseId,
     val events: List<ProposedEvent>
 ): CommandBody
 
@@ -363,11 +387,11 @@ data class BatchTransacted(
 
 data class InvalidDatabaseNameError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
-data class DatabaseNotFoundError(val oldName: DatabaseName): DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
+data class DatabaseNotFoundError(val name: DatabaseName): DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
 
 sealed interface InvalidBatchError: BatchTransactionError
 
-object NoEventsProvided: InvalidBatchError
+object NoEventsProvidedError: InvalidBatchError
 
 sealed interface EventInvalidation
 
@@ -375,8 +399,9 @@ data class InvalidStreamName(val streamName: StreamName): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
 data class InvalidEventAttribute(val attributeKey: EventAttributeKey): EventInvalidation
 
-data class InvalidEventError(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
-data class InvalidEventsError(val errors: List<InvalidEventError>): InvalidBatchError
+data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
+data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBatchError
 
-data class StreamStateConflictError(val event: ProposedEvent)
-data class StreamStateConflictsError(val errors: List<StreamStateConflictError>): BatchTransactionError
+data class StreamStateConflict(val event: ProposedEvent, val streamState: StreamState)
+data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>): BatchTransactionError
+data class InternalServerError(val message: String): DatabaseCreationError, DatabaseRenameError, DatabaseDeletionError, BatchTransactionError

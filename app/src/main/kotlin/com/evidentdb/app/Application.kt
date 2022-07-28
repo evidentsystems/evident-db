@@ -53,6 +53,8 @@ class Configuration {
 
 @Singleton
 class TransactorTopologyRunner(
+	@Value("\${evidentdb.transactor.state.dir}")
+	stateDir: String,
 	@Value("\${kafka.topics.internal-commands.name}")
 	internalCommandsTopic: String,
 	@Value("\${kafka.topics.internal-events.name}")
@@ -77,6 +79,7 @@ class TransactorTopologyRunner(
 	init {
 		val config = Properties()
 		config[StreamsConfig.APPLICATION_ID_CONFIG] = "$applicationId-transactor"
+		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
 		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "exactly_once_v2"
 		// TODO: standby replicas for query availability
@@ -107,6 +110,8 @@ class TransactorTopologyRunner(
 
 @Singleton
 class ServiceReadModelTopologyRunner(
+	@Value("\${evidentdb.service.state.dir}")
+	stateDir: String,
 	@Value("\${kafka.topics.databases.name}")
 	databasesTopic: String,
 	@Value("\${kafka.topics.database-names.name}")
@@ -127,6 +132,7 @@ class ServiceReadModelTopologyRunner(
 	init {
 		val config = Properties()
 		config[StreamsConfig.APPLICATION_ID_CONFIG] = "$applicationId-service-read-model"
+		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
 		// TODO: standby replicas for query availability
 

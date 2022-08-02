@@ -14,6 +14,7 @@ import com.evidentdb.kafka.DatabaseReadModelStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.kafka.partitionByDatabaseId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
@@ -119,12 +120,13 @@ class KafkaCommandManager(
         val deferred = publishCommand(command).bind()
 
         // TODO: flatten this such that DatabaseCreationError is sibling of DatabaseCreated event, and only one `else` branch is need
-        when(val result = deferred.await()) {
+        when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseCreated -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
                 is DatabaseCreationError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
+            null -> InternalServerError("Timed out waiting for response").left()
             else -> InternalServerError("Invalid result of createDatabase: $result").left()
         }.bind()
     }
@@ -133,12 +135,13 @@ class KafkaCommandManager(
         val deferred = publishCommand(command).bind()
 
         // TODO: flatten this
-        when(val result = deferred.await()) {
+        when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseRenamed -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
                 is DatabaseRenameError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
+            null -> InternalServerError("Timed out waiting for response").left()
             else -> InternalServerError("Invalid result of createDatabase: $result").left()
         }.bind()
     }
@@ -147,12 +150,13 @@ class KafkaCommandManager(
         val deferred = publishCommand(command).bind()
 
         // TODO: flatten this
-        when(val result = deferred.await()) {
+        when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseDeleted -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
                 is DatabaseDeletionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
+            null -> InternalServerError("Timed out waiting for response").left()
             else -> InternalServerError("Invalid result of createDatabase: $result").left()
         }.bind()
     }
@@ -161,12 +165,13 @@ class KafkaCommandManager(
         val deferred = publishCommand(command).bind()
 
         // TODO: flatten this such that DatabaseCreationError is sibling of DatabaseCreated event, and only one `else` branch is need
-        when(val result = deferred.await()) {
+        when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is BatchTransacted -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
                 is BatchTransactionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
+            null -> InternalServerError("Timed out waiting for response").left()
             else -> InternalServerError("Invalid result of createDatabase: $result").left()
         }.bind()
     }

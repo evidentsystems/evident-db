@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package com.evidentdb.domain;
+package com.evidentdb;
 
 import "spec.proto";
 

@@ -12,6 +12,7 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.kotlinx.coroutines)
     implementation(libs.arrow.core)
+    compileOnly(libs.slf4j.api)
 
     implementation(project(":domain"))
     implementation(project(":adapters"))

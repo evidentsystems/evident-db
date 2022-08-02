@@ -26,6 +26,8 @@ import org.apache.kafka.common.serialization.UUIDSerializer
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StoreQueryParameters
 import org.apache.kafka.streams.state.QueryableStoreTypes
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
 import java.time.Duration
 import java.util.*
@@ -73,8 +75,9 @@ class KafkaCommandManager(
     private val consumer: Consumer<EventId, EventEnvelope>
 
     companion object {
-        // TODO: configurable?
-        private val CONSUMER_TIMEOUT = Duration.ofMillis(5000)
+        private const val REQUEST_TIMEOUT = 3000L
+        private val CONSUMER_POLL_INTERVAL = Duration.ofMillis(5000) // TODO: configurable?
+        private val LOGGER: Logger = LoggerFactory.getLogger(KafkaCommandManager::class.java)
     }
 
     init {
@@ -98,7 +101,9 @@ class KafkaCommandManager(
                     TopicPartition(it.topic(), it.partition())
                 })
                 while (running.get()) {
-                    consumer.poll(CONSUMER_TIMEOUT).forEach { record ->
+                    consumer.poll(CONSUMER_POLL_INTERVAL).forEach { record ->
+                        LOGGER.info("Event received: ${record.key()}")
+                        LOGGER.debug("Event data: ${record.value()}")
                         inFlight.remove(record.value().commandId)?.complete(record.value())
                     }
                 }
@@ -176,12 +181,15 @@ class KafkaCommandManager(
         val deferred = CompletableDeferred<EventEnvelope>()
         inFlight[command.id] = deferred
 
+        LOGGER.info("Sending command: ${command.id}...")
+        LOGGER.debug("Command data: $command")
         try {
             producer.publish(ProducerRecord(internalCommandsTopic, command.id, command))
         } catch (e: RuntimeException) {
             return InternalServerError("Unknown exception was thrown: $e").left()
         }
 
+        LOGGER.info("...sent.")
         return deferred.right()
     }
 }

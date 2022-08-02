@@ -16,6 +16,7 @@ dependencyResolutionManagement {
             version("grpckotlin", "1.3.0")
             version("junit", "5.6.0")
             version("micronaut", "3.5.3")
+            version("slf4j", "1.7.36")
 
             plugin("protobuf", "com.google.protobuf").version("0.8.18")
             plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").versionRef("kotlin")
@@ -30,6 +31,7 @@ dependencyResolutionManagement {
             library("grpc-stub", "io.grpc", "grpc-stub").versionRef("grpc")
             library("grpc-kotlin-stub", "io.grpc", "grpc-kotlin-stub").versionRef("grpckotlin")
             library("grpc-protobuf", "io.grpc", "grpc-protobuf").versionRef("grpc")
+            library("slf4j-api", "org.slf4j", "slf4j-api").versionRef("slf4j")
             library("junit-api", "org.junit.jupiter", "junit-jupiter-api").versionRef("junit")
             library("junit-engine", "org.junit.jupiter", "junit-jupiter-engine").versionRef("junit")
         }

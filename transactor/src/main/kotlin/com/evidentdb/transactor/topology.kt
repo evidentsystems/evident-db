@@ -9,9 +9,13 @@ import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
 import org.apache.kafka.streams.processor.api.*
 import org.apache.kafka.streams.state.Stores
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.util.*
 
 object TransactorTopology {
+    private val LOGGER: Logger = LoggerFactory.getLogger(TransactorTopology::class.java)
+
     private const val INTERNAL_COMMAND_SOURCE = "INTERNAL_COMMANDS"
 
     private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
@@ -43,6 +47,7 @@ object TransactorTopology {
         streamsTopic: String,
         eventsTopic: String,
     ): Topology {
+        LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic, $databasesTopic, $databaseNamesTopic, $batchesTopic, $streamsTopic, $eventsTopic")
         val topology = Topology()
 
         topology.addSource(
@@ -220,11 +225,13 @@ object TransactorTopology {
 
         override fun process(record: Record<CommandId, CommandEnvelope>?) = runBlocking {
             val command = record?.value() ?: throw IllegalStateException()
+            LOGGER.info("Processing command: ${command.id}")
+            LOGGER.debug("Command data: $command")
             val event = when (command) {
                 is CreateDatabase -> transactor.handleCreateDatabase(command)
                 is DeleteDatabase -> transactor.handleDeleteDatabase(command)
                 is RenameDatabase -> transactor.handleRenameDatabase(command)
-                is TransactBatch -> transactor.handleTransactBatch(command)
+                is TransactBatch  -> transactor.handleTransactBatch(command)
             }.getOrHandle { error ->
                 ErrorEnvelope(
                     EventId.randomUUID(),
@@ -233,6 +240,9 @@ object TransactorTopology {
                     error
                 )
             }
+            LOGGER.info("Resulting event: ${event.id}")
+            LOGGER.debug("Event data: $event")
+
             context().forward(
                 Record(
                     event.id,

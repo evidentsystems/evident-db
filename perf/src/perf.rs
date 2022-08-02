@@ -13,17 +13,26 @@ pub mod io {
 }
 
 use com::evidentdb::evident_db_client::EvidentDbClient;
-use com::evidentdb::DatabaseCreationInfo;
+use com::evidentdb::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = EvidentDbClient::connect("http://[::1]:50051").await?;
 
     let request = tonic::Request::new(DatabaseCreationInfo {
-        name: "my-database".into(),
+        name: "my-new-database".into(),
     });
 
     let response = client.create_database(request).await?;
+
+    println!("RESPONSE={:?}", response);
+
+    let request = tonic::Request::new(DatabaseRenameInfo {
+        old_name: "my-new-database".into(),
+        new_name: "my-other-database".into(),
+    });
+
+    let response = client.rename_database(request).await?;
 
     println!("RESPONSE={:?}", response);
 

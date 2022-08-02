@@ -17,7 +17,7 @@ sealed interface CommandBody
 sealed interface CommandEnvelope {
     val id: CommandId
     val type: CommandType
-        get() = "com.evidentdb.command.${this.javaClass.name}"
+        get() = "com.evidentdb.command.${this.javaClass.simpleName}"
     val databaseId: DatabaseId
     val data: CommandBody
 }
@@ -31,7 +31,7 @@ sealed interface ErrorBody: EventBody
 sealed interface EventEnvelope {
     val id: EventId
     val type: EventType
-        get() = "com.evidentdb.event.${this.javaClass.name}"
+        get() = "com.evidentdb.event.${this.javaClass.simpleName}"
     val commandId: CommandId
     val databaseId: DatabaseId
     val data: EventBody
@@ -44,7 +44,7 @@ data class ErrorEnvelope(
     override val data: ErrorBody
 ): EventEnvelope {
     override val type: EventType
-        get() = "com.evidentdb.error.${data.javaClass.name}"
+        get() = "com.evidentdb.error.${data.javaClass.simpleName}"
 }
 
 // Database

@@ -132,7 +132,10 @@ class EventEnvelopeSerde:
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseIdFromUri(cloudEvent.source)
-            val commandId = ExtensionProvider.getInstance().parseExtension(CommandIdExtension::class.java, cloudEvent)!!.commandId
+            val commandId: CommandId = when(val commandIdString = cloudEvent.getExtension(CommandIdExtension.COMMAND_ID)) {
+                is String -> CommandId.fromString(commandIdString)
+                else -> throw IllegalStateException("Invalid commandid: $commandIdString parsed from cloud event: $cloudEvent")
+            }
             return when (cloudEvent.type.split('.').last()) {
                 "DatabaseCreated" -> DatabaseCreated(
                     eventId,

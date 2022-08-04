@@ -7,6 +7,7 @@ MAKEFLAGS += --no-builtin-rules
 
 GRADLE ?= ./gradlew
 CARGO  ?= cargo
+CLUSTER_TYPE ?= kafka # redpanda
 
 default: build
 
@@ -27,13 +28,19 @@ KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 
 DOCKER_COMPOSE ?= docker compose
 
+# Kafka Cluster
+
 .PHONY: start-kafka
 start-kafka:
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml up -d
 
 .PHONY: stop-kafka
 stop-kafka:
-	$(DOCKER_COMPOSE) stop
+	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml stop
+
+.PHONY: clean-kafka
+clean-kafka:
+	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml down
 
 .PHONY: kafka-topics
 kafka-topics: start-kafka
@@ -45,6 +52,50 @@ kafka-topics: start-kafka
 	-kafka-topics --create --if-not-exists --topic evidentdb-streams --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 	-kafka-topics --create --if-not-exists --topic evidentdb-events --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
+.PHONY: clean-kafka-topics
+clean-kafka-topics:
+	-kafka-topics --delete --if-exists --topic evidentdb-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-internal-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-databases --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-database-names --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-batches --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-streams --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+
+# Redpanda Cluster
+
+.PHONY: start-redpanda
+start-redpanda:
+	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml up -d
+
+.PHONY: stop-redpanda
+stop-redpanda:
+	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml stop
+
+.PHONY: clean-redpanda
+clean-redpanda:
+	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml down
+
+.PHONY: redpanda-topics
+redpanda-topics: start-redpanda
+	-rpk topic create evidentdb-internal-commands -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-internal-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-databases -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-database-names -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-batches -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-streams -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic create evidentdb-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+
+.PHONY: clean-redpanda-topics
+clean-redpanda-topics:
+	-rpk topic delete evidentdb-internal-commands --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-internal-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-databases --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-database-names --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-batches --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-streams --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-rpk topic delete evidentdb-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+
 # Testing and Performance
 
 .PHONY: test
@@ -53,7 +104,7 @@ test:
 	cd perf/ && $(CARGO) test
 
 .PHONY: run
-run: kafka-topics
+run: $(CLUSTER_TYPE)-topics
 	$(GRADLE) run
 
 .PHONY: perf
@@ -67,41 +118,16 @@ clean:
 	$(GRADLE) clean
 	cd perf/ && $(CARGO) clean
 
-.PHONY: clean-kafka-topics
-clean-kafka-topics:
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-databases --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-database-names --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-batches --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-streams --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-
-.PHONY: clean-kafka-streams-data
-clean-kafka-streams-data:
+.PHONY: clean-topology-data
+clean-topology-data:
 	rm -rf data/service/* data/transactor/*
 	rm -rf app/data/service/* app/data/transactor/*
 
-.PHONY: clean-kafka
-clean-kafka:
-	$(DOCKER_COMPOSE) down
-
 .PHONY: clean-all
-clean-all: clean clean-kafka-topics clean-kafka clean-kafka-streams-data
+clean-all: clean clean-kafka-topics clean-kafka clean-redpanda-topics clean-redpanda clean-topology-data
 
 # Util
 
 .PHONY: loc
 loc:
 	tokei adapters app domain perf proto service transactor
-
-# .PHONY: redpanda-topics
-# redpanda-topics:
-# 	-rpk topic create evidentdb-internal-commands -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-internal-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-databases -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-database-names -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-batches -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-streams -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact $(KAFKA_BOOTSTRAP_SERVERS)
-# 	-rpk topic create evidentdb-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact $(KAFKA_BOOTSTRAP_SERVERS)
-

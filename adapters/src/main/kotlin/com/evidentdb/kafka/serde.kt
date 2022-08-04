@@ -206,8 +206,8 @@ class EventEnvelopeSerde:
 
 class DatabaseSerde: Serdes.WrapperSerde<Database>(DatabaseSerializer(), DatabaseDeserializer()) {
     class DatabaseSerializer : Serializer<Database> {
-        override fun serialize(topic: String?, data: Database?): ByteArray =
-            data?.toByteArray() ?: byteArrayOf()
+        override fun serialize(topic: String?, data: Database?): ByteArray? =
+            data?.toByteArray()
     }
 
     class DatabaseDeserializer : Deserializer<Database> {

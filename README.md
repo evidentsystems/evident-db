@@ -2,6 +2,17 @@
 
 EvidentDB is an event store for use in event sourcing written in Kotlin and built atop Apache Kafka.
 
+## Prerequesites
+$ sudo apt-get install autoconf automake libtool curl make g++ unzip
+## Installation
+From this page, download the protobuf-all-[VERSION].tar.gz.
+Extract the contents and change in the directory
+./configure
+make
+make check
+sudo make install
+sudo ldconfig # refresh shared library cache.
+
 ## Building & Running
 
 EvidentDB uses Gradle as its build system, with some tasks orchestrated in a Makefile.

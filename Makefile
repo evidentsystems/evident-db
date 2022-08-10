@@ -7,7 +7,12 @@ MAKEFLAGS += --no-builtin-rules
 
 GRADLE ?= ./gradlew
 CARGO  ?= cargo
-CLUSTER_TYPE ?= kafka # redpanda
+# or redpanda
+CLUSTER_TYPE ?= kafka
+REPLICATION_FACTOR ?= 1
+KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
+DOCKER_COMPOSE ?= docker compose
+
 
 default: build
 
@@ -22,11 +27,6 @@ app/build/libs/app-*-all.jar:
 
 .PHONY: build
 build: app/build/libs/app-*-all.jar
-
-REPLICATION_FACTOR ?= 1
-KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
-
-DOCKER_COMPOSE ?= docker compose
 
 # Kafka Cluster
 

@@ -14,9 +14,6 @@ make check
 sudo make install
 sudo ldconfig # refresh shared library cache.
 
-## Alternative Installation
-http://google.github.io/proto-lens/installing-protoc.html
-
 ## Building & Running
 
 EvidentDB uses Gradle as its build system, with some tasks orchestrated in a Makefile.

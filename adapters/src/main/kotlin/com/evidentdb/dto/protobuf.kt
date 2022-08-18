@@ -3,12 +3,6 @@ package com.evidentdb.dto
 import com.evidentdb.domain.*
 import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.*
 import com.google.protobuf.Message
-import io.cloudevents.v1.proto.CloudEvent
-import java.net.URI
-import io.cloudevents.v1.proto.CloudEvent.CloudEventAttributeValue.AttrCase as AttrCase
-import io.cloudevents.v1.proto.CloudEvent.CloudEventAttributeValue
-import java.nio.charset.Charset
-import java.time.Instant
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseCreatedInfo  as ProtoDatabaseCreatedInfo
 import com.evidentdb.dto.v1.proto.DatabaseRenameInfo   as ProtoDatabaseRenameInfo
@@ -16,6 +10,7 @@ import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionI
 import com.evidentdb.dto.v1.proto.ProposedBatch        as ProtoProposedBatch
 import com.evidentdb.dto.v1.proto.ProposedEvent        as ProtoProposedEvent
 import com.evidentdb.dto.v1.proto.Batch                as ProtoBatch
+import com.evidentdb.dto.v1.proto.Event                as ProtoEvent
 import com.evidentdb.dto.v1.proto.StreamState          as ProtoStreamState
 import com.evidentdb.dto.v1.proto.Database             as ProtoDatabase
 import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError       as ProtoInvalidDatabaseNameError
@@ -28,8 +23,8 @@ import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalid
 import com.evidentdb.dto.v1.proto.StreamStateConflict            as ProtoStreamStateConflict
 import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
 import com.evidentdb.dto.v1.proto.InternalServerError            as ProtoInternalServerError
-import com.google.protobuf.ByteString
-import com.google.protobuf.Timestamp
+import io.cloudevents.protobuf.cloudEventFromProto
+import io.cloudevents.protobuf.toProto
 
 fun databaseCreationInfoFromProto(proto: ProtoDatabaseCreationInfo) =
     DatabaseCreationInfo(
@@ -93,10 +88,12 @@ fun DatabaseDeletionInfo.toProto(): ProtoDatabaseDeletionInfo =
         .build()
 
 fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
-    val event = proposedEvent.event
+    val protoEvent = proposedEvent.event
+    val event = cloudEventFromProto(protoEvent)
+
     return ProposedEvent(
         EventId.fromString(event.id),
-        event.type,
+        event,
         proposedEvent.stream,
         when(proposedEvent.streamState) {
             ProtoStreamState.Any -> StreamState.Any
@@ -105,26 +102,7 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
             ProtoStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
             else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
         },
-        when(event.dataCase) {
-            CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
-            CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
-            CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
-            else -> null
-        },
-        event.attributesMap.mapValues { (_, v) ->
-            when (v.attrCase) {
-                AttrCase.CE_BOOLEAN -> EventAttributeValue.BooleanValue(v.ceBoolean)
-                AttrCase.CE_INTEGER -> EventAttributeValue.IntegerValue(v.ceInteger)
-                AttrCase.CE_STRING -> EventAttributeValue.StringValue(v.ceString)
-                AttrCase.CE_BYTES -> EventAttributeValue.ByteArrayValue(v.ceBytes.toByteArray())
-                AttrCase.CE_URI -> EventAttributeValue.UriValue(URI(v.ceUri))
-                AttrCase.CE_URI_REF -> EventAttributeValue.UriRefValue(URI(v.ceUri))
-                AttrCase.CE_TIMESTAMP -> EventAttributeValue.TimestampValue(
-                    Instant.ofEpochSecond(v.ceTimestamp.seconds, v.ceTimestamp.nanos.toLong())
-                )
-                else -> throw IllegalArgumentException("Error parsing proposed event attribute value from protobuf")
-            }
-        }
+
     )
 }
 
@@ -153,35 +131,7 @@ fun ProposedEvent.toProto(): ProtoProposedEvent {
         is StreamState.StreamExists ->
             builder.streamState = ProtoStreamState.StreamExists
     }
-    val eventBuilder = CloudEvent.newBuilder()
-        .setId(this.id.toString())
-        .setType(this.type)
-        .putAllAttributes(this.attributes.mapValues { (_, v) ->
-            val attrBuilder = CloudEventAttributeValue.newBuilder()
-            when(v) {
-                is EventAttributeValue.BooleanValue ->
-                    attrBuilder.ceBoolean = v.value
-                is EventAttributeValue.ByteArrayValue ->
-                    attrBuilder.ceBytes = ByteString.copyFrom(v.value)
-                is EventAttributeValue.IntegerValue ->
-                    attrBuilder.ceInteger = v.value
-                is EventAttributeValue.StringValue ->
-                    attrBuilder.ceString = v.value
-                is EventAttributeValue.TimestampValue ->
-                    attrBuilder.ceTimestamp = Timestamp.newBuilder()
-                        .setSeconds(v.value.epochSecond)
-                        .setNanos(v.value.nano)
-                        .build()
-                is EventAttributeValue.UriRefValue -> attrBuilder.ceUriRef = v.value.toString()
-                is EventAttributeValue.UriValue -> attrBuilder.ceUri = v.value.toString()
-            }
-            attrBuilder.build()
-        })
-
-    if (this.data != null)
-        eventBuilder.binaryData = ByteString.copyFrom(this.data)
-    builder.event = eventBuilder.build()
-
+    builder.event = this.event.toProto()
     return builder.build()
 }
 
@@ -200,82 +150,50 @@ fun CommandBody.toProto(): Message =
         is ProposedBatch -> this.toProto()
     }
 
-fun Event.toProto(): CloudEvent {
-    val builder = CloudEvent.newBuilder()
-        .setId(this.id.toString())
-        .setSource(databaseUri(this.databaseId).toString())
-        .setType(this.type)
-        .putAllAttributes(this.attributes.mapValues { (_, v) ->
-            val attrBuilder = CloudEventAttributeValue.newBuilder()
-            when(v) {
-                is EventAttributeValue.BooleanValue ->
-                    attrBuilder.ceBoolean = v.value
-                is EventAttributeValue.ByteArrayValue ->
-                    attrBuilder.ceBytes = ByteString.copyFrom(v.value)
-                is EventAttributeValue.IntegerValue ->
-                    attrBuilder.ceInteger = v.value
-                is EventAttributeValue.StringValue ->
-                    attrBuilder.ceString = v.value
-                is EventAttributeValue.TimestampValue ->
-                    attrBuilder.ceTimestamp = Timestamp.newBuilder()
-                        .setSeconds(v.value.epochSecond)
-                        .setNanos(v.value.nano)
-                        .build()
-                is EventAttributeValue.UriRefValue -> attrBuilder.ceUriRef = v.value.toString()
-                is EventAttributeValue.UriValue -> attrBuilder.ceUri = v.value.toString()
-            }
-            attrBuilder.build()
-        })
-    if (this.data != null)
-        builder.binaryData = ByteString.copyFrom(this.data)
+fun Event.toProto(): ProtoEvent {
+    val builder = ProtoEvent.newBuilder()
+        .setDatabaseId(this.databaseId.toString())
+        .setEvent(this.event.toProto())
+    this.stream?.let { builder.setStream(it) }
+
     return builder.build()
 }
 
-// TODO: harmonize with cloudevent adapter
-fun eventFromProto(proto: CloudEvent): Event =
+fun Event.toByteArray(): ByteArray =
+    this.toProto().toByteArray()
+
+fun eventFromProto(proto: ProtoEvent): Event =
     Event(
-        EventId.fromString(proto.id),
-        databaseIdFromUriString(proto.source),
-        proto.type,
-        proto.attributesMap.mapValues { (_, v) ->
-            when (v.attrCase) {
-                AttrCase.CE_BOOLEAN -> EventAttributeValue.BooleanValue(v.ceBoolean)
-                AttrCase.CE_INTEGER -> EventAttributeValue.IntegerValue(v.ceInteger)
-                AttrCase.CE_STRING -> EventAttributeValue.StringValue(v.ceString)
-                AttrCase.CE_BYTES -> EventAttributeValue.ByteArrayValue(v.ceBytes.toByteArray())
-                AttrCase.CE_URI -> EventAttributeValue.UriValue(URI(v.ceUri))
-                AttrCase.CE_URI_REF -> EventAttributeValue.UriRefValue(URI(v.ceUri))
-                AttrCase.CE_TIMESTAMP -> EventAttributeValue.TimestampValue(
-                    Instant.ofEpochSecond(v.ceTimestamp.seconds, v.ceTimestamp.nanos.toLong())
-                )
-                else -> throw IllegalArgumentException("Error parsing proposed event attribute value from protobuf")
-            }
-        },
-        when(proto.dataCase) {
-            CloudEvent.DataCase.BINARY_DATA -> proto.binaryData.toByteArray()
-            CloudEvent.DataCase.TEXT_DATA -> proto.textData.toByteArray(Charset.forName("utf-8"))
-            CloudEvent.DataCase.PROTO_DATA -> proto.protoData.toByteArray()
-            else -> null
-        }
+        EventId.fromString(proto.event.id),
+        DatabaseId.fromString(proto.databaseId),
+        cloudEventFromProto(proto.event),
+        proto.stream.ifEmpty { null }
     )
 
-// TODO: is this necessary, given cloudevent adapter?
 fun eventFromBytes(bytes: ByteArray): Event =
-    eventFromProto(CloudEvent.parseFrom(bytes))
+    eventFromProto(ProtoEvent.parseFrom(bytes))
 
 fun Batch.toProto(): ProtoBatch =
     ProtoBatch.newBuilder()
         .setId(this.id.toString())
         .setDatabaseId(this.databaseId.toString())
-        .addAllEvents(this.events.map { it.toProto() })
+        .addAllEvents(this.events.map { it.event.toProto() })
         .build()
 
-fun batchFromProto(proto: ProtoBatch) =
-    Batch(
+fun batchFromProto(proto: ProtoBatch): Batch {
+    val databaseId = DatabaseId.fromString(proto.databaseId)
+    return Batch(
         BatchId.fromString(proto.id),
-        DatabaseId.fromString(proto.databaseId),
-        proto.eventsList.map(::eventFromProto)
+        databaseId,
+        proto.eventsList.map {
+            Event(
+                EventId.fromString(it.id),
+                databaseId,
+                cloudEventFromProto(it)
+            )
+        }
     )
+}
 
 fun batchFromBytes(bytes: ByteArray): Batch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
@@ -338,42 +256,14 @@ fun UnvalidatedProposedEvent.toProto(): ProtoProposedEvent {
         is StreamState.StreamExists ->
             builder.streamState = ProtoStreamState.StreamExists
     }
-    val eventBuilder = CloudEvent.newBuilder()
-        .setType(this.type)
-        .putAllAttributes(this.attributes.mapValues { (_, v) ->
-            val attrBuilder = CloudEventAttributeValue.newBuilder()
-            when(v) {
-                is EventAttributeValue.BooleanValue ->
-                    attrBuilder.ceBoolean = v.value
-                is EventAttributeValue.ByteArrayValue ->
-                    attrBuilder.ceBytes = ByteString.copyFrom(v.value)
-                is EventAttributeValue.IntegerValue ->
-                    attrBuilder.ceInteger = v.value
-                is EventAttributeValue.StringValue ->
-                    attrBuilder.ceString = v.value
-                is EventAttributeValue.TimestampValue ->
-                    attrBuilder.ceTimestamp = Timestamp.newBuilder()
-                        .setSeconds(v.value.epochSecond)
-                        .setNanos(v.value.nano)
-                        .build()
-                is EventAttributeValue.UriRefValue -> attrBuilder.ceUriRef = v.value.toString()
-                is EventAttributeValue.UriValue -> attrBuilder.ceUri = v.value.toString()
-            }
-            attrBuilder.build()
-        })
-
-    if (this.data != null)
-        eventBuilder.binaryData = ByteString.copyFrom(this.data)
-    builder.event = eventBuilder.build()
+    builder.event = this.event.toProto()
 
     return builder.build()
 }
 
-// TODO: DRY this up a bit w/r/t proposedEventFromProto
-fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): UnvalidatedProposedEvent {
-    val event = proposedEvent.event
-    return UnvalidatedProposedEvent(
-        event.type,
+fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): UnvalidatedProposedEvent =
+    UnvalidatedProposedEvent(
+        cloudEventFromProto(proposedEvent.event),
         proposedEvent.stream,
         when(proposedEvent.streamState) {
             ProtoStreamState.Any -> StreamState.Any
@@ -381,29 +271,8 @@ fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): Unvali
             ProtoStreamState.NoStream -> StreamState.NoStream
             ProtoStreamState.AtRevision -> StreamState.AtRevision(proposedEvent.atRevision)
             else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
-        },
-        when(event.dataCase) {
-            CloudEvent.DataCase.BINARY_DATA -> event.binaryData.toByteArray()
-            CloudEvent.DataCase.TEXT_DATA -> event.textData.toByteArray(Charset.forName("utf-8"))
-            CloudEvent.DataCase.PROTO_DATA -> event.protoData.toByteArray()
-            else -> null
-        },
-        event.attributesMap.mapValues { (_, v) ->
-            when (v.attrCase) {
-                AttrCase.CE_BOOLEAN -> EventAttributeValue.BooleanValue(v.ceBoolean)
-                AttrCase.CE_INTEGER -> EventAttributeValue.IntegerValue(v.ceInteger)
-                AttrCase.CE_STRING -> EventAttributeValue.StringValue(v.ceString)
-                AttrCase.CE_BYTES -> EventAttributeValue.ByteArrayValue(v.ceBytes.toByteArray())
-                AttrCase.CE_URI -> EventAttributeValue.UriValue(URI(v.ceUri))
-                AttrCase.CE_URI_REF -> EventAttributeValue.UriRefValue(URI(v.ceUri))
-                AttrCase.CE_TIMESTAMP -> EventAttributeValue.TimestampValue(
-                    Instant.ofEpochSecond(v.ceTimestamp.seconds, v.ceTimestamp.nanos.toLong())
-                )
-                else -> throw IllegalArgumentException("Error parsing proposed event attribute value from protobuf")
-            }
         }
     )
-}
 
 fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
     ProtoInvalidEventsError.newBuilder()
@@ -413,8 +282,6 @@ fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
                 .addAllInvalidations(invalid.errors.map { error ->
                     val builder = ProtoEventInvalidation.newBuilder()
                     when(error) {
-                        is InvalidEventAttribute ->
-                            builder.invalidEventAttributeBuilder.attributeKey = error.attributeKey
                         is InvalidEventType ->
                             builder.invalidEventTypeBuilder.eventType = error.eventType
                         is InvalidStreamName ->
@@ -435,7 +302,6 @@ fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsEr
                     when(error.invalidationCase) {
                         INVALIDSTREAMNAME -> InvalidStreamName(error.invalidStreamName.streamName)
                         INVALIDEVENTTYPE -> InvalidEventType(error.invalidEventType.eventType)
-                        INVALIDEVENTATTRIBUTE -> InvalidEventAttribute(error.invalidEventAttribute.attributeKey)
                         else -> throw IllegalArgumentException("Error parsing invalid event error from protobuf")
                     }
                 }

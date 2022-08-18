@@ -1,5 +1,6 @@
 package com.evidentdb.domain
 
+import io.cloudevents.CloudEvent
 import java.net.URI
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -196,159 +197,27 @@ data class EntityStreamWithEvents(
 
 // Events & Batches
 
-// TODO: constraints per https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md#naming-conventions
 typealias EventAttributeKey = String
 
-sealed interface EventAttributeValue {
-    data class BooleanValue(val value: Boolean): EventAttributeValue
-    data class IntegerValue(val value: Int): EventAttributeValue
-    data class StringValue(val value: String): EventAttributeValue
-    data class UriValue(val value: URI): EventAttributeValue
-    data class UriRefValue(val value: URI): EventAttributeValue
-    data class TimestampValue(val value: Instant): EventAttributeValue
-    data class ByteArrayValue(val value: ByteArray): EventAttributeValue {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-
-            other as ByteArrayValue
-
-            if (!value.contentEquals(other.value)) return false
-
-            return true
-        }
-
-        override fun hashCode(): Int {
-            return value.contentHashCode()
-        }
-    }
-
-    companion object {
-        fun create(value: Any): EventAttributeValue =
-            when(value) {
-                is Boolean -> BooleanValue(value)
-                is Int -> IntegerValue(value)
-                is String -> StringValue(value)
-                is URI -> if (value.isAbsolute)
-                    UriValue(value)
-                else
-                    UriRefValue(value)
-                is Instant -> TimestampValue(value)
-                is OffsetDateTime -> TimestampValue(value.toInstant())
-                is ByteArray -> ByteArrayValue(value)
-                else -> throw IllegalArgumentException("Can't create an EventAttributeValue from ${value}")
-            }
-    }
-}
-
 data class UnvalidatedProposedEvent(
-    val type: EventType,
+    val event: CloudEvent,
     val stream: StreamName,
     val streamState: ProposedEventStreamState = StreamState.Any,
-    val data: ByteArray? = null,
-    val attributes: Map<EventAttributeKey, EventAttributeValue> = mapOf(),
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as UnvalidatedProposedEvent
-
-        if (type != other.type) return false
-        if (stream != other.stream) return false
-        if (streamState != other.streamState) return false
-        if (attributes != other.attributes) return false
-        if (data != null) {
-            if (other.data == null) return false
-            if (!data.contentEquals(other.data)) return false
-        } else if (other.data != null) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = type.hashCode()
-        result = 31 * result + stream.hashCode()
-        result = 31 * result + streamState.hashCode()
-        result = 31 * result + attributes.hashCode()
-        result = 31 * result + (data?.contentHashCode() ?: 0)
-        return result
-    }
-}
+)
 
 data class ProposedEvent(
     val id: EventId,
-    val type: EventType,
+    val event: CloudEvent,
     val stream: StreamName,
     val streamState: ProposedEventStreamState = StreamState.Any,
-    val data: ByteArray? = null,
-    val attributes: Map<EventAttributeKey, EventAttributeValue> = mapOf(),
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as ProposedEvent
-
-        if (id != other.id) return false
-        if (stream != other.stream) return false
-        if (type != other.type) return false
-        if (streamState != other.streamState) return false
-        if (attributes != other.attributes) return false
-        if (data != null) {
-            if (other.data == null) return false
-            if (!data.contentEquals(other.data)) return false
-        } else if (other.data != null) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = id.hashCode()
-        result = 31 * result + stream.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + streamState.hashCode()
-        result = 31 * result + attributes.hashCode()
-        result = 31 * result + (data?.contentHashCode() ?: 0)
-        return result
-    }
-}
+)
 
 data class Event(
     val id: EventId,
     val databaseId: DatabaseId,
-    val type: EventType,
-    val attributes: Map<EventAttributeKey, EventAttributeValue>,
-    val data: ByteArray?,
-    val stream: String? = null,
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as Event
-
-        if (id != other.id) return false
-        if (type != other.type) return false
-        if (attributes != other.attributes) return false
-        if (data != null) {
-            if (other.data == null) return false
-            if (!data.contentEquals(other.data)) return false
-        } else if (other.data != null) return false
-        if (stream != other.stream) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = id.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + attributes.hashCode()
-        result = 31 * result + (data?.contentHashCode() ?: 0)
-        result = 31 * result + stream.hashCode()
-        return result
-    }
-}
+    val event: CloudEvent,
+    val stream: StreamName? = null
+)
 
 typealias BatchId = UUID
 typealias BatchKey = String
@@ -397,7 +266,6 @@ sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: StreamName): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
-data class InvalidEventAttribute(val attributeKey: EventAttributeKey): EventInvalidation
 
 data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
 data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBatchError

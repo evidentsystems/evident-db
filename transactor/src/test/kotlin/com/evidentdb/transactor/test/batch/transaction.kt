@@ -1,7 +1,7 @@
 package com.evidentdb.transactor.test.batch
 
 import com.evidentdb.domain.*
-import com.evidentdb.dto.v1.proto.Database
+import com.evidentdb.test.buildTestEvent
 import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverService
 import com.evidentdb.transactor.test.driver
@@ -44,15 +44,8 @@ class TransactionTests {
             service.createDatabase(databaseName)
 
             val result = service.transactBatch(databaseName, listOf(
-                UnvalidatedProposedEvent("event.invalidated.stream", ""),
-                UnvalidatedProposedEvent("", "event.invalidated.type"),
-                UnvalidatedProposedEvent(
-                    "event.invalidated.attribute",
-                    "errors",
-                    StreamState.Any,
-                    null,
-                    mapOf(Pair("", EventAttributeValue.StringValue("value to an invalid attribute key")))
-                ),
+                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
+                UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
             ))
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
@@ -60,7 +53,6 @@ class TransactionTests {
                 val err = it as InvalidEventsError
                 Assertions.assertTrue(err.invalidEvents[0].errors[0] is InvalidStreamName)
                 Assertions.assertTrue(err.invalidEvents[1].errors[0] is InvalidEventType)
-                Assertions.assertTrue(err.invalidEvents[2].errors[0] is InvalidEventAttribute)
             }
         }
 
@@ -68,9 +60,9 @@ class TransactionTests {
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.BATCH_STORE)
-            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.EVENT_STORE)
+            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
+            val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
+            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -78,7 +70,7 @@ class TransactionTests {
             val existingStreamName = "my-stream"
             val initBatch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.initialize",
+                    buildTestEvent("event.stream.initialize"),
                     existingStreamName,
                     StreamState.NoStream
                 )
@@ -89,22 +81,22 @@ class TransactionTests {
 
             val batch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.does-not-exist-but-should",
+                    buildTestEvent("event.stream.does-not-exist-but-should"),
                     "a-new-stream",
                     StreamState.StreamExists
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.exists-but-should-not",
+                    buildTestEvent("event.stream.exists-but-should-not"),
                     existingStreamName,
                     StreamState.NoStream
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.at-wrong-revision",
+                    buildTestEvent("event.stream.at-wrong-revision"),
                     existingStreamName,
                     StreamState.AtRevision(100)
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.no-error",
+                    buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
             )
@@ -114,20 +106,20 @@ class TransactionTests {
                 Assertions.assertTrue(it is StreamStateConflictsError)
                 val err = it as StreamStateConflictsError
                 Assertions.assertEquals(err.conflicts.size, 3)
-                Assertions.assertEquals(err.conflicts[0].event.type, batch[0].type)
-                Assertions.assertEquals(err.conflicts[1].event.type, batch[1].type)
-                Assertions.assertEquals(err.conflicts[2].event.type, batch[2].type)
+                Assertions.assertEquals(err.conflicts[0].event.event.type, batch[0].event.type)
+                Assertions.assertEquals(err.conflicts[1].event.event.type, batch[1].event.type)
+                Assertions.assertEquals(err.conflicts[2].event.event.type, batch[2].event.type)
             }
-            TODO("assert events are not present in storage")
+            TODO("assert no new batch, streams, or events are present in storage")
         }
 
     @Test
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.BATCH_STORE)
-            val streamStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.EVENT_STORE)
+            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
+            val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
+            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -135,7 +127,7 @@ class TransactionTests {
             val existingStreamName = "my-stream"
             val initBatch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.initialize",
+                    buildTestEvent("event.stream.initialize"),
                     existingStreamName,
                     StreamState.NoStream
                 )
@@ -146,22 +138,22 @@ class TransactionTests {
 
             val batch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.no-stream",
+                    buildTestEvent("event.stream.no-stream"),
                     "a-new-stream",
                     StreamState.NoStream
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.exists",
+                    buildTestEvent("event.stream.exists"),
                     existingStreamName,
                     StreamState.StreamExists
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.revision",
+                    buildTestEvent("event.stream.revision"),
                     existingStreamName,
                     StreamState.AtRevision(1)
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.no-error",
+                    buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
             )
@@ -170,6 +162,6 @@ class TransactionTests {
             result.map {
                 Assertions.assertEquals(it.data.events.size, 4)
             }
-            TODO("assert entities present in storage")
+            TODO("assert new batch, events, and streams are present in storage")
         }
 }

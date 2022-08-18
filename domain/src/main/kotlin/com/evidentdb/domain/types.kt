@@ -1,9 +1,6 @@
 package com.evidentdb.domain
 
 import io.cloudevents.CloudEvent
-import java.net.URI
-import java.time.Instant
-import java.time.OffsetDateTime
 import java.util.*
 
 // TODO: Anti-corruption layer via public constructors/static-initializers!!!

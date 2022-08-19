@@ -3,6 +3,7 @@ package com.evidentdb.domain
 import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
+import io.cloudevents.core.builder.CloudEventBuilder
 import java.net.URI
 
 const val BATCH_URI_PATH_PREFIX = "/batches/"
@@ -32,35 +33,21 @@ fun validateEventType(eventType: EventType)
     else
         InvalidEventType(eventType).invalidNel()
 
-// TODO: regex validation?
-fun validateEventAttribute(attributeKey: EventAttributeKey)
-        : ValidatedNel<InvalidEventAttribute, EventAttributeKey> =
-    if (attributeKey.isNotEmpty())
-        attributeKey.validNel()
-    else
-        InvalidEventAttribute(attributeKey).invalidNel()
-
-fun validateEventAttributes(attributes: Map<EventAttributeKey, EventAttributeValue>)
-        : ValidatedNel<InvalidEventAttribute, List<EventAttributeKey>> =
-    attributes.keys.traverseValidated(
-        Semigroup.nonEmptyList(),
-        ::validateEventAttribute
-    )
-
 fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
         : Validated<InvalidEvent, ProposedEvent> =
     validateStreamName(event.stream).zip(
         Semigroup.nonEmptyList(),
-        validateEventType(event.type),
-        validateEventAttributes(event.attributes)
-    ) { _, _, _ ->
+        validateEventType(event.event.type)
+    ) { _, _ ->
+        val id = EventId.randomUUID()
+        val newEvent = CloudEventBuilder.from(event.event)
+            .withId(id.toString())
+            .build()
         ProposedEvent(
-            EventId.randomUUID(),
-            event.type,
+            id,
+            newEvent,
             event.stream,
             event.streamState,
-            event.data,
-            event.attributes
         )
     }.mapLeft { InvalidEvent(event, it) }
 
@@ -85,9 +72,7 @@ fun validateStreamState(
     val valid = Event(
         event.id,
         databaseId,
-        event.type,
-        event.attributes,
-        event.data,
+        event.event,
         event.stream
     ).valid()
     val invalid = StreamStateConflict(

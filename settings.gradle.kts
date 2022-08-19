@@ -1,5 +1,5 @@
 rootProject.name = "evident-db"
-include("domain", "adapters", "service", "transactor", "app")
+include("test", "domain", "adapters", "service", "transactor", "app")
 
 dependencyResolutionManagement {
     repositories {
@@ -25,6 +25,7 @@ dependencyResolutionManagement {
             library("kafka-streams", "org.apache.kafka", "kafka-streams").versionRef("kafka")
             library("kafka-streams-test-utils", "org.apache.kafka", "kafka-streams-test-utils").versionRef("kafka")
             library("cloudevents-api", "io.cloudevents", "cloudevents-api").versionRef("cloudevents")
+            library("cloudevents-core", "io.cloudevents", "cloudevents-core").versionRef("cloudevents")
             library("cloudevents-kafka", "io.cloudevents", "cloudevents-kafka").versionRef("cloudevents")
             library("cloudevents-protobuf", "io.cloudevents", "cloudevents-protobuf").versionRef("cloudevents")
             library("protobuf-java", "com.google.protobuf", "protobuf-java").versionRef("protobuf-java")

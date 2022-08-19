@@ -59,6 +59,12 @@ message ProposedBatch {
   repeated ProposedEvent events = 3;
 }
 
+message Event {
+  string databaseId = 1;
+  io.cloudevents.v1.CloudEvent event = 2;
+  optional string stream = 3;
+}
+
 message Batch {
   string id = 1;
   string databaseId = 2;

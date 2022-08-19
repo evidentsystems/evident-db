@@ -2,6 +2,7 @@ package com.evidentdb.domain.test.batch
 
 import com.evidentdb.domain.*
 import com.evidentdb.domain.test.InMemoryService
+import com.evidentdb.test.buildTestEvent
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -34,15 +35,8 @@ class TransactionTests {
             val database = Database(DatabaseId.randomUUID(), databaseName)
             val service = InMemoryService(listOf(database), listOf())
             val result = service.transactBatch(databaseName, listOf(
-                UnvalidatedProposedEvent("event.invalidated.stream", ""),
-                UnvalidatedProposedEvent("", "event.invalidated.type"),
-                UnvalidatedProposedEvent(
-                    "event.invalidated.attribute",
-                    "errors",
-                    StreamState.Any,
-                    null,
-                    mapOf(Pair("", EventAttributeValue.StringValue("value to an invalid attribute key")))
-                ),
+                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
+                UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
             ))
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
@@ -50,7 +44,6 @@ class TransactionTests {
                 val err = it as InvalidEventsError
                 Assertions.assertTrue(err.invalidEvents[0].errors[0] is InvalidStreamName)
                 Assertions.assertTrue(err.invalidEvents[1].errors[0] is InvalidEventType)
-                Assertions.assertTrue(err.invalidEvents[2].errors[0] is InvalidEventAttribute)
             }
         }
 
@@ -62,22 +55,22 @@ class TransactionTests {
             val service = InMemoryService(listOf(database), listOf(existingStream))
             val batch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.does-not-exist-but-should",
+                    buildTestEvent("event.stream.does-not-exist-but-should"),
                     "a-new-stream",
                     StreamState.StreamExists
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.exists-but-should-not",
+                    buildTestEvent("event.stream.exists-but-should-not"),
                     existingStream.name,
                     StreamState.NoStream
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.at-wrong-revision",
+                    buildTestEvent("event.stream.at-wrong-revision"),
                     existingStream.name,
                     StreamState.AtRevision(100)
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.no-error",
+                    buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
             )
@@ -87,9 +80,9 @@ class TransactionTests {
                 Assertions.assertTrue(it is StreamStateConflictsError)
                 val err = it as StreamStateConflictsError
                 Assertions.assertEquals(err.conflicts.size, 3)
-                Assertions.assertEquals(err.conflicts[0].event.type, batch[0].type)
-                Assertions.assertEquals(err.conflicts[1].event.type, batch[1].type)
-                Assertions.assertEquals(err.conflicts[2].event.type, batch[2].type)
+                Assertions.assertEquals(err.conflicts[0].event.event.type, batch[0].event.type)
+                Assertions.assertEquals(err.conflicts[1].event.event.type, batch[1].event.type)
+                Assertions.assertEquals(err.conflicts[2].event.event.type, batch[2].event.type)
             }
         }
 
@@ -101,22 +94,22 @@ class TransactionTests {
             val service = InMemoryService(listOf(database), listOf(existingStream))
             val batch = listOf(
                 UnvalidatedProposedEvent(
-                    "event.stream.no-stream",
+                    buildTestEvent("event.stream.no-stream"),
                     "a-new-stream",
                     StreamState.NoStream
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.exists",
+                    buildTestEvent("event.stream.exists"),
                     existingStream.name,
                     StreamState.StreamExists
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.revision",
+                    buildTestEvent("event.stream.revision"),
                     existingStream.name,
                     StreamState.AtRevision(0)
                 ),
                 UnvalidatedProposedEvent(
-                    "event.stream.no-error",
+                    buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
             )

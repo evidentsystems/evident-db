@@ -82,17 +82,23 @@ const DB_URL: &str = "http://[::1]:50051";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = EvidentDbClient::connect(DB_URL).await?;
-    create_database(&mut client).await?;
-    rename_database(&mut client).await?;
-    transact_batch(&mut client).await?;
-    delete_database(&mut client).await?;
+    let _res  = delete_database(&mut client, OLD_NAME).await;
+    let _res1 = delete_database(&mut client, NEW_NAME).await;
+
+    create_database(&mut client, OLD_NAME).await?;
+    rename_database(&mut client, OLD_NAME, NEW_NAME).await?;
+    transact_batch(&mut client, NEW_NAME).await?;
+    delete_database(&mut client, NEW_NAME).await?;
 
     Ok(())
 }
 
-async fn create_database(client: &mut EvidentDbClient<tonic::transport::Channel>) -> Result<(), Box<dyn std::error::Error>> {
+async fn create_database(
+    client: &mut EvidentDbClient<tonic::transport::Channel>,
+    db_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let request = tonic::Request::new(DatabaseCreationInfo {
-        name: OLD_NAME.into(),
+        name: db_name.into(),
     });
 
     let start = Instant::now();
@@ -104,10 +110,14 @@ async fn create_database(client: &mut EvidentDbClient<tonic::transport::Channel>
     Ok(())
 }
 
-async fn rename_database(client: &mut EvidentDbClient<tonic::transport::Channel>) -> Result<(), Box<dyn std::error::Error>> {
+async fn rename_database(
+    client: &mut EvidentDbClient<tonic::transport::Channel>,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let request = tonic::Request::new(DatabaseRenameInfo {
-        old_name: OLD_NAME.into(),
-        new_name: NEW_NAME.into(),
+        old_name: old_name.into(),
+        new_name: new_name.into(),
     });
 
     let start = Instant::now();
@@ -119,15 +129,20 @@ async fn rename_database(client: &mut EvidentDbClient<tonic::transport::Channel>
     Ok(())
 }
 
-async fn transact_batch(client: &mut EvidentDbClient<tonic::transport::Channel>) -> Result<(), Box<dyn std::error::Error>> {
+async fn transact_batch(
+    client: &mut EvidentDbClient<tonic::transport::Channel>,
+    db_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Building CloudEvent for batch");
     let event = EventBuilderV10::new()
         .id("will be overwritten")
         .source(Url::parse("http://localhost").unwrap())
         .ty("demo.event")
         .build()?;
+    println!("Event built: {:?}", event);
 
     let request = tonic::Request::new(BatchProposal {
-        database_name: NEW_NAME.into(),
+        database_name: db_name.into(),
         events: vec![
             ProposedEvent{
                 stream: "demo-stream".into(),
@@ -138,6 +153,8 @@ async fn transact_batch(client: &mut EvidentDbClient<tonic::transport::Channel>)
         ].into(),
     });
 
+    println!("About to send: {:?}", request);
+
     let start = Instant::now();
     let response = client.transact_batch(request).await?;
     let duration = start.elapsed();
@@ -147,9 +164,12 @@ async fn transact_batch(client: &mut EvidentDbClient<tonic::transport::Channel>)
     Ok(())
 }
 
-async fn delete_database(client: &mut EvidentDbClient<tonic::transport::Channel>) -> Result<(), Box<dyn std::error::Error>> {
+async fn delete_database(
+    client: &mut EvidentDbClient<tonic::transport::Channel>,
+    db_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let request = tonic::Request::new(DatabaseDeletionInfo {
-        name: NEW_NAME.into(),
+        name: db_name.into(),
     });
 
     let start = Instant::now();

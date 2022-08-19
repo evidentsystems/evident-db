@@ -13,7 +13,6 @@ REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 DOCKER_COMPOSE ?= docker compose
 
-
 default: build
 
 app/build/docker/main/Dockerfile:
@@ -105,7 +104,7 @@ test:
 
 .PHONY: run
 run: $(CLUSTER_TYPE)-topics
-	$(GRADLE) run
+	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run
 
 .PHONY: perf
 perf:
@@ -118,13 +117,16 @@ clean:
 	$(GRADLE) clean
 	cd perf/ && $(CARGO) clean
 
+TRANSACTOR_APP_ID ?= evident-db-transactor
+
 .PHONY: clean-topology-data
 clean-topology-data:
+	kafka-streams-application-reset --application-id $(TRANSACTOR_APP_ID) --bootstrap-servers $(KAFKA_BOOTSTRAP_SERVERS)
 	rm -rf data/service/* data/transactor/*
 	rm -rf app/data/service/* app/data/transactor/*
 
 .PHONY: clean-all
-clean-all: clean clean-$(CLUSTER_TYPE)-topics clean-$(CLUSTER_TYPE) clean-topology-data
+clean-all: clean clean-$(CLUSTER_TYPE)-topics clean-topology-data clean-$(CLUSTER_TYPE)
 
 # Util
 

@@ -25,56 +25,6 @@ use io::cloudevents::v1::cloud_event::CloudEventAttributeValue;
 use io::cloudevents::v1::cloud_event::cloud_event_attribute_value::Attr;
 use url::Url;
 
-impl From<Event> for io::cloudevents::v1::CloudEvent {
-    fn from(event: Event) -> Self {
-        let data = event.data();
-        return Self {
-            id: event.id().into(),
-            source: event.source().into(),
-            spec_version: event.specversion().to_string().into(),
-            r#type: event.ty().into(),
-            attributes: event.iter_attributes()
-                .fold(HashMap::new(),
-                      |mut acc, (k, v)| {
-                          acc.insert(
-                              k.to_string().into(),
-                              CloudEventAttributeValue{
-                                  attr: Some(
-                                      match v {
-                                          AttributeValue::SpecVersion(v) => Attr::CeString(v.to_string().into()),
-                                          AttributeValue::String(s) => Attr::CeString(s.into()),
-                                          AttributeValue::URI(u) => Attr::CeUri(u.to_string().into()),
-                                          AttributeValue::URIRef(u) => Attr::CeUriRef(u.to_string().into()),
-                                          AttributeValue::Boolean(b) => Attr::CeBoolean(*b),
-                                          AttributeValue::Integer(i) => Attr::CeInteger(*i as i32),
-                                          AttributeValue::Time(t) => Attr::CeTimestamp(Timestamp {
-                                              seconds: t.timestamp(),
-                                              nanos: t.timestamp_subsec_nanos() as i32
-                                          })
-                                      }
-                                  )
-                              }
-                          );
-                          acc
-                      }),
-            data: match data {
-                None => None,
-                Some(d) => match d {
-                    Data::Binary(b) => Some(ProtoData::BinaryData(b.clone().into())),
-                    Data::String(s) => Some(ProtoData::TextData(s.into())),
-                    Data::Json(j) => {
-                        let json_bytes = serde_json::to_vec(j);
-                        match json_bytes {
-                            Ok(b) => Some(ProtoData::BinaryData(b.clone().into())),
-                            Err(_) => None
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 const OLD_NAME: &str = "my-old-database";
 const NEW_NAME: &str = "my-new-database";
 const DB_URL: &str = "http://[::1]:50051";
@@ -179,4 +129,55 @@ async fn delete_database(
     println!("LATENCY={:?} RESPONSE={:?}", duration, response);
 
     Ok(())
+}
+
+impl From<Event> for io::cloudevents::v1::CloudEvent {
+    fn from(event: Event) -> Self {
+        let data = event.data();
+        return Self {
+            id: event.id().into(),
+            source: event.source().into(),
+            spec_version: event.specversion().to_string().into(),
+            r#type: event.ty().into(),
+            attributes: event.iter_attributes()
+                .fold(HashMap::new(),
+                      |mut acc, (k, v)| {
+                          let attr_value = match v {
+                              AttributeValue::SpecVersion(_v) => None,
+                              AttributeValue::String(s) => Some(Attr::CeString(s.into())),
+                              AttributeValue::URI(u) => Some(Attr::CeUri(u.to_string().into())),
+                              AttributeValue::URIRef(u) => Some(Attr::CeUriRef(u.to_string().into())),
+                              AttributeValue::Boolean(b) => Some(Attr::CeBoolean(*b)),
+                              AttributeValue::Integer(i) => Some(Attr::CeInteger(*i as i32)),
+                              AttributeValue::Time(t) => Some(Attr::CeTimestamp(Timestamp {
+                                  seconds: t.timestamp(),
+                                  nanos: t.timestamp_subsec_nanos() as i32
+                              })),
+                          };
+                          if attr_value.is_some() {
+                              acc.insert(
+                                  k.to_string().into(),
+                                  CloudEventAttributeValue{
+                                      attr: attr_value
+                                  }
+                              );
+                          }
+                          acc
+                      }),
+            data: match data {
+                None => None,
+                Some(d) => match d {
+                    Data::Binary(b) => Some(ProtoData::BinaryData(b.clone().into())),
+                    Data::String(s) => Some(ProtoData::TextData(s.into())),
+                    Data::Json(j) => {
+                        let json_bytes = serde_json::to_vec(j);
+                        match json_bytes {
+                            Ok(b) => Some(ProtoData::BinaryData(b.clone().into())),
+                            Err(_) => None
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

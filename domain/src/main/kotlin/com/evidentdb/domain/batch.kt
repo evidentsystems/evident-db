@@ -8,22 +8,22 @@ import java.net.URI
 
 const val BATCH_URI_PATH_PREFIX = "/batches/"
 
-fun buildBatchKey(databaseId: DatabaseId, batchId: BatchId): String =
+fun buildBatchKey(databaseName: DatabaseName, batchId: BatchId): String =
     URI(
-        "evdb",
-        databaseId.toString(),
+        DB_URI_SCHEME,
+        databaseName.value,
         "${BATCH_URI_PATH_PREFIX}${batchId}",
         null
     ).toString()
 
 
-fun parseBatchKey(batchKey: BatchKey) : Pair<DatabaseId, BatchId> {
-    val uri = URI(batchKey)
-    return Pair(
-        DatabaseId.fromString(uri.host),
-        BatchId.fromString(uri.path.substring(BATCH_URI_PATH_PREFIX.length))
-    )
-}
+//fun parseBatchKey(batchKey: BatchKey) : Pair<DatabaseName, BatchId> {
+//    val uri = URI(batchKey)
+//    return Pair(
+//        DatabaseName.of(uri.host),
+//        BatchId.fromString(uri.path.substring(BATCH_URI_PATH_PREFIX.length))
+//    )
+//}
 
 // TODO: regex validation?
 fun validateEventType(eventType: EventType)
@@ -65,13 +65,13 @@ fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>
 }
 
 fun validateStreamState(
-    databaseId: DatabaseId,
+    databaseName: DatabaseName,
     currentStreamState: StreamState,
     event: ProposedEvent
 ): Validated<StreamStateConflict, Event> {
     val valid = Event(
         event.id,
-        databaseId,
+        databaseName,
         event.event,
         event.stream
     ).valid()
@@ -105,14 +105,14 @@ fun validateStreamState(
 }
 
 suspend fun validateProposedEvent(
-    databaseId: DatabaseId,
+    databaseName: DatabaseName,
     streamReadModel: StreamReadModel,
     event: ProposedEvent
 ): Either<StreamStateConflict, Event> =
     either {
         val validEvent = validateStreamState(
-            databaseId,
-            streamReadModel.streamState(databaseId, event.stream),
+            databaseName,
+            streamReadModel.streamState(databaseName, event.stream),
             event
         ).bind()
         // TODO: add to other index stream(s)
@@ -120,15 +120,15 @@ suspend fun validateProposedEvent(
     }
 
 suspend fun validateProposedBatch(
-    databaseId: DatabaseId,
+    databaseName: DatabaseName,
     streamReadModel: StreamReadModel,
     batch: ProposedBatch
 ): Either<BatchTransactionError, Batch> {
     val (errors, events) = batch.events.map{
-        validateProposedEvent(databaseId, streamReadModel, it)
+        validateProposedEvent(databaseName, streamReadModel, it)
     }.separateEither()
     return if (errors.isEmpty())
-            Batch(batch.id, databaseId, events).right()
+            Batch(batch.id, databaseName, events).right()
     else
         StreamStateConflictsError(errors).left()
 }

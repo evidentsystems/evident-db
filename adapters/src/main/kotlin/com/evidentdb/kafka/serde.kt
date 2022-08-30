@@ -72,7 +72,7 @@ class CommandEnvelopeSerde:
         override fun toCloudEvent(content: CommandEnvelope): CloudEvent =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
-                .withSource(databaseUri(content.databaseId))
+                .withSource(databaseUri(content.database))
                 .withType(content.type)
                 .withData(ProtoCloudEventData.wrap(content.data.toProto()))
                 .build()
@@ -82,17 +82,12 @@ class CommandEnvelopeSerde:
         override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
             val dataBytes = cloudEvent.data!!.toBytes()
             val commandId = CommandId.fromString(cloudEvent.id)
-            val databaseId = databaseIdFromUri(cloudEvent.source)
+            val databaseId = databaseNameFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {
                 "CreateDatabase" -> CreateDatabase(
                     commandId,
                     databaseId,
                     databaseCreationInfoFromBytes(dataBytes),
-                )
-                "RenameDatabase" -> RenameDatabase(
-                    commandId,
-                    databaseId,
-                    databaseRenameInfoFromBytes(dataBytes),
                 )
                 "DeleteDatabase" -> DeleteDatabase(
                     commandId,
@@ -102,7 +97,7 @@ class CommandEnvelopeSerde:
                 "TransactBatch" -> TransactBatch(
                     commandId,
                     databaseId,
-                    proposedBatchFromBytes(dataBytes)
+                    proposedBatchFromBytes(dataBytes),
                 )
                 else -> throw IllegalArgumentException("unknown command type ${cloudEvent.type}")
             }
@@ -117,7 +112,7 @@ class EventEnvelopeSerde:
         override fun toCloudEvent(content: EventEnvelope): CloudEvent  =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
-                .withSource(databaseUri(content.databaseId))
+                .withSource(databaseUri(content.database))
                 .withType(content.type)
                 .withExtension(CommandIdExtension(content.commandId))
                 .withData(ProtoCloudEventData.wrap(content.data.toProto()))
@@ -128,7 +123,7 @@ class EventEnvelopeSerde:
         override fun fromCloudEvent(cloudEvent: CloudEvent): EventEnvelope {
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
-            val databaseId = databaseIdFromUri(cloudEvent.source)
+            val databaseId = databaseNameFromUri(cloudEvent.source)
             val commandId: CommandId = when(val commandIdString = cloudEvent.getExtension(CommandIdExtension.COMMAND_ID)) {
                 is String -> CommandId.fromString(commandIdString)
                 else -> throw IllegalStateException("Invalid commandid: $commandIdString parsed from cloud event: $cloudEvent")
@@ -138,25 +133,19 @@ class EventEnvelopeSerde:
                     eventId,
                     commandId,
                     databaseId,
-                    databaseCreatedInfoFromBytes(dataBytes)
-                )
-                "DatabaseRenamed" -> DatabaseRenamed(
-                    eventId,
-                    commandId,
-                    databaseId,
-                    databaseRenameInfoFromBytes(dataBytes)
+                    databaseCreationInfoFromBytes(dataBytes),
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
                     commandId,
                     databaseId,
-                    databaseDeletionInfoFromBytes(dataBytes)
+                    databaseDeletionInfoFromBytes(dataBytes),
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
                     commandId,
                     databaseId,
-                    batchFromBytes(dataBytes)
+                    batchFromBytes(dataBytes),
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
@@ -198,6 +187,24 @@ class EventEnvelopeSerde:
                 else -> throw IllegalArgumentException("unknown event type ${cloudEvent.type}")
             }
         }
+    }
+}
+
+class DatabaseNameSerde: Serdes.WrapperSerde<DatabaseName>(DatabaseNameSerializer(), DatabaseNameDeserializer()) {
+    companion object {
+        val stringSerializer = StringSerializer()
+        val stringDeserializer = StringDeserializer()
+    }
+
+    class DatabaseNameSerializer: Serializer<DatabaseName> {
+        override fun serialize(topic: String?, data: DatabaseName?): ByteArray =
+            stringSerializer.serialize(topic, data?.value)
+    }
+
+    class DatabaseNameDeserializer: Deserializer<DatabaseName> {
+        override fun deserialize(topic: String?, data: ByteArray?): DatabaseName =
+            DatabaseName.build(stringDeserializer.deserialize(topic, data))
+
     }
 }
 

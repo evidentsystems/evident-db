@@ -60,9 +60,7 @@ class TransactionTests {
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -110,7 +108,23 @@ class TransactionTests {
                 Assertions.assertEquals(err.conflicts[1].event.event.type, batch[1].event.type)
                 Assertions.assertEquals(err.conflicts[2].event.event.type, batch[2].event.type)
             }
-            TODO("assert no new batch, streams, or events are present in storage")
+
+
+            Assertions.assertNull(
+                streamStore.get(
+                    buildStreamKey(
+                        DatabaseName.build(databaseName),
+                        "a-new-stream")
+                )
+            )
+            Assertions.assertNull(
+                streamStore.get(
+                    buildStreamKey(
+                        DatabaseName.build(databaseName),
+                        "any-stream"
+                    )
+                )
+            )
         }
 
     @Test
@@ -121,8 +135,8 @@ class TransactionTests {
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
             val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
-            val databaseName = "foo"
-            service.createDatabase(databaseName)
+            val databaseName = DatabaseName.build("foo")
+            service.createDatabase(databaseName.value)
 
             val existingStreamName = "my-stream"
             val initBatch = listOf(
@@ -133,7 +147,7 @@ class TransactionTests {
                 )
             )
 
-            val initResult = service.transactBatch(databaseName, initBatch)
+            val initResult = service.transactBatch(databaseName.value, initBatch)
             Assertions.assertTrue(initResult.isRight())
 
             val batch = listOf(
@@ -157,11 +171,45 @@ class TransactionTests {
                     "any-stream"
                 ),
             )
-            val result = service.transactBatch(databaseName, batch)
+            val result = service.transactBatch(databaseName.value, batch)
             Assertions.assertTrue(result.isRight())
             result.map {
                 Assertions.assertEquals(it.data.events.size, 4)
+                Assertions.assertNotNull(
+                    batchStore.get(
+                        buildBatchKey(databaseName, it.data.id)
+                    )
+                )
+                for (event in it.data.events) {
+                    Assertions.assertEquals(
+                        event.event,
+                        eventStore.get(event.id).event
+                    )
+                }
             }
-            TODO("assert new batch, events, and streams are present in storage")
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        "a-new-stream"
+                    )
+                )
+            )
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        "any-stream"
+                    )
+                )
+            )
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        existingStreamName
+                    )
+                )
+            )
         }
 }

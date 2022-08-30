@@ -13,21 +13,11 @@ import org.apache.kafka.streams.TopologyTestDriver
 
 const val INTERNAL_COMMAND_TOPIC = "internal-commands"
 const val INTERNAL_EVENTS_TOPIC = "internal-events"
-const val DATABASES_TOPIC = "databases"
-const val DATABASE_NAMES_TOPIC = "database-names"
-const val BATCHES_TOPIC = "batches"
-const val STREAMS_TOPIC = "streams"
-const val EVENTS_TOPIC = "events"
 
 fun topology() =
     TransactorTopology.build(
         INTERNAL_COMMAND_TOPIC,
         INTERNAL_EVENTS_TOPIC,
-        DATABASES_TOPIC,
-        DATABASE_NAMES_TOPIC,
-        BATCHES_TOPIC,
-        STREAMS_TOPIC,
-        EVENTS_TOPIC,
     )
 
 fun driver(): TopologyTestDriver =
@@ -61,20 +51,6 @@ class TopologyTestDriverCommandManager(
             else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
         }
     }
-
-    override suspend fun renameDatabase(command: RenameDatabase): Either<DatabaseRenameError, DatabaseRenamed>  {
-        inputTopic.pipeInput(command.id, command)
-        val eventKV = outputTopic.readKeyValue()
-        return when(val event = eventKV.value) {
-            is DatabaseRenamed -> event.right()
-            is ErrorEnvelope -> when(val data = event.data) {
-                is DatabaseRenameError -> data.left()
-                else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
-            }
-            else -> throw IllegalStateException("Invalid event returned from renameDatabase $event")
-        }
-    }
-
 
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> {
         inputTopic.pipeInput(command.id, command)
@@ -110,7 +86,6 @@ class TopologyTestDriverService(
 ): Service {
     override val databaseReadModel = DatabaseStore(
         driver.getKeyValueStore(TransactorTopology.DATABASE_STORE),
-        driver.getKeyValueStore(TransactorTopology.DATABASE_NAME_LOOKUP),
     )
     override val commandManager = TopologyTestDriverCommandManager(driver)
 }

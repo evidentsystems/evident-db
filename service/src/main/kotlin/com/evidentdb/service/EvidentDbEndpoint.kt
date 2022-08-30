@@ -1,6 +1,7 @@
 package com.evidentdb.service
 
 import com.evidentdb.domain.*
+import com.evidentdb.domain.Database
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.DatabaseNotFoundError
 import com.evidentdb.domain.InternalServerError
@@ -13,7 +14,6 @@ import com.evidentdb.dto.unvalidatedProposedEventFromProto
 import com.evidentdb.dto.v1.proto.*
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
-import com.evidentdb.dto.v1.proto.DatabaseRenameInfo
 import com.evidentdb.service.v1.*
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -42,38 +42,9 @@ class EvidentDbEndpoint(val service: Service)
                 }
             },
             {
-                builder.database = it.data.database.toProto()
+                builder.database = Database(it.database).toProto()
             }
         )
-        return builder.build()
-    }
-
-    // TODO: reply needs database id
-    override suspend fun renameDatabase(request: DatabaseRenameInfo): RenameDatabaseReply {
-        LOGGER.debug("renameDatabase request received: $request")
-        val builder = RenameDatabaseReply.newBuilder()
-        service.renameDatabase(request.oldName, request.newName)
-            .bimap(
-                {
-                    when(it) {
-                        is DatabaseNameAlreadyExistsError -> {
-                            builder.databaseNameAlreadyExistsError = it.toProto()
-                        }
-                        is DatabaseNotFoundError -> {
-                            builder.databaseNotFoundError = it.toProto()
-                        }
-                        is InvalidDatabaseNameError -> {
-                            builder.invalidDatabaseNameError = it.toProto()
-                        }
-                        is InternalServerError -> {
-                            builder.internalServerError = it.toProto()
-                        }
-                    }
-                },
-                {
-                    builder.databaseRenameInfo = it.data.toProto()
-                }
-            )
         return builder.build()
     }
 
@@ -91,6 +62,9 @@ class EvidentDbEndpoint(val service: Service)
                         is InternalServerError -> {
                             builder.internalServerError = it.toProto()
                         }
+                        is InvalidDatabaseNameError -> {
+                            builder.invalidDatabaseNameError = it.toProto()
+                        }
                     }
                 },
                 {
@@ -104,12 +78,15 @@ class EvidentDbEndpoint(val service: Service)
         LOGGER.debug("transactBatch request received: $request")
         val builder = TransactBatchReply.newBuilder()
         service.transactBatch(
-            request.databaseName,
+            request.database,
             request.eventsList.map(::unvalidatedProposedEventFromProto)
         )
             .bimap(
                 {
                     when(it) {
+                        is InvalidDatabaseNameError -> {
+                            builder.invalidDatabaseNameError = it.toProto()
+                        }
                         is DatabaseNotFoundError -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
@@ -129,7 +106,7 @@ class EvidentDbEndpoint(val service: Service)
                 },
                 {
                     builder.batchResultBuilder.id = it.data.id.toString()
-                    builder.batchResultBuilder.databaseId = it.databaseId.toString()
+                    builder.batchResultBuilder.database = it.database.value
                     builder.batchResultBuilder.addAllEventIds(
                         it.data.events.map { event -> event.id.toString() }
                     )

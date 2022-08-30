@@ -16,7 +16,6 @@ option objc_class_prefix = "EDB";
 service EvidentDb {
   // Command
   rpc createDatabase(com.evidentdb.DatabaseCreationInfo) returns (CreateDatabaseReply) {}
-  rpc renameDatabase(com.evidentdb.DatabaseRenameInfo)   returns (RenameDatabaseReply) {}
   rpc deleteDatabase(com.evidentdb.DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
   rpc transactBatch(com.evidentdb.BatchProposal)         returns (TransactBatchReply)  {}
 
@@ -32,37 +31,29 @@ message CreateDatabaseReply {
   }
 }
 
-message RenameDatabaseReply {
-  oneof result {
-    com.evidentdb.DatabaseRenameInfo database_rename_info = 1;
-    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
-    com.evidentdb.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
-    com.evidentdb.DatabaseNotFoundError database_not_found_error = 4;
-    com.evidentdb.InternalServerError internal_server_error = 5;
-  }
-}
-
 message DeleteDatabaseReply {
   oneof result {
     com.evidentdb.DatabaseDeletionInfo database_deletion_info = 1;
-    com.evidentdb.DatabaseNotFoundError database_not_found_error = 2;
-    com.evidentdb.InternalServerError internal_server_error = 3;
+    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
+    com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
+    com.evidentdb.InternalServerError internal_server_error = 4;
   }
 }
 
 message BatchResult {
   string id = 1;
-  string databaseId = 2;
+  string database = 2;
   repeated string event_ids = 3;
 }
 
 message TransactBatchReply {
   oneof result {
     BatchResult batch_result = 1;
-    com.evidentdb.DatabaseNotFoundError database_not_found_error = 2;
-    com.evidentdb.NoEventsProvidedError no_events_provided_error = 3;
-    com.evidentdb.InvalidEventsError invalid_events_error = 4;
-    com.evidentdb.StreamStateConflictsError stream_state_conflict_error = 5;
-    com.evidentdb.InternalServerError internal_server_error = 6;
+    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
+    com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
+    com.evidentdb.NoEventsProvidedError no_events_provided_error = 4;
+    com.evidentdb.InvalidEventsError invalid_events_error = 5;
+    com.evidentdb.StreamStateConflictsError stream_state_conflict_error = 6;
+    com.evidentdb.InternalServerError internal_server_error = 7;
   }
 }

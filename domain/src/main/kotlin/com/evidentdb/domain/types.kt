@@ -1,9 +1,13 @@
 package com.evidentdb.domain
 
+import arrow.core.Validated
 import io.cloudevents.CloudEvent
+import org.valiktor.functions.matches
+import org.valiktor.validate
 import java.util.*
 
-// TODO: Anti-corruption layer via public constructors/static-initializers!!!
+const val NAME_PATTERN = """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$"""
+const val DB_URI_SCHEME = "evidentdb"
 
 // Internal Command & Event wrappers
 
@@ -16,7 +20,7 @@ sealed interface CommandEnvelope {
     val id: CommandId
     val type: CommandType
         get() = "com.evidentdb.command.${this.javaClass.simpleName}"
-    val databaseId: DatabaseId
+    val database: DatabaseName
     val data: CommandBody
 }
 
@@ -31,14 +35,14 @@ sealed interface EventEnvelope {
     val type: EventType
         get() = "com.evidentdb.event.${this.javaClass.simpleName}"
     val commandId: CommandId
-    val databaseId: DatabaseId
+    val database: DatabaseName
     val data: EventBody
 }
 
 data class ErrorEnvelope(
     override val id: EventId,
     override val commandId: CommandId,
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val data: ErrorBody
 ): EventEnvelope {
     override val type: EventType
@@ -48,66 +52,55 @@ data class ErrorEnvelope(
 // Database
 
 typealias TenantRevision = Long
-typealias DatabaseId = UUID
-typealias DatabaseName = String
+
+@JvmInline
+value class DatabaseName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): DatabaseName =
+            validate(DatabaseName(value)) {
+                validate(DatabaseName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidDatabaseNameError, DatabaseName> =
+            valikate {
+                build(value)
+            }.mapLeft { InvalidDatabaseNameError(value) }
+    }
+}
+
 typealias DatabaseRevision = Long
 
 sealed interface DatabaseEvent
 
 data class Database(
-    val id: DatabaseId,
     val name: DatabaseName,
     // val created: TenantRevision,
     // val revision: DatabaseRevision
 )
 
-data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationInfo(val name: DatabaseName): CommandBody, EventBody
 
 data class CreateDatabase(
     override val id: CommandId,
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val data: DatabaseCreationInfo
 ): CommandEnvelope
 
 sealed interface DatabaseCreationError: ErrorBody
 
-data class DatabaseCreatedInfo(val database: Database): EventBody
-
 data class DatabaseCreated(
     override val id: EventId,
     override val commandId: CommandId,
-    override val databaseId: DatabaseId,
-    override val data: DatabaseCreatedInfo
+    override val database: DatabaseName,
+    override val data: DatabaseCreationInfo
 ): EventEnvelope, DatabaseEvent
 
-data class DatabaseRenameInfo(
-    val oldName: DatabaseName,
-    val newName: DatabaseName
-): CommandBody, EventBody
-
-data class RenameDatabase(
-    override val id: CommandId,
-    override val databaseId: DatabaseId,
-    override val data: DatabaseRenameInfo
-): CommandEnvelope
-
-sealed interface DatabaseRenameError: ErrorBody
-
-data class DatabaseRenamed(
-    override val id: EventId,
-    override val commandId: CommandId,
-    override val databaseId: DatabaseId,
-    override val data: DatabaseRenameInfo
-): EventEnvelope, DatabaseEvent
-
-data class DatabaseDeletionInfo(
-    val name: DatabaseName
-): CommandBody, EventBody
+data class DatabaseDeletionInfo(val name: DatabaseName): CommandBody, EventBody
 
 data class DeleteDatabase(
     override val id: CommandId,
-    override val databaseId: DatabaseId,
-    override val data: DatabaseDeletionInfo
+    override val database: DatabaseName,
+    override val data: DatabaseDeletionInfo,
 ): CommandEnvelope
 
 sealed interface DatabaseDeletionError: ErrorBody
@@ -115,7 +108,7 @@ sealed interface DatabaseDeletionError: ErrorBody
 data class DatabaseDeleted(
     override val id: EventId,
     override val commandId: CommandId,
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val data: DatabaseDeletionInfo
 ): EventEnvelope, DatabaseEvent
 
@@ -136,26 +129,26 @@ sealed interface StreamState {
 }
 
 interface Stream {
-    val databaseId: DatabaseId
+    val database: DatabaseName
     val name: StreamName
     val revision: StreamRevision
 
     companion object {
-        fun create(databaseId: DatabaseId, name: StreamName, revision: StreamRevision = 0): Stream {
+        fun create(databaseName: DatabaseName, name: StreamName, revision: StreamRevision = 0): Stream {
             // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
-            return SimpleStream(databaseId, name, revision)
+            return SimpleStream(databaseName, name, revision)
         }
     }
 }
 
 data class SimpleStream(
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision
 ): Stream
 
 data class EntityStream(
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision,
     val entityId: StreamEntityId
@@ -166,7 +159,7 @@ interface StreamWithEvents: Stream {
 
     companion object {
         fun create(
-            databaseId: DatabaseId,
+            databaseName: DatabaseName,
             name: StreamName,
             revision: StreamRevision = 0,
             events: List<Event>
@@ -178,14 +171,14 @@ interface StreamWithEvents: Stream {
 }
 
 data class SimpleStreamWithEvents(
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision,
     override val events: List<Event>
 ): StreamWithEvents
 
 data class EntityStreamWithEvents(
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision,
     val entityId: StreamEntityId,
@@ -211,7 +204,7 @@ data class ProposedEvent(
 
 data class Event(
     val id: EventId,
-    val databaseId: DatabaseId,
+    val database: DatabaseName,
     val event: CloudEvent,
     val stream: StreamName? = null
 )
@@ -223,20 +216,20 @@ sealed interface BatchEvent
 
 data class ProposedBatch(
     val id: BatchId,
-    val databaseId: DatabaseId,
+    val database: DatabaseName,
     val events: List<ProposedEvent>
 ): CommandBody
 
 // TODO: as-of/revision?
 data class Batch(
     val id: BatchId,
-    val databaseId: DatabaseId,
+    val database: DatabaseName,
     val events: List<Event>
 ): EventBody
 
 data class TransactBatch(
     override val id: CommandId,
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val data: ProposedBatch
 ): CommandEnvelope
 
@@ -245,15 +238,15 @@ sealed interface BatchTransactionError: ErrorBody
 data class BatchTransacted(
     override val id: EventId,
     override val commandId: CommandId,
-    override val databaseId: DatabaseId,
+    override val database: DatabaseName,
     override val data: Batch
 ): EventEnvelope, BatchEvent
 
 // Errors
 
-data class InvalidDatabaseNameError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
-data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError, DatabaseRenameError
-data class DatabaseNotFoundError(val name: DatabaseName): DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
+data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
+data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
+data class DatabaseNotFoundError(val name: DatabaseName): DatabaseDeletionError, BatchTransactionError
 
 sealed interface InvalidBatchError: BatchTransactionError
 
@@ -261,7 +254,7 @@ object NoEventsProvidedError: InvalidBatchError
 
 sealed interface EventInvalidation
 
-data class InvalidStreamName(val streamName: StreamName): EventInvalidation
+data class InvalidStreamName(val streamName: String): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
 
 data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
@@ -269,4 +262,4 @@ data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBat
 
 data class StreamStateConflict(val event: ProposedEvent, val streamState: StreamState)
 data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>): BatchTransactionError
-data class InternalServerError(val message: String): DatabaseCreationError, DatabaseRenameError, DatabaseDeletionError, BatchTransactionError
+data class InternalServerError(val message: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError

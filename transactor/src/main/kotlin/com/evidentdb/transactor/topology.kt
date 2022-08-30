@@ -20,35 +20,24 @@ object TransactorTopology {
 
     private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
     private const val DATABASE_INDEXER = "DATABASE_INDEXER"
-    private const val DATABASE_NAME_INDEXER = "DATABASE_NAME_INDEXER"
     private const val BATCH_INDEXER = "BATCH_INDEXER"
     private const val STREAM_INDEXER = "STREAM_INDEXER"
     private const val EVENT_INDEXER = "EVENT_INDEXER"
 
     const val DATABASE_STORE = "DATABASE_STORE"
-    const val DATABASE_NAME_LOOKUP = "DATABASE_NAME_LOOKUP"
     const val BATCH_STORE = "BATCH_STORE"
     const val STREAM_STORE = "STREAM_STORE"
     const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
-    private const val DATABASE_SINK = "DATABASES"
-    private const val DATABASE_NAMES_SINK = "DATABASE_NAMES"
-    private const val BATCHES_SINK = "BATCHES"
-    private const val STREAMS_SINK = "STREAMS"
-    private const val EVENTS_SINK = "EVENTS"
 
     fun build(
         internalCommandsTopic: String,
         internalEventsTopic: String,
-        databasesTopic: String,
-        databaseNamesTopic: String,
-        batchesTopic: String,
-        streamsTopic: String,
-        eventsTopic: String,
     ): Topology {
-        LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic, $databasesTopic, $databaseNamesTopic, $batchesTopic, $streamsTopic, $eventsTopic")
+        LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic")
         val topology = Topology()
+        val databaseNameSerde = DatabaseNameSerde()
 
         topology.addSource(
             INTERNAL_COMMAND_SOURCE,
@@ -65,11 +54,6 @@ object TransactorTopology {
         topology.addProcessor(
             DATABASE_INDEXER,
             DatabaseIndexer::create,
-            COMMAND_PROCESSOR,
-        )
-        topology.addProcessor(
-            DATABASE_NAME_INDEXER,
-            DatabaseNameIndexer::create,
             COMMAND_PROCESSOR,
         )
         topology.addProcessor(
@@ -91,30 +75,18 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_STORE),
-                Serdes.UUID(), // DatabaseId
+                databaseNameSerde,
                 DatabaseSerde(),
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
-            DATABASE_NAME_INDEXER,
-            STREAM_INDEXER,
-        )
-        topology.addStateStore(
-            Stores.keyValueStoreBuilder(
-                Stores.persistentKeyValueStore(DATABASE_NAME_LOOKUP),
-                Serdes.String(), // DatabaseName
-                Serdes.UUID(),    // DatabaseId
-            ),
-            COMMAND_PROCESSOR,
-            DATABASE_INDEXER,
-            DATABASE_NAME_INDEXER,
             STREAM_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
                 Serdes.String(), // BatchKey
-                listSerde(Serdes.UUID()),
+                listSerde(Serdes.UUID()), // List<EventId>
             ),
             BATCH_INDEXER,
         )
@@ -122,7 +94,7 @@ object TransactorTopology {
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
                 Serdes.String(), // StreamKey
-                listSerde(Serdes.UUID()),
+                listSerde(Serdes.UUID()), // List<EventId>
             ),
             COMMAND_PROCESSOR,
             STREAM_INDEXER,
@@ -148,61 +120,16 @@ object TransactorTopology {
             internalEventsTopic,
             Serdes.UUID().serializer(),
             EventEnvelopeSerde.EventEnvelopeSerializer(),
-            DatabaseIdStreamPartitioner(),
+            DatabaseStreamPartitioner(),
             COMMAND_PROCESSOR,
-        )
-        // Read Model, compacted
-        topology.addSink(
-            DATABASE_SINK,
-            databasesTopic,
-            Serdes.UUID().serializer(),
-            DatabaseSerde.DatabaseSerializer(),
-            // TODO: already partitioned on databaseId, since key
-            DATABASE_INDEXER,
-        )
-        // Read Model, compacted
-        topology.addSink(
-            DATABASE_NAMES_SINK,
-            databaseNamesTopic,
-            Serdes.String().serializer(), // DatabaseName
-            Serdes.UUID().serializer(),   // DatabaseId
-            // TODO: partitioned on database?
-            DATABASE_NAME_INDEXER,
-        )
-        // Read Model, compacted
-        topology.addSink(
-            BATCHES_SINK,
-            batchesTopic,
-            Serdes.String().serializer(), // BatchKey
-            listSerde(Serdes.UUID()).serializer(),
-            // TODO: partitioned on database?
-            BATCH_INDEXER,
-        )
-        // Read Model, compacted
-        topology.addSink(
-            STREAMS_SINK,
-            streamsTopic,
-            Serdes.String().serializer(), // StreamKey
-            listSerde(Serdes.UUID()).serializer(),
-            // TODO: partitioned on database?
-            STREAM_INDEXER,
-        )
-        // User-space event log
-        topology.addSink(
-            EVENTS_SINK,
-            eventsTopic,
-            Serdes.UUID().serializer(), // EventId
-            EventSerde.EventSerializer(),
-            // TODO: partitioned on database?
-            EVENT_INDEXER,
         )
 
         return topology
     }
 
-    private class DatabaseIdStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
+    private class DatabaseStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
         override fun partition(topic: String?, key: UUID?, value: EventEnvelope?, numPartitions: Int): Int =
-            partitionByDatabaseId(value!!.databaseId, numPartitions)
+            partitionByDatabase(value!!.database, numPartitions)
     }
 
     private class CommandProcessor:
@@ -213,7 +140,6 @@ object TransactorTopology {
             super.init(context)
             transactor.init(
                 context().getStateStore(DATABASE_STORE),
-                context().getStateStore(DATABASE_NAME_LOOKUP),
                 context().getStateStore(STREAM_STORE)
             )
         }
@@ -230,13 +156,12 @@ object TransactorTopology {
             val event = when (command) {
                 is CreateDatabase -> transactor.handleCreateDatabase(command)
                 is DeleteDatabase -> transactor.handleDeleteDatabase(command)
-                is RenameDatabase -> transactor.handleRenameDatabase(command)
                 is TransactBatch  -> transactor.handleTransactBatch(command)
             }.getOrHandle { error ->
                 ErrorEnvelope(
                     EventId.randomUUID(),
                     command.id,
-                    command.databaseId,
+                    command.database,
                     error
                 )
             }
@@ -260,14 +185,13 @@ object TransactorTopology {
     }
 
     private class DatabaseIndexer:
-        ContextualProcessor<EventId, EventEnvelope, DatabaseId, Database>() {
+        ContextualProcessor<EventId, EventEnvelope, DatabaseName, Database>() {
         lateinit var databaseStore: DatabaseStore
 
-        override fun init(context: ProcessorContext<DatabaseId, Database>?) {
+        override fun init(context: ProcessorContext<DatabaseName, Database>?) {
             super.init(context)
             this.databaseStore = DatabaseStore(
-                context().getStateStore(DATABASE_STORE),
-                context().getStateStore(DATABASE_NAME_LOOKUP)
+                context().getStateStore(DATABASE_STORE)
             )
         }
 
@@ -275,18 +199,18 @@ object TransactorTopology {
             val event = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.databaseUpdate(event)
             if (result != null) {
-                val (databaseId, database) = result
+                val (databaseName, database) = result
                 context().forward(
                     Record(
-                        databaseId,
+                        databaseName,
                         database,
                         context().currentStreamTimeMs()
                     )
                 )
                 if (database == null) {
-                    databaseStore.deleteDatabase(databaseId)
+                    databaseStore.deleteDatabase(databaseName)
                 } else {
-                    databaseStore.putDatabase(databaseId, database)
+                    databaseStore.putDatabase(databaseName, database)
                 }
             }
         }
@@ -294,45 +218,6 @@ object TransactorTopology {
         companion object {
             fun create(): DatabaseIndexer {
                 return DatabaseIndexer()
-            }
-        }
-    }
-
-    private class DatabaseNameIndexer:
-        ContextualProcessor<EventId, EventEnvelope, DatabaseName, DatabaseId>() {
-        lateinit var databaseStore: DatabaseStore
-
-        override fun init(context: ProcessorContext<DatabaseName, DatabaseId>?) {
-            super.init(context)
-            this.databaseStore = DatabaseStore(
-                context().getStateStore(DATABASE_STORE),
-                context().getStateStore(DATABASE_NAME_LOOKUP)
-            )
-        }
-
-        override fun process(record: Record<EventId, EventEnvelope>?) {
-            val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.databaseNameLookupUpdate(event)
-            if (result != null) {
-                val (databaseName, databaseId) = result
-                context().forward(
-                    Record(
-                        databaseName,
-                        databaseId,
-                        context().currentStreamTimeMs()
-                    )
-                )
-                if (databaseId == null) {
-                    databaseStore.deleteDatabaseName(databaseName)
-                } else {
-                    databaseStore.putDatabaseName(databaseName, databaseId)
-                }
-            }
-        }
-
-        companion object {
-            fun create(): DatabaseNameIndexer {
-                return DatabaseNameIndexer()
             }
         }
     }

@@ -3,24 +3,25 @@ package com.evidentdb.domain
 import arrow.core.*
 import java.net.URI
 
-fun databaseUri(id: DatabaseId): URI =
-    URI("evidentdb", id.toString(), null)
+fun databaseUri(name: DatabaseName): URI =
+    URI(DB_URI_SCHEME, name.value, null)
 
-fun databaseIdFromUri(uri: URI): DatabaseId =
-    DatabaseId.fromString(uri.schemeSpecificPart)
+fun databaseNameFromUri(uri: URI): DatabaseName =
+    DatabaseName.build(uri.schemeSpecificPart)
 
-fun databaseIdFromUriString(uri: String): DatabaseId =
-    databaseIdFromUri(URI.create(uri))
+//fun databaseNameFromUriString(uri: String): Validated<InvalidDatabaseNameError, DatabaseName> =
+//    databaseNameFromUri(URI.create(uri))
 
-// TODO: regex check: #"^[a-zA-Z]\w+$"
-fun validateDatabaseName(proposedName: DatabaseName)
-        : Validated<InvalidDatabaseNameError, DatabaseName> =
-    if (proposedName.isNotEmpty())
-        proposedName.valid()
+fun validateDatabaseExists(
+    databaseReadModel: DatabaseReadModel,
+    name: DatabaseName
+) : Either<DatabaseNotFoundError, DatabaseName> =
+    if (databaseReadModel.exists(name))
+        name.right()
     else
-        InvalidDatabaseNameError(proposedName).invalid()
+        DatabaseNotFoundError(name).left()
 
-suspend fun validateDatabaseNameNotTaken(
+fun validateDatabaseNameNotTaken(
     databaseReadModel: DatabaseReadModel,
     name: DatabaseName
 ) : Validated<DatabaseNameAlreadyExistsError, DatabaseName> =
@@ -28,10 +29,3 @@ suspend fun validateDatabaseNameNotTaken(
         DatabaseNameAlreadyExistsError(name).invalid()
     else
         name.valid()
-
-suspend fun lookupDatabaseIdFromDatabaseName(
-    databaseReadModel: DatabaseReadModel,
-    name: DatabaseName
-) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseReadModel.database(name)?.id?.right()
-        ?: DatabaseNotFoundError(name).left()

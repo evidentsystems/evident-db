@@ -9,10 +9,9 @@ class KafkaStreamsCommandHandler: CommandHandler {
 
     fun init(
         databaseStore: DatabaseKeyValueStore,
-        databaseNameStore: DatabaseNameStore,
         streamStore: StreamKeyValueStore
     ) {
-        this.databaseReadModel = DatabaseStore(databaseStore, databaseNameStore)
+        this.databaseReadModel = DatabaseStore(databaseStore)
         this.streamReadModel = StreamStore(streamStore)
     }
 }

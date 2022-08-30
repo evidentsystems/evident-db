@@ -24,38 +24,3 @@ kafka:
       min.insync.replicas: 2
       compression.type: snappy
       retention.ms: -1
-    databases:
-      name: evidentdb-databases
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    database-names:
-      name: evidentdb-database-names
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    batches:
-      name: evidentdb-batches
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    streams:
-      name: evidentdb-streams
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    events:
-      name: evidentdb-events
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact

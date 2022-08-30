@@ -3,7 +3,6 @@ package com.evidentdb.app
 import com.evidentdb.domain.Service
 import com.evidentdb.service.EvidentDbEndpoint
 import com.evidentdb.service.KafkaService
-import com.evidentdb.service.ServiceReadModelTopology
 import com.evidentdb.transactor.TransactorTopology
 import io.grpc.BindableService
 import io.micronaut.context.annotation.Bean
@@ -34,7 +33,6 @@ class Configuration {
 	@Bean(preDestroy = "close")
 	@Singleton
 	fun service(
-		readModelTopologyRunner: ServiceReadModelTopologyRunner,
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
 		@Value("\${kafka.topics.internal-commands.name}")
@@ -46,9 +44,8 @@ class Configuration {
 			kafkaBootstrapServers,
 			internalCommandsTopic,
 			internalEventsTopic,
-			readModelTopologyRunner.streams,
-			ServiceReadModelTopology.DATABASE_STORE,
-			ServiceReadModelTopology.DATABASE_NAME_LOOKUP,
+			transactorTopologyRunner.streams,
+			TransactorTopology.DATABASE_STORE,
 		)
 
 	@Bean
@@ -63,22 +60,12 @@ class TransactorTopologyRunner(
 	internalCommandsTopic: String,
 	@Value("\${kafka.topics.internal-events.name}")
 	internalEventsTopic: String,
-	@Value("\${kafka.topics.databases.name}")
-	databasesTopic: String,
-	@Value("\${kafka.topics.database-names.name}")
-	databaseNamesTopic: String,
-	@Value("\${kafka.topics.batches.name}")
-	batchesTopic: String,
-	@Value("\${kafka.topics.streams.name}")
-	streamsTopic: String,
-	@Value("\${kafka.topics.events.name}")
-	eventsTopic: String,
 	@Value("\${micronaut.application.name}")
 	applicationId: String,
 	@Value("\${kafka.bootstrap.servers}")
 	kafkaBootstrapServers: String,
 ) {
-	private val streams: KafkaStreams
+	val streams: KafkaStreams
 
 	init {
 		val config = Properties()
@@ -91,61 +78,6 @@ class TransactorTopologyRunner(
 		val topology = TransactorTopology.build(
 			internalCommandsTopic,
 			internalEventsTopic,
-			databasesTopic,
-			databaseNamesTopic,
-			batchesTopic,
-			streamsTopic,
-			eventsTopic
-		)
-
-		this.streams = KafkaStreams(topology, config)
-	}
-
-	@PostConstruct
-	fun start() {
-		streams.start()
-	}
-
-	@PreDestroy
-	fun stop() {
-		streams.close(Duration.ofMillis(10000))
-	}
-}
-
-@Singleton
-class ServiceReadModelTopologyRunner(
-	@Value("\${evidentdb.service.state.dir}")
-	stateDir: String,
-	@Value("\${kafka.topics.databases.name}")
-	databasesTopic: String,
-	@Value("\${kafka.topics.database-names.name}")
-	databaseNamesTopic: String,
-	@Value("\${kafka.topics.batches.name}")
-	batchesTopic: String,
-	@Value("\${kafka.topics.streams.name}")
-	streamsTopic: String,
-	@Value("\${kafka.topics.events.name}")
-	eventsTopic: String,
-	@Value("\${micronaut.application.name}")
-	applicationId: String,
-	@Value("\${kafka.bootstrap.servers}")
-	kafkaBootstrapServers: String,
-) {
-	val streams: KafkaStreams
-
-	init {
-		val config = Properties()
-		config[StreamsConfig.APPLICATION_ID_CONFIG] = "$applicationId-service-read-model"
-		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
-		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
-		// TODO: standby replicas for query availability
-
-		val topology = ServiceReadModelTopology.build(
-			databasesTopic,
-			databaseNamesTopic,
-			batchesTopic,
-			streamsTopic,
-			eventsTopic
 		)
 
 		this.streams = KafkaStreams(topology, config)

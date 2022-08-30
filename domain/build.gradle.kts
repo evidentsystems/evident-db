@@ -9,6 +9,7 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.arrow.core)
     implementation(libs.cloudevents.core)
+    implementation(libs.valiktor.core)
 
     testImplementation(project(":test"))
     testImplementation(libs.kotlinx.coroutines)

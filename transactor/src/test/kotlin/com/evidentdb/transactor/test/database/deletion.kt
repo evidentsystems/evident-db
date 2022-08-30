@@ -1,7 +1,6 @@
 package com.evidentdb.transactor.test.database
 
 import com.evidentdb.domain.Database
-import com.evidentdb.domain.DatabaseId
 import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNotFoundError
 import com.evidentdb.transactor.TransactorTopology
@@ -28,8 +27,7 @@ class DeletionTests {
     fun `topology deletes a database`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.DATABASE_STORE)
-            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.DATABASE_NAME_LOOKUP)
+            val databaseStore = driver.getKeyValueStore<DatabaseName, Database>(TransactorTopology.DATABASE_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
@@ -37,17 +35,10 @@ class DeletionTests {
             val event = service.deleteDatabase(databaseName)
 
             event.map {
-                Assertions.assertNull(databaseStore.get(it.databaseId))
-                Assertions.assertNull(databaseNameStore.get(databaseName))
+                Assertions.assertNull(databaseStore.get(it.database))
 
                 Assertions.assertTrue(
-                    driver.producedTopicNames().contains("databases")
-                )
-                Assertions.assertTrue(
                     driver.producedTopicNames().contains("internal-events")
-                )
-                Assertions.assertTrue(
-                    driver.producedTopicNames().contains("database-names")
                 )
             }
         }

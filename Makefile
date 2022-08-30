@@ -45,21 +45,11 @@ clean-kafka:
 kafka-topics: start-kafka
 	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-databases --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-database-names --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-batches --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-streams --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-events --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config cleanup.policy=compact --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
 	-kafka-topics --delete --if-exists --topic evidentdb-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 	-kafka-topics --delete --if-exists --topic evidentdb-internal-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-databases --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-database-names --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-batches --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-streams --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 # Redpanda Cluster
 
@@ -79,21 +69,11 @@ clean-redpanda:
 redpanda-topics: start-redpanda
 	-rpk topic create evidentdb-internal-commands -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
 	-rpk topic create evidentdb-internal-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-databases -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-database-names -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-batches -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-streams -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c cleanup.policy=compact --brokers $(KAFKA_BOOTSTRAP_SERVERS)
 
 .PHONY: clean-redpanda-topics
 clean-redpanda-topics:
 	-rpk topic delete evidentdb-internal-commands --brokers $(KAFKA_BOOTSTRAP_SERVERS)
 	-rpk topic delete evidentdb-internal-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-databases --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-database-names --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-batches --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-streams --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
 
 # Testing and Performance
 

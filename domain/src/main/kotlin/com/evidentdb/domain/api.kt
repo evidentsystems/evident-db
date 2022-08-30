@@ -3,33 +3,35 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 
-// TODO: pervasive offset tracking from system/tenent-level event-log offset down to database and stream revisions
+// TODO: pervasive offset tracking from system/tenent-level event-log
+//       offset down to database and stream revisions
 
 interface DatabaseReadModel {
-    fun exists(databaseId: DatabaseId): Boolean =
-        database(databaseId) != null
     fun exists(name: DatabaseName): Boolean =
         database(name) != null
 
-    fun database(databaseId: DatabaseId): Database?
     fun database(name: DatabaseName): Database?
     fun catalog(): Set<Database>
 }
 
 interface BatchReadModel {
-    fun batch(databaseId: DatabaseId, id: BatchId): Batch?
+    fun batch(database: DatabaseName, id: BatchId): Batch?
     fun batchEventIds(batchKey: BatchKey): List<EventId>?
 }
 
 interface StreamReadModel {
-    fun streamState(databaseId: DatabaseId, name: StreamName): StreamState
-    fun stream(databaseId: DatabaseId, name: StreamName): Stream?
+    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
+    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
+
+    fun streamEventIds(databaseName: DatabaseName, name: StreamName): List<EventId>? =
+        streamEventIds(buildStreamKey(databaseName, name))
     fun streamEventIds(streamKey: StreamKey): List<EventId>?
-    fun databaseStreams(databaseId: DatabaseId): Set<Stream>
+
+    fun databaseStreams(databaseName: DatabaseName): Set<Stream>
 }
 
 interface StreamWithEventsReadModel: StreamReadModel {
-    fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents?
+    fun streamWithEvents(database: DatabaseName, name: StreamName): StreamWithEvents?
 }
 
 interface EventReadModel {
@@ -41,65 +43,47 @@ interface Service {
     val databaseReadModel: DatabaseReadModel
     val commandManager: CommandManager
 
-    suspend fun createDatabase(proposedName: DatabaseName)
+    suspend fun createDatabase(proposedName: String)
             : Either<DatabaseCreationError, DatabaseCreated> =
         either {
-            val name = validateDatabaseName(proposedName).bind()
+            val name = DatabaseName.of(proposedName).bind()
             val command = CreateDatabase(
                 CommandId.randomUUID(),
-                DatabaseId.randomUUID(),
+                name,
                 DatabaseCreationInfo(name)
             )
             commandManager.createDatabase(command).bind()
         }
 
-    suspend fun renameDatabase(
-        oldName: DatabaseName,
-        newName: DatabaseName
-    ): Either<DatabaseRenameError, DatabaseRenamed> =
-        either {
-            val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseReadModel,
-                oldName
-            ).bind()
-            val validNewName = validateDatabaseName(newName).bind()
-            val command = RenameDatabase(
-                CommandId.randomUUID(),
-                databaseId,
-                DatabaseRenameInfo(oldName, validNewName)
-            )
-            commandManager.renameDatabase(command).bind()
-        }
-
-    suspend fun deleteDatabase(name: DatabaseName)
+    suspend fun deleteDatabase(nameStr: String)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
-            val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseReadModel,
-                name
-            ).bind()
+            val name = DatabaseName.of(nameStr).bind()
+            validateDatabaseExists(databaseReadModel, name).bind()
             val command = DeleteDatabase(
                 CommandId.randomUUID(),
-                databaseId,
+                name,
                 DatabaseDeletionInfo(name)
             )
             commandManager.deleteDatabase(command).bind()
         }
 
     suspend fun transactBatch(
-        databaseName: DatabaseName,
+        databaseNameStr: String,
         events: Iterable<UnvalidatedProposedEvent>
     ): Either<BatchTransactionError, BatchTransacted> =
         either {
-            val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseReadModel,
-                databaseName
-            ).bind()
+            val databaseName = DatabaseName.of(databaseNameStr).bind()
+            validateDatabaseExists(databaseReadModel, databaseName).bind()
             val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
             val command = TransactBatch(
                 CommandId.randomUUID(),
-                databaseId,
-                ProposedBatch(BatchId.randomUUID(), databaseId, validatedEvents)
+                databaseName,
+                ProposedBatch(
+                    BatchId.randomUUID(),
+                    databaseName,
+                    validatedEvents
+                )
             )
             commandManager.transactBatch(command).bind()
         }
@@ -115,8 +99,6 @@ interface Service {
 interface CommandManager {
     suspend fun createDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated>
-    suspend fun renameDatabase(command: RenameDatabase)
-            : Either<DatabaseRenameError, DatabaseRenamed>
     suspend fun deleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted>
     suspend fun transactBatch(command: TransactBatch)
@@ -132,110 +114,70 @@ interface CommandHandler {
         either {
             val availableName = validateDatabaseNameNotTaken(
                 databaseReadModel,
-                command.data.name
+                command.data.name,
             ).bind()
-            val id = command.databaseId
-            val database = Database(id, availableName)
+            val database = Database(availableName)
             DatabaseCreated(
                 EventId.randomUUID(),
                 command.id,
-                id,
-                DatabaseCreatedInfo(database)
-            )
-        }
-
-    suspend fun handleRenameDatabase(command: RenameDatabase)
-            : Either<DatabaseRenameError, DatabaseRenamed> =
-        either {
-            val databaseId = lookupDatabaseIdFromDatabaseName(
-                databaseReadModel,
-                command.data.oldName
-            ).bind()
-            validateDatabaseNameNotTaken(
-                databaseReadModel,
-                command.data.newName
-            ).bind()
-            DatabaseRenamed(
-                EventId.randomUUID(),
-                command.id,
-                databaseId,
-                command.data
+                availableName,
+                DatabaseCreationInfo(availableName),
             )
         }
 
     suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
-            val databaseId = lookupDatabaseIdFromDatabaseName(
+            val databaseName = validateDatabaseExists(
                 databaseReadModel,
-                command.data.name
+                command.database,
             ).bind()
             DatabaseDeleted(
                 EventId.randomUUID(),
                 command.id,
-                databaseId,
-                command.data
+                databaseName,
+                DatabaseDeletionInfo(databaseName),
             )
         }
 
     suspend fun handleTransactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted> =
         either {
-            val databaseId = command.data.databaseId
-            val transactedBatch = validateProposedBatch(
-                databaseId,
+            val databaseName = validateDatabaseExists(
+                databaseReadModel,
+                command.database
+            ).bind()
+            val validBatch = validateProposedBatch(
+                databaseName,
                 streamReadModel,
                 command.data
             ).bind()
             BatchTransacted(
                 EventId.randomUUID(),
                 command.id,
-                databaseId,
-                transactedBatch
+                databaseName,
+                validBatch
             )
         }
 }
 
 object EventHandler {
     fun databaseUpdate(event: EventEnvelope)
-            : Pair<DatabaseId, Database?>? {
-        val databaseId = event.databaseId
+            : Pair<DatabaseName, Database?>? {
+        val database = event.database
         val newDatabase = when (event) {
-            is DatabaseCreated -> event.data.database
+            is DatabaseCreated -> Database(event.data.name)
             is DatabaseDeleted -> null
-            is DatabaseRenamed -> Database(
-                databaseId,
-                event.data.newName
-            )
             else -> return null
         }
 
-        return Pair(databaseId, newDatabase)
-    }
-
-    fun databaseNameLookupUpdate(event: EventEnvelope)
-            : Pair<DatabaseName, DatabaseId?>? {
-        return when (event) {
-            is DatabaseCreated -> Pair(
-                event.data.database.name,
-                event.databaseId
-            )
-            is DatabaseDeleted -> Pair(
-                event.data.name,
-                null
-            )
-            is DatabaseRenamed -> Pair(
-                event.data.newName,
-                event.databaseId
-            )
-            else -> return null
-        }
+        return Pair(database, newDatabase)
     }
 
     fun batchToIndex(event: EventEnvelope): Pair<BatchKey, List<EventId>>? {
         return when (event) {
             is BatchTransacted -> Pair(
-                buildBatchKey(event.databaseId, event.data.id),
+                buildBatchKey(event.database, event.data.id),
                 event.data.events.map { it.id }
             )
             else -> null
@@ -246,13 +188,13 @@ object EventHandler {
         streamReadModel: StreamReadModel,
         event: EventEnvelope
     ): LinkedHashMap<StreamKey, List<EventId>>? {
-        val databaseId = event.databaseId
+        val database = event.database
         return when (event) {
             is BatchTransacted -> {
                 val updates = LinkedHashMap<StreamKey, List<EventId>>()
                 for (evt in event.data.events) {
                     val eventIds = updates.getOrPut(
-                        buildStreamKey(databaseId, evt.stream!!)
+                        buildStreamKey(database, evt.stream!!)
                     ) { mutableListOf() } as MutableList<EventId>
                     eventIds.add(evt.id)
                 }

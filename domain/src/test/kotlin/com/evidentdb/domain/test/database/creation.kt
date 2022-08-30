@@ -1,7 +1,7 @@
 package com.evidentdb.domain.test.database
 
 import com.evidentdb.domain.Database
-import com.evidentdb.domain.DatabaseId
+import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.InvalidDatabaseNameError
 import com.evidentdb.domain.test.InMemoryService
@@ -22,10 +22,10 @@ class CreationTests {
     @Test
     fun `reject a database creation proposal due to already existing name`(): Unit =
         runBlocking {
-            val databaseName = "foo"
-            val database = Database(DatabaseId.randomUUID(), databaseName)
+            val databaseName = DatabaseName.build("foo")
+            val database = Database(databaseName)
             val service = InMemoryService(listOf(database), listOf())
-            val result = service.createDatabase(databaseName)
+            val result = service.createDatabase(databaseName.value)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is DatabaseNameAlreadyExistsError) }
         }
@@ -33,10 +33,10 @@ class CreationTests {
     @Test
     fun `accept a database creation proposal`(): Unit =
         runBlocking {
-            val databaseName = "foo"
+            val databaseName = DatabaseName.build("foo")
             val service = InMemoryService.empty()
-            val result = service.createDatabase(databaseName)
+            val result = service.createDatabase(databaseName.value)
             Assertions.assertTrue(result.isRight())
-            result.map { Assertions.assertEquals(it.data.database.name, databaseName) }
+            result.map { Assertions.assertEquals(it.data.name, databaseName) }
         }
 }

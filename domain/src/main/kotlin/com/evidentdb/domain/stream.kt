@@ -4,7 +4,6 @@ import arrow.core.ValidatedNel
 import arrow.core.invalidNel
 import arrow.core.validNel
 import java.net.URI
-import java.util.*
 
 const val STREAM_ENTITY_DELIMITER = '/'
 const val STREAM_URI_PATH_PREFIX = "/streams/"
@@ -24,20 +23,20 @@ fun parseStreamName(streamName: StreamName)
     return Pair(segments[0], segments[1])
 }
 
-fun buildStreamKey(databaseId: DatabaseId, streamName: StreamName): String =
+fun buildStreamKey(databaseName: DatabaseName, streamName: StreamName): String =
     URI(
         "evdb",
-        databaseId.toString(),
+        databaseName.value,
         "${STREAM_URI_PATH_PREFIX}${streamName}",
         null
     ).toString()
 
 
 fun parseStreamKey(streamKey: StreamKey)
-        : Pair<DatabaseId, StreamName> {
+        : Pair<DatabaseName, StreamName> {
     val uri = URI(streamKey)
     return Pair(
-        UUID.fromString(uri.host),
+        DatabaseName.build(uri.host),
         uri.path.substring(STREAM_URI_PATH_PREFIX.length)
     )
 }

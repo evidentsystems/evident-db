@@ -14,11 +14,11 @@ class CreationTests {
         runBlocking {
             val driver = driver()
             val service = TopologyTestDriverService(driver)
+            val databaseName = ""
 
-            val result = service.createDatabase("")
+            val result = service.createDatabase(databaseName)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is InvalidDatabaseNameError) }
-            TODO("assert new database and name not present in storage")
         }
 
     @Test
@@ -27,6 +27,7 @@ class CreationTests {
             val driver = driver()
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
+
             service.createDatabase(databaseName)
 
             val result = service.createDatabase(databaseName)
@@ -38,8 +39,7 @@ class CreationTests {
     fun `topology creates a database`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.DATABASE_STORE)
-            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.DATABASE_NAME_LOOKUP)
+            val databaseStore = driver.getKeyValueStore<DatabaseName, Database>(TransactorTopology.DATABASE_STORE)
             val service = TopologyTestDriverService(driver)
             val databaseName = "foo"
 
@@ -48,23 +48,12 @@ class CreationTests {
             Assertions.assertTrue(event.isRight())
             event.map {
                 Assertions.assertEquals(
-                    databaseStore.get(it.databaseId),
-                    it.data.database
+                    Database(it.data.name),
+                    databaseStore.get(it.database),
                 )
 
-                Assertions.assertEquals(
-                    it.databaseId,
-                    databaseNameStore.get(databaseName)
-                )
-
-                Assertions.assertTrue(
-                    driver.producedTopicNames().contains("databases")
-                )
                 Assertions.assertTrue(
                     driver.producedTopicNames().contains("internal-events")
-                )
-                Assertions.assertTrue(
-                    driver.producedTopicNames().contains("database-names")
                 )
             }
         }

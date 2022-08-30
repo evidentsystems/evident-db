@@ -16,21 +16,11 @@ message DatabaseCreationInfo {
   string name = 1;
 }
 
-message Database {
-  string id = 1;
-  string name = 2;
-}
-
-message DatabaseCreatedInfo {
-  Database database = 1;
-}
-
-message DatabaseRenameInfo {
-  string oldName = 1;
-  string newName = 2;
-}
-
 message DatabaseDeletionInfo {
+  string name = 1;
+}
+
+message Database {
   string name = 1;
 }
 
@@ -49,25 +39,25 @@ message ProposedEvent {
 }
 
 message BatchProposal {
-  string databaseName = 2;
+  string database = 2;
   repeated ProposedEvent events = 3;
 }
 
 message ProposedBatch {
   string id = 1;
-  string databaseId = 2;
+  string database = 2;
   repeated ProposedEvent events = 3;
 }
 
 message Event {
-  string databaseId = 1;
+  string database = 1;
   io.cloudevents.v1.CloudEvent event = 2;
   optional string stream = 3;
 }
 
 message Batch {
   string id = 1;
-  string databaseId = 2;
+  string database = 2;
   repeated io.cloudevents.v1.CloudEvent events = 3;
 }
 

@@ -4,8 +4,6 @@ import com.evidentdb.domain.*
 import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.*
 import com.google.protobuf.Message
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
-import com.evidentdb.dto.v1.proto.DatabaseCreatedInfo  as ProtoDatabaseCreatedInfo
-import com.evidentdb.dto.v1.proto.DatabaseRenameInfo   as ProtoDatabaseRenameInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
 import com.evidentdb.dto.v1.proto.ProposedBatch        as ProtoProposedBatch
 import com.evidentdb.dto.v1.proto.ProposedEvent        as ProtoProposedEvent
@@ -28,7 +26,7 @@ import io.cloudevents.protobuf.toProto
 
 fun databaseCreationInfoFromProto(proto: ProtoDatabaseCreationInfo) =
     DatabaseCreationInfo(
-        proto.name
+        DatabaseName.build(proto.name)
     )
 
 fun databaseCreationInfoFromBytes(bytes: ByteArray): DatabaseCreationInfo =
@@ -36,47 +34,12 @@ fun databaseCreationInfoFromBytes(bytes: ByteArray): DatabaseCreationInfo =
 
 fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
     ProtoDatabaseCreationInfo.newBuilder()
-        .setName(this.name)
-        .build()
-
-fun databaseCreatedInfoFromProto(proto: ProtoDatabaseCreatedInfo) =
-    DatabaseCreatedInfo(
-        Database(
-            DatabaseId.fromString(proto.database.id),
-            proto.database.name,
-        )
-    )
-
-fun databaseCreatedInfoFromBytes(bytes: ByteArray): DatabaseCreatedInfo =
-    databaseCreatedInfoFromProto(ProtoDatabaseCreatedInfo.parseFrom(bytes))
-
-fun DatabaseCreatedInfo.toProto(): ProtoDatabaseCreatedInfo =
-    ProtoDatabaseCreatedInfo.newBuilder()
-        .setDatabase(
-            ProtoDatabase.newBuilder()
-                .setId(this.database.id.toString())
-                .setName(this.database.name)
-        )
-        .build()
-
-fun databaseRenameInfoFromProto(proto: ProtoDatabaseRenameInfo) =
-    DatabaseRenameInfo(
-        proto.oldName,
-        proto.newName,
-    )
-
-fun databaseRenameInfoFromBytes(bytes: ByteArray): DatabaseRenameInfo =
-    databaseRenameInfoFromProto(ProtoDatabaseRenameInfo.parseFrom(bytes))
-
-fun DatabaseRenameInfo.toProto(): ProtoDatabaseRenameInfo =
-    ProtoDatabaseRenameInfo.newBuilder()
-        .setOldName(this.oldName)
-        .setNewName(this.newName)
+        .setName(this.name.value)
         .build()
 
 fun databaseDeletionInfoFromProto(proto: ProtoDatabaseDeletionInfo) =
     DatabaseDeletionInfo(
-        proto.name
+        DatabaseName.build(proto.name)
     )
 
 fun databaseDeletionInfoFromBytes(bytes: ByteArray): DatabaseDeletionInfo =
@@ -84,7 +47,7 @@ fun databaseDeletionInfoFromBytes(bytes: ByteArray): DatabaseDeletionInfo =
 
 fun DatabaseDeletionInfo.toProto(): ProtoDatabaseDeletionInfo =
     ProtoDatabaseDeletionInfo.newBuilder()
-        .setName(this.name)
+        .setName(this.name.value)
         .build()
 
 fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
@@ -109,7 +72,7 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
 fun proposedBatchFromProto(proto: ProtoProposedBatch) =
     ProposedBatch(
         BatchId.fromString(proto.id),
-        DatabaseId.fromString(proto.databaseId),
+        DatabaseName.build(proto.database),
         proto.eventsList.map { proposedEventFromProto(it) }
     )
 
@@ -138,7 +101,7 @@ fun ProposedEvent.toProto(): ProtoProposedEvent {
 fun ProposedBatch.toProto(): ProtoProposedBatch =
     ProtoProposedBatch.newBuilder()
         .setId(this.id.toString())
-        .setDatabaseId(this.databaseId.toString())
+        .setDatabase(this.database.value)
         .addAllEvents(this.events.map{ it.toProto() })
         .build()
 
@@ -146,13 +109,12 @@ fun CommandBody.toProto(): Message =
     when(this) {
         is DatabaseCreationInfo -> this.toProto()
         is DatabaseDeletionInfo -> this.toProto()
-        is DatabaseRenameInfo -> this.toProto()
         is ProposedBatch -> this.toProto()
     }
 
 fun Event.toProto(): ProtoEvent {
     val builder = ProtoEvent.newBuilder()
-        .setDatabaseId(this.databaseId.toString())
+        .setDatabase(this.database.value)
         .setEvent(this.event.toProto())
     this.stream?.let { builder.setStream(it) }
 
@@ -165,7 +127,7 @@ fun Event.toByteArray(): ByteArray =
 fun eventFromProto(proto: ProtoEvent): Event =
     Event(
         EventId.fromString(proto.event.id),
-        DatabaseId.fromString(proto.databaseId),
+        DatabaseName.build(proto.database),
         cloudEventFromProto(proto.event),
         proto.stream.ifEmpty { null }
     )
@@ -176,19 +138,19 @@ fun eventFromBytes(bytes: ByteArray): Event =
 fun Batch.toProto(): ProtoBatch =
     ProtoBatch.newBuilder()
         .setId(this.id.toString())
-        .setDatabaseId(this.databaseId.toString())
+        .setDatabase(this.database.value)
         .addAllEvents(this.events.map { it.event.toProto() })
         .build()
 
 fun batchFromProto(proto: ProtoBatch): Batch {
-    val databaseId = DatabaseId.fromString(proto.databaseId)
+    val databaseName = DatabaseName.build(proto.database)
     return Batch(
         BatchId.fromString(proto.id),
-        databaseId,
+        databaseName,
         proto.eventsList.map {
             Event(
                 EventId.fromString(it.id),
-                databaseId,
+                databaseName,
                 cloudEventFromProto(it)
             )
         }
@@ -211,22 +173,22 @@ fun invalidDatabaseNameErrorFromBytes(bytes: ByteArray): InvalidDatabaseNameErro
 
 fun DatabaseNameAlreadyExistsError.toProto(): ProtoDatabaseNameAlreadyExistsError =
     ProtoDatabaseNameAlreadyExistsError.newBuilder()
-        .setName(this.name)
+        .setName(this.name.value)
         .build()
 
 fun databaseNameAlreadyExistsErrorFromProto(proto: ProtoDatabaseNameAlreadyExistsError): DatabaseNameAlreadyExistsError =
-    DatabaseNameAlreadyExistsError(proto.name)
+    DatabaseNameAlreadyExistsError(DatabaseName.build(proto.name))
 
 fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlreadyExistsError =
     databaseNameAlreadyExistsErrorFromProto(ProtoDatabaseNameAlreadyExistsError.parseFrom(bytes))
 
 fun DatabaseNotFoundError.toProto(): ProtoDatabaseNotFoundError =
     ProtoDatabaseNotFoundError.newBuilder()
-        .setName(this.name)
+        .setName(this.name.value)
         .build()
 
 fun databaseNotFoundErrorFromProto(proto: ProtoDatabaseNotFoundError): DatabaseNotFoundError =
-    DatabaseNotFoundError(proto.name)
+    DatabaseNotFoundError(DatabaseName.build(proto.name))
 
 fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError =
     databaseNotFoundErrorFromProto(ProtoDatabaseNotFoundError.parseFrom(bytes))
@@ -356,8 +318,7 @@ fun internalServerErrorFromBytes(bytes: ByteArray): InternalServerError =
 
 fun EventBody.toProto(): Message =
     when(this) {
-        is DatabaseCreatedInfo -> this.toProto()
-        is DatabaseRenameInfo -> this.toProto()
+        is DatabaseCreationInfo -> this.toProto()
         is DatabaseDeletionInfo -> this.toProto()
         is Batch -> this.toProto()
 
@@ -372,18 +333,14 @@ fun EventBody.toProto(): Message =
 
 fun Database.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
-        .setId(this.id.toString())
-        .setName(this.name)
+        .setName(this.name.value)
         .build()
 
 fun Database.toByteArray(): ByteArray =
     this.toProto().toByteArray()
 
 fun databaseFromProto(proto: ProtoDatabase) =
-    Database(
-        DatabaseId.fromString(proto.id),
-        proto.name
-    )
+    Database(DatabaseName.build(proto.name))
 
 fun databaseFromBytes(data: ByteArray): Database =
     databaseFromProto(ProtoDatabase.parseFrom(data))

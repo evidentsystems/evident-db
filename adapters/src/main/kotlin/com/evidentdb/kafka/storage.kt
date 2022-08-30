@@ -5,25 +5,18 @@ import org.apache.kafka.streams.state.KeyValueStore
 import com.evidentdb.domain.*
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 
-typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
-typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseId, Database>
-typealias DatabaseNameStore = KeyValueStore<DatabaseName, DatabaseId>
-typealias DatabaseNameLookupStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseId>
+typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, Database>
+typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, Database>
 typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
+// TODO: Abstract away DatabaseNameLookup into an interface, implement via gRPC
 open class DatabaseReadModelStore(
-    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore,
-    private val databaseNameLookupStore: DatabaseNameLookupStore,
-    ): DatabaseReadModel {
-    override fun database(databaseId: DatabaseId): Database? {
-        return databaseLookupStore.get(databaseId)
-    }
-
-    override fun database(name: DatabaseName): Database? {
-        return databaseNameLookupStore.get(name)?.let { databaseLookupStore.get(it) }
-    }
+    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore
+): DatabaseReadModel {
+    override fun database(name: DatabaseName): Database? =
+        databaseLookupStore.get(name)
 
     override fun catalog(): Set<Database> {
         val ret = mutableSetOf<Database>()
@@ -37,29 +30,20 @@ open class DatabaseReadModelStore(
 
 class DatabaseStore(
     private val databaseStore: DatabaseKeyValueStore,
-    private val databaseNameStore: DatabaseNameStore
-): DatabaseReadModelStore(databaseStore, databaseNameStore) {
-    fun putDatabase(databaseId: DatabaseId, database: Database) {
-        databaseStore.put(databaseId, database)
+): DatabaseReadModelStore(databaseStore) {
+    fun putDatabase(databaseName: DatabaseName, database: Database) {
+        databaseStore.put(databaseName, database)
     }
 
-    fun putDatabaseName(databaseName: DatabaseName, databaseId: DatabaseId) {
-        databaseNameStore.put(databaseName, databaseId)
-    }
-
-    fun deleteDatabase(databaseId: DatabaseId) {
-        databaseStore.delete(databaseId)
-    }
-
-    fun deleteDatabaseName(databaseName: DatabaseName) {
-        databaseNameStore.delete(databaseName)
+    fun deleteDatabase(databaseName: DatabaseName) {
+        databaseStore.delete(databaseName)
     }
 }
 
 class BatchStore(
     private val batchStore: BatchKeyValueStore
 ): BatchReadModel {
-    override fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
+    override fun batch(database: DatabaseName, id: BatchId): Batch? {
         TODO("Not yet implemented")
     }
 
@@ -75,37 +59,39 @@ class BatchStore(
 interface IStreamStore: StreamReadModel {
     val streamStore: StreamKeyValueStore
 
-    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+    override fun streamState(databaseName: DatabaseName, name: StreamName): StreamState {
+        val eventIds = streamStore.get(buildStreamKey(databaseName, name))
         return if (eventIds == null)
             StreamState.NoStream
         else
             StreamState.AtRevision(eventIds.count().toLong())
     }
 
-    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
+        val eventIds = streamStore.get(buildStreamKey(databaseName, name))
         return if (eventIds == null)
             null
         else
-            Stream.create(databaseId, name, eventIds.count().toLong())
+            Stream.create(databaseName, name, eventIds.count().toLong())
     }
 
-    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
+    override fun databaseStreams(databaseName: DatabaseName): Set<Stream> {
         val ret = mutableSetOf<Stream>()
-        streamStore.prefixScan(databaseId, Serdes.UUID().serializer())
-            .use { streamIterator ->
-                for (kv in streamIterator) {
-                    val parsedKey = parseStreamKey(kv.key)
-                    ret.add(
-                        Stream.create(
-                            parsedKey.first,
-                            parsedKey.second,
-                            kv.value.count().toLong()
-                        )
+        streamStore.prefixScan(
+            databaseName.value,
+            Serdes.String().serializer()
+        ).use { streamIterator ->
+            for (kv in streamIterator) {
+                val parsedKey = parseStreamKey(kv.key)
+                ret.add(
+                    Stream.create(
+                        parsedKey.first,
+                        parsedKey.second,
+                        kv.value.count().toLong()
                     )
-                }
+                )
             }
+        }
         return ret
     }
 
@@ -125,13 +111,13 @@ class StreamWithEventsStore(
     override val streamStore: StreamKeyValueStore,
     private val eventStore: EventKeyValueStore
 ): IStreamStore, StreamWithEventsReadModel {
-    override fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+    override fun streamWithEvents(database: DatabaseName, name: StreamName): StreamWithEvents? {
+        val eventIds = streamStore.get(buildStreamKey(database, name))
         return if (eventIds == null)
             null
         else
             StreamWithEvents.create(
-                databaseId,
+                database,
                 name,
                 eventIds.count().toLong(),
                 eventIds.map { eventStore.get(it)!! }

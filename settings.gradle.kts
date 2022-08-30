@@ -17,11 +17,13 @@ dependencyResolutionManagement {
             version("junit", "5.6.0")
             version("micronaut", "3.5.3")
             version("slf4j", "1.7.36")
+            version("valiktor", "0.12.0")
 
             plugin("protobuf", "com.google.protobuf").version("0.8.18")
             plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").versionRef("kotlin")
             library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.6.2")
             library("arrow-core", "io.arrow-kt", "arrow-core").version("1.0.1")
+            library("valiktor-core", "org.valiktor", "valiktor-core").versionRef("valiktor")
             library("kafka-streams", "org.apache.kafka", "kafka-streams").versionRef("kafka")
             library("kafka-streams-test-utils", "org.apache.kafka", "kafka-streams-test-utils").versionRef("kafka")
             library("cloudevents-api", "io.cloudevents", "cloudevents-api").versionRef("cloudevents")

@@ -20,10 +20,10 @@ class TransactionTests {
     @Test
     fun `reject transaction with no events`(): Unit =
         runBlocking {
-            val databaseName = "foo"
-            val database = Database(DatabaseId.randomUUID(), databaseName)
+            val databaseName = DatabaseName.build("foo")
+            val database = Database(databaseName)
             val service = InMemoryService(listOf(database), listOf())
-            val result = service.transactBatch(databaseName, listOf())
+            val result = service.transactBatch(databaseName.value, listOf())
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
         }
@@ -31,10 +31,10 @@ class TransactionTests {
     @Test
     fun `reject transaction due to invalid events`(): Unit =
         runBlocking {
-            val databaseName = "foo"
-            val database = Database(DatabaseId.randomUUID(), databaseName)
+            val databaseName = DatabaseName.build("foo")
+            val database = Database(databaseName)
             val service = InMemoryService(listOf(database), listOf())
-            val result = service.transactBatch(databaseName, listOf(
+            val result = service.transactBatch(databaseName.value, listOf(
                 UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
                 UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
             ))
@@ -50,8 +50,8 @@ class TransactionTests {
     @Test
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
-            val database = Database(DatabaseId.randomUUID(), "foo")
-            val existingStream = Stream.create(database.id, "my-stream")
+            val database = Database(DatabaseName.build("foo"))
+            val existingStream = Stream.create(database.name, "my-stream")
             val service = InMemoryService(listOf(database), listOf(existingStream))
             val batch = listOf(
                 UnvalidatedProposedEvent(
@@ -74,7 +74,7 @@ class TransactionTests {
                     "any-stream"
                 ),
             )
-            val result = service.transactBatch(database.name, batch)
+            val result = service.transactBatch(database.name.value, batch)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
                 Assertions.assertTrue(it is StreamStateConflictsError)
@@ -89,8 +89,8 @@ class TransactionTests {
     @Test
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
-            val database = Database(DatabaseId.randomUUID(), "foo")
-            val existingStream = Stream.create(database.id, "my-stream")
+            val database = Database(DatabaseName.build("foo"))
+            val existingStream = Stream.create(database.name, "my-stream")
             val service = InMemoryService(listOf(database), listOf(existingStream))
             val batch = listOf(
                 UnvalidatedProposedEvent(
@@ -113,7 +113,7 @@ class TransactionTests {
                     "any-stream"
                 ),
             )
-            val result = service.transactBatch(database.name, batch)
+            val result = service.transactBatch(database.name.value, batch)
             Assertions.assertTrue(result.isRight())
             result.map {
                 Assertions.assertEquals(it.data.events.size, 4)

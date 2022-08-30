@@ -2,7 +2,7 @@
 version: '3.7'
 services:
   redpanda:
-    image: docker.redpanda.com/vectorized/redpanda:v22.1.7
+    image: docker.redpanda.com/vectorized/redpanda:v22.2.2
     hostname: redpanda-0
     container_name: redpanda-0
     command:

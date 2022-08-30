@@ -1,7 +1,7 @@
 package com.evidentdb.domain.test.database
 
 import com.evidentdb.domain.Database
-import com.evidentdb.domain.DatabaseId
+import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNotFoundError
 import com.evidentdb.domain.test.InMemoryService
 import kotlinx.coroutines.runBlocking
@@ -22,14 +22,14 @@ class DeletionTests {
     @Test
     fun `accept a database deletion proposal`(): Unit =
         runBlocking {
-            val databaseName = "foo"
-            val database = Database(DatabaseId.randomUUID(), databaseName)
+            val databaseName = DatabaseName.build("foo")
+            val database = Database(databaseName)
             val service = InMemoryService(
                 listOf(database),
                 listOf()
             )
-            val result = service.deleteDatabase(databaseName)
+            val result = service.deleteDatabase(databaseName.value)
             Assertions.assertTrue(result.isRight())
-            result.map { Assertions.assertEquals(it.data.name, databaseName) }
+            result.map { Assertions.assertEquals(it.database, databaseName) }
         }
 }

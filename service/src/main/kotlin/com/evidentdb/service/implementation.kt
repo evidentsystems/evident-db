@@ -12,7 +12,7 @@ import com.evidentdb.domain.CommandManager
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseReadModelStore
 import com.evidentdb.kafka.EventEnvelopeSerde
-import com.evidentdb.kafka.partitionByDatabaseId
+import com.evidentdb.kafka.partitionByDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import org.apache.kafka.clients.consumer.Consumer
@@ -35,7 +35,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 private suspend inline fun <reified K: Any, reified V : Any> Producer<K, V>.publish(record: ProducerRecord<K, V>) =
-    suspendCoroutine<RecordMetadata> { continuation ->
+    suspendCoroutine { continuation ->
         val callback = Callback { metadata, exception ->
             if (metadata == null) {
                 continuation.resumeWithException(exception!!)
@@ -56,8 +56,8 @@ class DatabaseIdPartitioner: Partitioner {
         cluster: Cluster?
     ): Int =
         when(value) {
-            is CommandEnvelope -> partitionByDatabaseId(value.databaseId, cluster?.partitionCountForTopic(topic)!!)
-            is EventEnvelope   -> partitionByDatabaseId(value.databaseId, cluster?.partitionCountForTopic(topic)!!)
+            is CommandEnvelope -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
+            is EventEnvelope   -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
             else -> 0
         }
 
@@ -131,21 +131,6 @@ class KafkaCommandManager(
         }.bind()
     }
 
-    override suspend fun renameDatabase(command: RenameDatabase): Either<DatabaseRenameError, DatabaseRenamed> = either {
-        val deferred = publishCommand(command).bind()
-
-        // TODO: flatten this
-        when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
-            is DatabaseRenamed -> result.right()
-            is ErrorEnvelope -> when(val body = result.data){
-                is DatabaseRenameError -> body.left()
-                else -> InternalServerError("Invalid result of createDatabase: $result").left()
-            }
-            null -> InternalServerError("Timed out waiting for response").left()
-            else -> InternalServerError("Invalid result of createDatabase: $result").left()
-        }.bind()
-    }
-
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> = either {
         val deferred = publishCommand(command).bind()
 
@@ -204,24 +189,23 @@ class KafkaService(
     internalCommandsTopic: String,
     internalEventsTopic: String,
 
+    // TODO: remove below, implement via gRPC client
     streams: KafkaStreams,
     databaseStoreName: String,
-    databaseNameStoreName: String,
 ): Service, AutoCloseable {
     override val databaseReadModel = DatabaseReadModelStore(
-        streams.store(StoreQueryParameters.fromNameAndType(
-                    databaseStoreName,
-                    QueryableStoreTypes.keyValueStore()
-                )
-        ),
         streams.store(
             StoreQueryParameters.fromNameAndType(
-                databaseNameStoreName,
+                databaseStoreName,
                 QueryableStoreTypes.keyValueStore()
             )
-        ),
+        )
     )
-    override val commandManager = KafkaCommandManager(kafkaBootstrapServers, internalCommandsTopic, internalEventsTopic)
+    override val commandManager = KafkaCommandManager(
+        kafkaBootstrapServers,
+        internalCommandsTopic,
+        internalEventsTopic
+    )
 
     override fun close() {
         commandManager.close()

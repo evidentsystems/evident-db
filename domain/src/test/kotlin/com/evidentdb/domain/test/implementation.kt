@@ -6,22 +6,14 @@ import com.evidentdb.domain.*
 class InMemoryDatabaseReadModel(
     databases: Iterable<Database> = listOf()
 ): DatabaseReadModel {
-    private val databases: Map<DatabaseId, Database> =
+    private val databases: Map<DatabaseName, Database> =
         databases.fold(mutableMapOf()) { acc, database ->
-        acc[database.id] = database
+        acc[database.name] = database
         acc
     }
-    private val databaseNames: Map<DatabaseName, DatabaseId> =
-        databases.fold(mutableMapOf()) { acc, database ->
-        acc[database.name] = database.id
-        acc
-    }
-
-    override fun database(databaseId: DatabaseId): Database? =
-        databases[databaseId]
 
     override fun database(name: DatabaseName): Database? =
-        databases[databaseNames[name]]
+        databases[name]
 
     override fun catalog(): Set<Database> =
         databases.values.toSet()
@@ -32,27 +24,28 @@ class InMemoryStreamReadModel(
 ): StreamReadModel {
     private val streams: Map<StreamKey, List<EventId>> =
         streams.fold(mutableMapOf()) { acc, stream ->
-            acc[buildStreamKey(stream.databaseId, stream.name)] = listOf()
+            acc[buildStreamKey(stream.database, stream.name)] = listOf()
             acc
         }
 
-    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
-        val eventIds = streams[buildStreamKey(databaseId, name)] ?: return StreamState.NoStream
+    override fun streamState(databaseName: DatabaseName, name: StreamName): StreamState {
+        val eventIds = streams[buildStreamKey(databaseName, name)]
+            ?: return StreamState.NoStream
         return StreamState.AtRevision(eventIds.size.toLong())
     }
 
-    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
-        val eventIds = streams[buildStreamKey(databaseId, name)] ?: return null
-        return Stream.create(databaseId, name, eventIds.size.toLong())
+    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
+        val eventIds = streams[buildStreamKey(databaseName, name)] ?: return null
+        return Stream.create(databaseName, name, eventIds.size.toLong())
     }
 
     override fun streamEventIds(streamKey: StreamKey): List<EventId>? =
         streams[streamKey]
 
-    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> =
+    override fun databaseStreams(databaseName: DatabaseName): Set<Stream> =
         streams.map { (streamKey, eventIds) ->
             val (dbId, name) = parseStreamKey(streamKey)
-            if (dbId == databaseId) {
+            if (dbId == databaseName) {
                 Stream.create(dbId, name, eventIds.size.toLong())
             } else {
                 null
@@ -76,9 +69,6 @@ class InMemoryCommandManager(
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> =
         commandHandler.handleCreateDatabase(command)
-
-    override suspend fun renameDatabase(command: RenameDatabase): Either<DatabaseRenameError, DatabaseRenamed> =
-        commandHandler.handleRenameDatabase(command)
 
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> =
         commandHandler.handleDeleteDatabase(command)

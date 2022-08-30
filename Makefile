@@ -12,6 +12,7 @@ CLUSTER_TYPE ?= kafka
 REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 DOCKER_COMPOSE ?= docker compose
+RPK ?= docker exec -it redpanda-0 rpk
 
 default: build
 
@@ -42,7 +43,7 @@ clean-kafka:
 	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml down
 
 .PHONY: kafka-topics
-kafka-topics: start-kafka
+kafka-topics:
 	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
@@ -66,14 +67,12 @@ clean-redpanda:
 	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml down
 
 .PHONY: redpanda-topics
-redpanda-topics: start-redpanda
-	-rpk topic create evidentdb-internal-commands -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic create evidentdb-internal-events -p 12 -r $(REPLICATION_FACTOR) -c compression.type=snappy -c retention.ms="-1" --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+redpanda-topics: kafka-topics
 
 .PHONY: clean-redpanda-topics
 clean-redpanda-topics:
-	-rpk topic delete evidentdb-internal-commands --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-rpk topic delete evidentdb-internal-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-$(RPK) topic delete evidentdb-internal-commands --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+	-$(RPK) topic delete evidentdb-internal-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
 
 # Testing and Performance
 
@@ -83,7 +82,7 @@ test:
 	cd perf/ && $(CARGO) test
 
 .PHONY: run
-run: $(CLUSTER_TYPE)-topics
+run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
 	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run
 
 .PHONY: perf

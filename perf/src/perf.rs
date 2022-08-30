@@ -25,20 +25,18 @@ use io::cloudevents::v1::cloud_event::CloudEventAttributeValue;
 use io::cloudevents::v1::cloud_event::cloud_event_attribute_value::Attr;
 use url::Url;
 
-const OLD_NAME: &str = "my-old-database";
-const NEW_NAME: &str = "my-new-database";
+const DATABASE: &str = "my-database";
 const DB_URL: &str = "http://[::1]:50051";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = EvidentDbClient::connect(DB_URL).await?;
-    let _res  = delete_database(&mut client, OLD_NAME).await;
-    let _res1 = delete_database(&mut client, NEW_NAME).await;
+    let _res  = delete_database(&mut client, DATABASE).await;
+    let _res1 = delete_database(&mut client, DATABASE).await;
 
-    create_database(&mut client, OLD_NAME).await?;
-    rename_database(&mut client, OLD_NAME, NEW_NAME).await?;
-    transact_batch(&mut client, NEW_NAME).await?;
-    delete_database(&mut client, NEW_NAME).await?;
+    create_database(&mut client, DATABASE).await?;
+    transact_batch(&mut client, DATABASE).await?;
+    delete_database(&mut client, DATABASE).await?;
 
     Ok(())
 }
@@ -60,25 +58,6 @@ async fn create_database(
     Ok(())
 }
 
-async fn rename_database(
-    client: &mut EvidentDbClient<tonic::transport::Channel>,
-    old_name: &str,
-    new_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let request = tonic::Request::new(DatabaseRenameInfo {
-        old_name: old_name.into(),
-        new_name: new_name.into(),
-    });
-
-    let start = Instant::now();
-    let response = client.rename_database(request).await?;
-    let duration = start.elapsed();
-
-    println!("LATENCY={:?} RESPONSE={:?}", duration, response);
-
-    Ok(())
-}
-
 async fn transact_batch(
     client: &mut EvidentDbClient<tonic::transport::Channel>,
     db_name: &str,
@@ -92,7 +71,7 @@ async fn transact_batch(
     println!("Event built: {:?}", event);
 
     let request = tonic::Request::new(BatchProposal {
-        database_name: db_name.into(),
+        database: db_name.into(),
         events: vec![
             ProposedEvent{
                 stream: "demo-stream".into(),

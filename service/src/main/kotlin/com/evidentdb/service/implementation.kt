@@ -87,6 +87,7 @@ class KafkaCommandManager(
         // TODO: configurable CLIENT_ID
         producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::class.java
         producerConfig[ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG] = 30 * 1000 // TODO: configurable?
+        producerConfig[ProducerConfig.LINGER_MS_CONFIG] = 0 // TODO: configurable?
         this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig, UUIDSerializer(), CommandEnvelopeSerde.CommandEnvelopeSerializer())
 
         val consumerConfig = Properties()

@@ -13,6 +13,7 @@ import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StreamsConfig
 import java.time.Duration
@@ -73,6 +74,15 @@ class TransactorTopologyRunner(
 		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
 		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "exactly_once_v2"
+		config[StreamsConfig.RETRY_BACKOFF_MS_CONFIG] = 0
+    config[ProducerConfig.LINGER_MS_CONFIG] = 0 // TODO: configurable?
+//		offsets.topic.replication.factor=3
+//		transaction.state.log.replication.factor=3
+//		transaction.state.log.min.isr=2
+//		min.insync.replicas=2
+//      On broker:
+//		log.flush.interval.messages=1
+//		log.flush.interval.ms=0
 		// TODO: standby replicas for query availability
 
 		val topology = TransactorTopology.build(

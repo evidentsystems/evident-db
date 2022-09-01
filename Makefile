@@ -40,7 +40,7 @@ stop-kafka:
 
 .PHONY: clean-kafka
 clean-kafka:
-	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml down
+	-$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml down
 
 .PHONY: kafka-topics
 kafka-topics:
@@ -57,6 +57,7 @@ clean-kafka-topics:
 .PHONY: start-redpanda
 start-redpanda:
 	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml up -d
+	$(RPK) cluster config set enable_transactions true
 
 .PHONY: stop-redpanda
 stop-redpanda:
@@ -64,15 +65,13 @@ stop-redpanda:
 
 .PHONY: clean-redpanda
 clean-redpanda:
-	$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml down
+	-$(DOCKER_COMPOSE) -p evident-db-redpanda -f docker-compose.redpanda.yml down
 
 .PHONY: redpanda-topics
 redpanda-topics: kafka-topics
 
 .PHONY: clean-redpanda-topics
-clean-redpanda-topics:
-	-$(RPK) topic delete evidentdb-internal-commands --brokers $(KAFKA_BOOTSTRAP_SERVERS)
-	-$(RPK) topic delete evidentdb-internal-events --brokers $(KAFKA_BOOTSTRAP_SERVERS)
+clean-redpanda-topics: clean-kafka-topics
 
 # Testing and Performance
 
@@ -105,7 +104,7 @@ clean-topology-data:
 	rm -rf app/data/service/* app/data/transactor/*
 
 .PHONY: clean-all
-clean-all: clean clean-$(CLUSTER_TYPE)-topics clean-topology-data clean-$(CLUSTER_TYPE)
+clean-all: clean clean-kafka-topics clean-topology-data clean-kafka clean-redpanda
 
 # Util
 

@@ -23,8 +23,6 @@ services:
       - PLAINTEXT://0.0.0.0:28082,OUTSIDE://0.0.0.0:8082
       - --advertise-pandaproxy-addr
       - PLAINTEXT://redpanda-0:28082,OUTSIDE://localhost:8082
-    environment:
-      ENABLE_TRANSACTIONS: true
     ports:
       - 8082:8082
       - 9092:9092

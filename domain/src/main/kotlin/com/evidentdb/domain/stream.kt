@@ -18,7 +18,7 @@ fun validateStreamName(streamName: StreamName)
         InvalidStreamName(streamName).invalidNel()
 
 fun parseStreamName(streamName: StreamName)
-        : Pair<StreamName, StreamEntityId?> {
+        : Pair<StreamName, SubjectId?> {
     val segments = streamName.split(STREAM_ENTITY_DELIMITER, limit = 2)
     return Pair(segments[0], segments[1])
 }

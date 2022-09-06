@@ -50,13 +50,11 @@ clean-kafka:
 
 .PHONY: kafka-topics
 kafka-topics:
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --create --if-not-exists --topic evidentdb-log --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-log --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 # Redpanda Cluster
 

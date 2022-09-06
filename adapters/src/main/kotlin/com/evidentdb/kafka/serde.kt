@@ -1,6 +1,5 @@
 package com.evidentdb.kafka
 
-import com.evidentdb.cloudevents.CommandIdExtension
 import com.evidentdb.domain.*
 import com.evidentdb.dto.*
 import io.cloudevents.CloudEvent
@@ -63,46 +62,6 @@ abstract class EvidentDbDeserializer<T>: Deserializer<T> {
         fromCloudEvent(deserializer.deserialize(topic, headers, data))
 }
 
-class CommandEnvelopeSerde:
-    Serdes.WrapperSerde<CommandEnvelope>(CommandEnvelopeSerializer(), CommandEnvelopeDeserializer()) {
-
-    class CommandEnvelopeSerializer: EvidentDbSerializer<CommandEnvelope>() {
-        override fun toCloudEvent(content: CommandEnvelope): CloudEvent =
-            CloudEventBuilder.v1()
-                .withId(content.id.toString())
-                .withSource(databaseUri(content.database))
-                .withType(content.type)
-                .withData(ProtoCloudEventData.wrap(content.data.toProto()))
-                .build()
-    }
-
-    class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope>() {
-        override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
-            val dataBytes = cloudEvent.data!!.toBytes()
-            val commandId = CommandId.fromString(cloudEvent.id)
-            val databaseId = databaseNameFromUri(cloudEvent.source)
-            return when (cloudEvent.type.split('.').last()) {
-                "CreateDatabase" -> CreateDatabase(
-                    commandId,
-                    databaseId,
-                    databaseCreationInfoFromBytes(dataBytes),
-                )
-                "DeleteDatabase" -> DeleteDatabase(
-                    commandId,
-                    databaseId,
-                    databaseDeletionInfoFromBytes(dataBytes),
-                )
-                "TransactBatch" -> TransactBatch(
-                    commandId,
-                    databaseId,
-                    proposedBatchFromBytes(dataBytes),
-                )
-                else -> throw IllegalArgumentException("unknown command type ${cloudEvent.type}")
-            }
-        }
-    }
-}
-
 class EventEnvelopeSerde:
     Serdes.WrapperSerde<EventEnvelope>(EventEnvelopeSerializer(), EventEnvelopeDeserializer()) {
 
@@ -112,7 +71,6 @@ class EventEnvelopeSerde:
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.database))
                 .withType(content.type)
-                .withExtension(CommandIdExtension(content.commandId))
                 .withData(ProtoCloudEventData.wrap(content.data.toProto()))
                 .build()
     }
@@ -122,63 +80,47 @@ class EventEnvelopeSerde:
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EventId.fromString(cloudEvent.id)
             val databaseId = databaseNameFromUri(cloudEvent.source)
-            val commandId: CommandId = when(val commandIdString = cloudEvent.getExtension(CommandIdExtension.COMMAND_ID)) {
-                is String -> CommandId.fromString(commandIdString)
-                else -> throw IllegalStateException("Invalid commandid: $commandIdString parsed from cloud event: $cloudEvent")
-            }
             return when (cloudEvent.type.split('.').last()) {
                 "DatabaseCreated" -> DatabaseCreated(
                     eventId,
-                    commandId,
-                    databaseId,
                     databaseCreationInfoFromBytes(dataBytes),
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
-                    commandId,
-                    databaseId,
                     databaseDeletionInfoFromBytes(dataBytes),
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
-                    commandId,
-                    databaseId,
                     batchFromBytes(dataBytes),
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     invalidDatabaseNameErrorFromBytes(dataBytes)
                 )
                 "DatabaseNameAlreadyExistsError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     databaseNameAlreadyExistsErrorFromBytes(dataBytes)
                 )
                 "DatabaseNotFoundError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     databaseNotFoundErrorFromBytes(dataBytes)
                 )
                 "NoEventsProvidedError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     noEventsProvidedErrorFromBytes(dataBytes)
                 )
                 "InvalidEventsError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     invalidEventsErrorFromBytes(dataBytes)
                 )
                 "StreamStateConflictsError" -> ErrorEnvelope(
                     eventId,
-                    commandId,
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )

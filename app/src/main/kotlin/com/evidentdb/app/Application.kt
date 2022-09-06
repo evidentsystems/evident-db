@@ -40,16 +40,13 @@ class Configuration {
 	fun service(
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
-		@Value("\${kafka.topics.internal-commands.name}")
-		internalCommandsTopic: String,
-		@Value("\${kafka.topics.internal-events.name}")
-		internalEventsTopic: String,
+		@Value("\${kafka.topics.log.name}")
+		logTopic: String,
 		meterRegistry: MeterRegistry,
 		): KafkaService =
 		KafkaService(
 			kafkaBootstrapServers,
-			internalCommandsTopic,
-			internalEventsTopic,
+			logTopic,
 			transactorTopologyRunner.streams,
 			TransactorTopology.DATABASE_STORE,
 			meterRegistry,
@@ -63,12 +60,8 @@ class Configuration {
 class TransactorTopologyRunner(
 	@Value("\${evidentdb.transactor.state.dir}")
 	stateDir: String,
-	@Value("\${kafka.topics.internal-commands.name}")
-	internalCommandsTopic: String,
-	@Value("\${kafka.topics.internal-commands.partitions}")
-	internalCommandsPartitions: Int,
-	@Value("\${kafka.topics.internal-events.name}")
-	internalEventsTopic: String,
+	@Value("\${kafka.topics.log.name}")
+	logTopic: String,
 	@Value("\${micronaut.application.name}")
 	applicationId: String,
 	@Value("\${kafka.bootstrap.servers}")
@@ -86,10 +79,10 @@ class TransactorTopologyRunner(
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
 		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "exactly_once_v2"
 		config[StreamsConfig.TOPOLOGY_OPTIMIZATION_CONFIG] = StreamsConfig.OPTIMIZE
-		config[StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG)] = "all"
-		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = 0
 		config[StreamsConfig.RETRY_BACKOFF_MS_CONFIG] = 0
-		config[StreamsConfig.NUM_STREAM_THREADS_CONFIG] = internalCommandsPartitions
+		config[StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG)] = "all"
+		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = 0 // TODO: configurable?
+		config[StreamsConfig.topicPrefix(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG)] = 1 // 2 // TODO: configurable
 		// TODO: standby replicas for query high-availability
 		// config[StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG] = 1
 //      On broker:
@@ -97,8 +90,7 @@ class TransactorTopologyRunner(
 //		log.flush.interval.ms=0
 
 		val topology = TransactorTopology.build(
-			internalCommandsTopic,
-			internalEventsTopic,
+			logTopic,
 			meterRegistry,
 		)
 

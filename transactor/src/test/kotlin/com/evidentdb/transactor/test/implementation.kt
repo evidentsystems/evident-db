@@ -4,21 +4,16 @@ import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
-import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.transactor.TransactorTopology
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.TopologyTestDriver
 
-const val INTERNAL_COMMAND_TOPIC = "internal-commands"
-const val INTERNAL_EVENTS_TOPIC = "internal-events"
+const val LOG_TOPIC = "evidentdb-log"
 
 fun topology() =
-    TransactorTopology.build(
-        INTERNAL_COMMAND_TOPIC,
-        INTERNAL_EVENTS_TOPIC,
-    )
+    TransactorTopology.build(LOG_TOPIC)
 
 fun driver(): TopologyTestDriver =
     TopologyTestDriver(topology())
@@ -28,20 +23,14 @@ class TopologyTestDriverCommandManager(
 ): CommandManager {
     private val inputTopic =
         driver.createInputTopic(
-            INTERNAL_COMMAND_TOPIC,
-            Serdes.UUID().serializer(),
-            CommandEnvelopeSerde.CommandEnvelopeSerializer()
-        )
-    private val outputTopic =
-        driver.createOutputTopic(
-            INTERNAL_EVENTS_TOPIC,
+            LOG_TOPIC,
             Serdes.UUID().deserializer(),
             EventEnvelopeSerde.EventEnvelopeDeserializer()
         )
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> {
         inputTopic.pipeInput(command.id, command)
-        val eventKV = outputTopic.readKeyValue()
+        val eventKV = inputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseCreated -> event.right()
             is ErrorEnvelope -> when(val data = event.data) {
@@ -54,7 +43,7 @@ class TopologyTestDriverCommandManager(
 
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> {
         inputTopic.pipeInput(command.id, command)
-        val eventKV = outputTopic.readKeyValue()
+        val eventKV = inputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseDeleted -> event.right()
             is ErrorEnvelope -> when(val data = event.data) {
@@ -68,7 +57,7 @@ class TopologyTestDriverCommandManager(
 
     override suspend fun transactBatch(command: TransactBatch): Either<BatchTransactionError, BatchTransacted> {
         inputTopic.pipeInput(command.id, command)
-        val eventKV = outputTopic.readKeyValue()
+        val eventKV = inputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is BatchTransacted -> event.right()
             is ErrorEnvelope -> when(val data = event.data) {

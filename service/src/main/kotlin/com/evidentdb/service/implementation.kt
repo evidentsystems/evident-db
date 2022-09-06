@@ -218,10 +218,7 @@ class KafkaCommandManager(
 
 class KafkaService(
     kafkaBootstrapServers: String,
-    internalCommandsTopic: String,
-    internalEventsTopic: String,
-
-    // TODO: remove below, implement via gRPC client
+    logTopic: String,
     streams: KafkaStreams,
     databaseStoreName: String,
     meterRegistry: MeterRegistry,
@@ -237,7 +234,7 @@ class KafkaService(
     override val commandManager = KafkaCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,
-        internalEventsTopic,
+        logTopic,
         meterRegistry,
     )
 

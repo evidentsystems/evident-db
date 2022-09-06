@@ -1,11 +1,7 @@
 package com.evidentdb.transactor
 
-import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
-import io.micrometer.core.annotation.Timed
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
@@ -15,14 +11,12 @@ import org.apache.kafka.streams.state.Stores
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.*
-import kotlin.concurrent.timer
 
 object TransactorTopology {
     private val LOGGER: Logger = LoggerFactory.getLogger(TransactorTopology::class.java)
 
-    private const val INTERNAL_COMMAND_SOURCE = "INTERNAL_COMMANDS"
+    private const val LOG_SOURCE = "INTERNAL_EVENT_LOG_SOURCE"
 
-    private const val COMMAND_PROCESSOR = "COMMAND_PROCESSOR"
     private const val DATABASE_INDEXER = "DATABASE_INDEXER"
     private const val BATCH_INDEXER = "BATCH_INDEXER"
     private const val STREAM_INDEXER = "STREAM_INDEXER"
@@ -33,48 +27,37 @@ object TransactorTopology {
     const val STREAM_STORE = "STREAM_STORE"
     const val EVENT_STORE = "EVENT_STORE"
 
-    private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
-
-    fun build(
-        internalCommandsTopic: String,
-        internalEventsTopic: String,
-        meterRegistry: MeterRegistry,
-    ): Topology {
-        LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic")
+    fun build(logTopic: String): Topology {
+        LOGGER.info("Building Transactor Topology: $logTopic")
         val topology = Topology()
         val databaseNameSerde = DatabaseNameSerde()
 
         topology.addSource(
-            INTERNAL_COMMAND_SOURCE,
+            LOG_SOURCE,
             Serdes.UUID().deserializer(),
-            CommandEnvelopeSerde.CommandEnvelopeDeserializer(),
-            internalCommandsTopic,
+            EventEnvelopeSerde.EventEnvelopeDeserializer(),
+            logTopic,
         )
 
         topology.addProcessor(
-            COMMAND_PROCESSOR,
-            ProcessorSupplier { CommandProcessor(meterRegistry) },
-            INTERNAL_COMMAND_SOURCE,
-        )
-        topology.addProcessor(
             DATABASE_INDEXER,
             DatabaseIndexer::create,
-            COMMAND_PROCESSOR,
+            LOG_SOURCE,
         )
         topology.addProcessor(
             BATCH_INDEXER,
             BatchIndexer::create,
-            COMMAND_PROCESSOR,
+            LOG_SOURCE,
         )
         topology.addProcessor(
             STREAM_INDEXER,
             StreamIndexer::create,
-            COMMAND_PROCESSOR,
+            LOG_SOURCE,
         )
         topology.addProcessor(
             EVENT_INDEXER,
             EventIndexer::create,
-            COMMAND_PROCESSOR,
+            LOG_SOURCE,
         )
 
         topology.addStateStore(
@@ -83,7 +66,6 @@ object TransactorTopology {
                 databaseNameSerde,
                 DatabaseSerde(),
             ),
-            COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             STREAM_INDEXER,
         )
@@ -101,7 +83,6 @@ object TransactorTopology {
                 Serdes.String(), // StreamKey
                 listSerde(Serdes.UUID()), // List<EventId>
             ),
-            COMMAND_PROCESSOR,
             STREAM_INDEXER,
         )
 
@@ -119,16 +100,6 @@ object TransactorTopology {
             EVENT_INDEXER,
         )
 
-        // Event Log
-        topology.addSink(
-            INTERNAL_EVENT_SINK,
-            internalEventsTopic,
-            Serdes.UUID().serializer(),
-            EventEnvelopeSerde.EventEnvelopeSerializer(),
-            DatabaseStreamPartitioner(),
-            COMMAND_PROCESSOR,
-        )
-
         return topology
     }
 
@@ -137,60 +108,60 @@ object TransactorTopology {
             partitionByDatabase(value!!.database, numPartitions)
     }
 
-    private class CommandProcessor(val meterRegistry: MeterRegistry):
-        ContextualProcessor<CommandId, CommandEnvelope, EventId, EventEnvelope>() {
-        private var transactor = KafkaStreamsCommandHandler()
+    // private class CommandProcessor(val meterRegistry: MeterRegistry):
+    //     ContextualProcessor<CommandId, CommandEnvelope, EventId, EventEnvelope>() {
+    //     private var transactor = KafkaStreamsCommandHandler()
 
-        override fun init(context: ProcessorContext<EventId, EventEnvelope>?) {
-            super.init(context)
-            transactor.init(
-                context().getStateStore(DATABASE_STORE),
-                context().getStateStore(STREAM_STORE)
-            )
-        }
+    //     override fun init(context: ProcessorContext<EventId, EventEnvelope>?) {
+    //         super.init(context)
+    //         transactor.init(
+    //             context().getStateStore(DATABASE_STORE),
+    //             context().getStateStore(STREAM_STORE)
+    //         )
+    //     }
 
-        override fun close() {
-            super.close()
-            this.transactor = KafkaStreamsCommandHandler()
-        }
+    //     override fun close() {
+    //         super.close()
+    //         this.transactor = KafkaStreamsCommandHandler()
+    //     }
 
-        override fun process(record: Record<CommandId, CommandEnvelope>?): Unit = runBlocking {
-            val sample = Timer.start()
+    //     override fun process(record: Record<CommandId, CommandEnvelope>?): Unit = runBlocking {
+    //         val sample = Timer.start()
 
-            val command = record?.value() ?: throw IllegalStateException()
-            LOGGER.info("Processing command: ${command.id}")
-            LOGGER.debug("Command data: $command")
-            val event = when (command) {
-                is CreateDatabase -> transactor.handleCreateDatabase(command)
-                is DeleteDatabase -> transactor.handleDeleteDatabase(command)
-                is TransactBatch  -> transactor.handleTransactBatch(command)
-            }.getOrHandle { error ->
-                ErrorEnvelope(
-                    EventId.randomUUID(),
-                    command.id,
-                    command.database,
-                    error
-                )
-            }
-            LOGGER.info("Resulting event: ${event.id}")
-            LOGGER.debug("Event data: $event")
+    //         val command = record?.value() ?: throw IllegalStateException()
+    //         LOGGER.info("Processing command: ${command.id}")
+    //         LOGGER.debug("Command data: $command")
+    //         val event = when (command) {
+    //             is CreateDatabase -> transactor.handleCreateDatabase(command)
+    //             is DeleteDatabase -> transactor.handleDeleteDatabase(command)
+    //             is TransactBatch  -> transactor.handleTransactBatch(command)
+    //         }.getOrHandle { error ->
+    //             ErrorEnvelope(
+    //                 EventId.randomUUID(),
+    //                 command.id,
+    //                 command.database,
+    //                 error
+    //             )
+    //         }
+    //         LOGGER.info("Resulting event: ${event.id}")
+    //         LOGGER.debug("Event data: $event")
 
-            context().forward(
-                Record(
-                    event.id,
-                    event,
-                    context().currentStreamTimeMs()
-                )
-            )
+    //         context().forward(
+    //             Record(
+    //                 event.id,
+    //                 event,
+    //                 context().currentStreamTimeMs()
+    //             )
+    //         )
 
-            sample.stop(
-                meterRegistry.timer(
-                    "transactor.processing.duration",
-                    "event.type", event.type,
-                )
-            )
-        }
-    }
+    //         sample.stop(
+    //             meterRegistry.timer(
+    //                 "transactor.processing.duration",
+    //                 "event.type", event.type,
+    //             )
+    //         )
+    //     }
+    // }
 
     private class DatabaseIndexer:
         ContextualProcessor<EventId, EventEnvelope, DatabaseName, Database>() {
@@ -205,16 +176,10 @@ object TransactorTopology {
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.databaseUpdate(event)
+            val database = databaseStore.database(event.database)
+            val result = EventHandler.databaseUpdate(database, event)
             if (result != null) {
                 val (databaseName, database) = result
-                context().forward(
-                    Record(
-                        databaseName,
-                        database,
-                        context().currentStreamTimeMs()
-                    )
-                )
                 if (database == null) {
                     databaseStore.deleteDatabase(databaseName)
                 } else {

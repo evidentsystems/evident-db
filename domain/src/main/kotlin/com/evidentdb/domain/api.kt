@@ -2,6 +2,7 @@ package com.evidentdb.domain
 
 import arrow.core.Either
 import arrow.core.computations.either
+import java.time.Instant
 
 // TODO: pervasive offset tracking from system/tenent-level event-log
 //       offset down to database and stream revisions
@@ -48,8 +49,6 @@ interface Service {
         either {
             val name = DatabaseName.of(proposedName).bind()
             val command = CreateDatabase(
-                CommandId.randomUUID(),
-                name,
                 DatabaseCreationInfo(name)
             )
             commandManager.createDatabase(command).bind()
@@ -61,8 +60,6 @@ interface Service {
             val name = DatabaseName.of(nameStr).bind()
             validateDatabaseExists(databaseReadModel, name).bind()
             val command = DeleteDatabase(
-                CommandId.randomUUID(),
-                name,
                 DatabaseDeletionInfo(name)
             )
             commandManager.deleteDatabase(command).bind()
@@ -77,8 +74,6 @@ interface Service {
             validateDatabaseExists(databaseReadModel, databaseName).bind()
             val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
             val command = TransactBatch(
-                CommandId.randomUUID(),
-                databaseName,
                 ProposedBatch(
                     BatchId.randomUUID(),
                     databaseName,
@@ -116,11 +111,8 @@ interface CommandHandler {
                 databaseReadModel,
                 command.data.name,
             ).bind()
-            val database = Database(availableName)
             DatabaseCreated(
                 EventId.randomUUID(),
-                command.id,
-                availableName,
                 DatabaseCreationInfo(availableName),
             )
         }
@@ -134,8 +126,6 @@ interface CommandHandler {
             ).bind()
             DatabaseDeleted(
                 EventId.randomUUID(),
-                command.id,
-                databaseName,
                 DatabaseDeletionInfo(databaseName),
             )
         }
@@ -154,24 +144,39 @@ interface CommandHandler {
             ).bind()
             BatchTransacted(
                 EventId.randomUUID(),
-                command.id,
-                databaseName,
                 validBatch
             )
         }
 }
 
 object EventHandler {
-    fun databaseUpdate(event: EventEnvelope)
+    // TODO: update this to include revision, clock, etc.
+    fun databaseUpdate(database: Database?, event: EventEnvelope)
             : Pair<DatabaseName, Database?>? {
-        val database = event.database
+        val databaseName = event.database
         val newDatabase = when (event) {
-            is DatabaseCreated -> Database(event.data.name)
+            is DatabaseCreated -> Database(
+                event.data.name,
+                Instant.now(),
+                event.id,
+                0,
+                mapOf()
+            )
+            is BatchTransacted -> {
+                database ?: throw IllegalStateException()
+                Database(
+                    database.name,
+                    database.created,
+                    event.id,
+                    database.revision + event.data.events.size,
+                    database.streamRevisions,
+                )
+            }
             is DatabaseDeleted -> null
             else -> return null
         }
 
-        return Pair(database, newDatabase)
+        return Pair(databaseName, newDatabase)
     }
 
     fun batchToIndex(event: EventEnvelope): Pair<BatchKey, List<EventId>>? {

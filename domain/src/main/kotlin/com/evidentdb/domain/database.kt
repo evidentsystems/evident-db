@@ -29,3 +29,16 @@ fun validateDatabaseNameNotTaken(
         DatabaseNameAlreadyExistsError(name).invalid()
     else
         name.valid()
+
+fun nextStreamRevisions(
+    streamRevisions: Map<StreamName, StreamRevision>,
+    batch: Batch,
+): Map<StreamName, StreamRevision> {
+    val ret = streamRevisions.toMutableMap()
+    batch.events.fold(ret) { acc, event ->
+        val revision = acc[event.stream] ?: 0
+        acc.put(event.stream, revision + 1)
+        acc
+    }
+    return ret
+}

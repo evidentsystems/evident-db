@@ -11,8 +11,13 @@ CARGO  ?= cargo
 CLUSTER_TYPE ?= kafka
 REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
+PARTITION_COUNT ?= 4
 DOCKER_COMPOSE ?= docker compose
 RPK ?= docker exec -it redpanda-0 rpk
+
+# Load testing
+GHZ ?= ghz --insecure --proto ./proto/service.proto
+GRPC_ENDPOINT ?= localhost:50051
 
 default: build
 
@@ -44,8 +49,8 @@ clean-kafka:
 
 .PHONY: kafka-topics
 kafka-topics:
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions 12 --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
@@ -86,7 +91,10 @@ run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
 
 .PHONY: perf
 perf:
-	cd perf/ && $(CARGO) run
+	-$(GHZ) --call com.evidentdb.EvidentDb/createDatabase -n 1 -d '{"name": "load-test"}' $(GRPC_ENDPOINT) &>/dev/null
+	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -D ./load-test.json $(GRPC_ENDPOINT)
+	-$(GHZ) --call com.evidentdb.EvidentDb/deleteDatabase -n 1 -d '{"name": "load-test"}' $(GRPC_ENDPOINT) &>/dev/null
+#	cd perf/ && $(CARGO) run
 
 # Clean up
 

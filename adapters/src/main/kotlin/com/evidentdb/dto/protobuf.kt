@@ -262,8 +262,8 @@ fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsEr
                 unvalidatedProposedEventFromProto(invalidEvent.event),
                 invalidEvent.invalidationsList.map { error ->
                     when(error.invalidationCase) {
-                        INVALIDSTREAMNAME -> InvalidStreamName(error.invalidStreamName.streamName)
-                        INVALIDEVENTTYPE -> InvalidEventType(error.invalidEventType.eventType)
+                        INVALID_STREAM_NAME -> InvalidStreamName(error.invalidStreamName.streamName)
+                        INVALID_EVENT_TYPE -> InvalidEventType(error.invalidEventType.eventType)
                         else -> throw IllegalArgumentException("Error parsing invalid event error from protobuf")
                     }
                 }

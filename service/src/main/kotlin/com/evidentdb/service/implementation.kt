@@ -202,10 +202,12 @@ class KafkaCommandManager(
         LOGGER.debug("Command data: $command")
         try {
             val metadata = producer.publish(ProducerRecord(internalCommandsTopic, command.id, command))
-            LOGGER.info("...sent: ${metadata.topic()}-${metadata.partition()}" +
+            LOGGER.info("...sent ${command.id}")
+            LOGGER.debug("Command ${command.id} record metadata: ${metadata.topic()}-${metadata.partition()}" +
                     "@${metadata.offset()}" +
                     ", timestamp: ${metadata.timestamp()}" +
-                    ", value size: ${metadata.serializedValueSize()}")
+                    ", value size: ${metadata.serializedValueSize()}"
+            )
         } catch (e: RuntimeException) {
             return InternalServerError("Unknown exception was thrown: $e").left()
         }

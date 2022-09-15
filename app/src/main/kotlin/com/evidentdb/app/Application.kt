@@ -76,7 +76,7 @@ class TransactorTopologyRunner(
 	meterRegistry: MeterRegistry,
 ) {
 	val streams: KafkaStreams
-	val metrics: KafkaStreamsMetrics
+	private val metrics: KafkaStreamsMetrics
 
 	init {
 		val config = Properties()

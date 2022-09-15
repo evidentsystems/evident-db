@@ -24,6 +24,8 @@ dependencies {
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
 
+    implementation(libs.micrometer.core)
+
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)
 }

@@ -14,8 +14,6 @@ import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.header.internals.RecordHeaders
 import org.apache.kafka.common.serialization.*
 
-// TODO: extract to/from CloudEvent functions into a separate cloudevent adapter
-// TODO: harmonize/DRY cloudevent adapter with protobuf adapter
 class ListSerde<Inner> : Serdes.WrapperSerde<List<Inner>> {
     constructor() : super(ListSerializer<Inner>(), ListDeserializer<Inner>())
     constructor(serializer: ListSerializer<Inner>, deserializer: ListDeserializer<Inner>) : super(serializer, deserializer)

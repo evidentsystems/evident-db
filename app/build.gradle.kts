@@ -25,6 +25,9 @@ dependencies {
     implementation("jakarta.annotation:jakarta.annotation-api")
     runtimeOnly("ch.qos.logback:logback-classic")
     implementation("io.micronaut:micronaut-validation")
+    implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
+    implementation("io.micronaut:micronaut-management")
+    implementation("io.micronaut:micronaut-http-server-netty")
 
     testImplementation("io.micronaut:micronaut-http-client")
 }
@@ -46,4 +49,5 @@ micronaut {
 
 application {
     mainClass.set("com.evidentdb.app.ApplicationKt")
+    applicationDefaultJvmArgs = listOf("-Xmx4g", "-Xms4g")
 }

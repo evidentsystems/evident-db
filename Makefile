@@ -12,6 +12,7 @@ CLUSTER_TYPE ?= kafka
 REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 PARTITION_COUNT ?= 4
+COMPRESSION_TYPE ?= uncompressed# snappy
 DOCKER_COMPOSE ?= docker compose
 RPK ?= docker exec -it redpanda-0 rpk
 
@@ -37,7 +38,7 @@ build: app/build/libs/app-*-all.jar
 
 .PHONY: start-kafka
 start-kafka:
-	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml up -d
+	$(DOCKER_COMPOSE) -p evident-db-kafka -f docker-compose.kafka.yml up -d --remove-orphans
 
 .PHONY: stop-kafka
 stop-kafka:
@@ -49,8 +50,8 @@ clean-kafka:
 
 .PHONY: kafka-topics
 kafka-topics:
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=snappy --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
@@ -107,7 +108,7 @@ TRANSACTOR_APP_ID ?= evident-db-transactor
 
 .PHONY: clean-topology-data
 clean-topology-data:
-	kafka-streams-application-reset --application-id $(TRANSACTOR_APP_ID) --bootstrap-servers $(KAFKA_BOOTSTRAP_SERVERS)
+	kafka-streams-application-reset --force --application-id $(TRANSACTOR_APP_ID) --bootstrap-servers $(KAFKA_BOOTSTRAP_SERVERS)
 	rm -rf data/service/* data/transactor/*
 	rm -rf app/data/service/* app/data/transactor/*
 

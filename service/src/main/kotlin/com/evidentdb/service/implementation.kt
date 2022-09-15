@@ -13,6 +13,9 @@ import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseReadModelStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.kafka.partitionByDatabase
+import io.micrometer.core.instrument.Timer
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import org.apache.kafka.clients.consumer.Consumer
@@ -69,11 +72,15 @@ class KafkaCommandManager(
     kafkaBootstrapServers: String,
     private val internalCommandsTopic: String,
     private val internalEventsTopic: String,
+    private val meterRegistry: MeterRegistry,
 ) : CommandManager, AutoCloseable {
     private val running = AtomicBoolean(true)
     private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
+    private val samples = ConcurrentHashMap<CommandId, Timer.Sample>()
     private val producer: Producer<CommandId, CommandEnvelope>
+    private val producerMetrics: KafkaClientMetrics
     private val consumer: Consumer<EventId, EventEnvelope>
+    private val consumerMetrics: KafkaClientMetrics
 
     companion object {
         private const val REQUEST_TIMEOUT = 3000L
@@ -87,8 +94,14 @@ class KafkaCommandManager(
         // TODO: configurable CLIENT_ID
         producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::class.java
         producerConfig[ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG] = 30 * 1000 // TODO: configurable?
-        producerConfig[ProducerConfig.LINGER_MS_CONFIG] = 0 // TODO: configurable?
-        this.producer = KafkaProducer<CommandId, CommandEnvelope>(producerConfig, UUIDSerializer(), CommandEnvelopeSerde.CommandEnvelopeSerializer())
+        producerConfig[ProducerConfig.LINGER_MS_CONFIG] = 0
+        this.producer = KafkaProducer(
+            producerConfig,
+            UUIDSerializer(),
+            CommandEnvelopeSerde.CommandEnvelopeSerializer()
+        )
+        this.producerMetrics = KafkaClientMetrics(producer)
+        producerMetrics.bindTo(meterRegistry)
 
         val consumerConfig = Properties()
         consumerConfig[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
@@ -96,7 +109,13 @@ class KafkaCommandManager(
         consumerConfig[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
         consumerConfig[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = false
         consumerConfig[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = false
-        this.consumer = KafkaConsumer<EventId, EventEnvelope>(consumerConfig, UUIDDeserializer(), EventEnvelopeSerde.EventEnvelopeDeserializer())
+        this.consumer = KafkaConsumer(
+            consumerConfig,
+            UUIDDeserializer(),
+            EventEnvelopeSerde.EventEnvelopeDeserializer()
+        )
+        this.consumerMetrics = KafkaClientMetrics(consumer)
+        consumerMetrics.bindTo(meterRegistry)
         thread {
             try {
                 consumer.assign(consumer.listTopics()[internalEventsTopic]!!.map {
@@ -106,13 +125,18 @@ class KafkaCommandManager(
                     consumer.poll(CONSUMER_POLL_INTERVAL).forEach { record ->
                         LOGGER.info("Event received: ${record.key()}")
                         LOGGER.debug("Event data: ${record.value()}")
-                        inFlight.remove(record.value().commandId)?.complete(record.value())
+                        val commandId = record.value().commandId
+                        inFlight.remove(commandId)?.complete(record.value())
+                        samples.remove(commandId)?.stop(
+                            meterRegistry.timer("in.flight.requests")
+                        )
                     }
                 }
             } catch (e: WakeupException) {
                 if (running.get()) throw e
             } finally {
                 consumer.close()
+                consumerMetrics.close()
             }
         }
     }
@@ -165,22 +189,27 @@ class KafkaCommandManager(
     override fun close() {
         running.set(false)
         consumer.wakeup()
-        producer.close(Duration.ofMillis(5000)) // TODO: configurable?
+        producer.close(Duration.ofMillis(10000))
+        producerMetrics.close()
     }
 
     private suspend fun publishCommand(command: CommandEnvelope): Either<InternalServerError, CompletableDeferred<EventEnvelope>> {
         val deferred = CompletableDeferred<EventEnvelope>()
         inFlight[command.id] = deferred
+        samples[command.id] = Timer.start(meterRegistry)
 
         LOGGER.info("Sending command: ${command.id}...")
         LOGGER.debug("Command data: $command")
         try {
-            producer.publish(ProducerRecord(internalCommandsTopic, command.id, command))
+            val metadata = producer.publish(ProducerRecord(internalCommandsTopic, command.id, command))
+            LOGGER.info("...sent: ${metadata.topic()}-${metadata.partition()}" +
+                    "@${metadata.offset()}" +
+                    ", timestamp: ${metadata.timestamp()}" +
+                    ", value size: ${metadata.serializedValueSize()}")
         } catch (e: RuntimeException) {
             return InternalServerError("Unknown exception was thrown: $e").left()
         }
 
-        LOGGER.info("...sent.")
         return deferred.right()
     }
 }
@@ -193,6 +222,7 @@ class KafkaService(
     // TODO: remove below, implement via gRPC client
     streams: KafkaStreams,
     databaseStoreName: String,
+    meterRegistry: MeterRegistry,
 ): Service, AutoCloseable {
     override val databaseReadModel = DatabaseReadModelStore(
         streams.store(
@@ -205,7 +235,8 @@ class KafkaService(
     override val commandManager = KafkaCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,
-        internalEventsTopic
+        internalEventsTopic,
+        meterRegistry,
     )
 
     override fun close() {

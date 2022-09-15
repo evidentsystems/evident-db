@@ -16,6 +16,7 @@ dependencies {
 
     implementation(libs.kafka.streams)
     implementation(libs.cloudevents.api)
+    implementation(libs.micrometer.core)
 
     testImplementation(project(":test"))
     testImplementation(libs.kafka.streams.test.utils)

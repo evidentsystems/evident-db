@@ -3,6 +3,9 @@ package com.evidentdb.transactor
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
+import io.micrometer.core.annotation.Timed
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
@@ -12,6 +15,7 @@ import org.apache.kafka.streams.state.Stores
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.*
+import kotlin.concurrent.timer
 
 object TransactorTopology {
     private val LOGGER: Logger = LoggerFactory.getLogger(TransactorTopology::class.java)
@@ -34,6 +38,7 @@ object TransactorTopology {
     fun build(
         internalCommandsTopic: String,
         internalEventsTopic: String,
+        meterRegistry: MeterRegistry,
     ): Topology {
         LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic")
         val topology = Topology()
@@ -48,7 +53,7 @@ object TransactorTopology {
 
         topology.addProcessor(
             COMMAND_PROCESSOR,
-            CommandProcessor::create,
+            ProcessorSupplier { CommandProcessor(meterRegistry) },
             INTERNAL_COMMAND_SOURCE,
         )
         topology.addProcessor(
@@ -132,7 +137,7 @@ object TransactorTopology {
             partitionByDatabase(value!!.database, numPartitions)
     }
 
-    private class CommandProcessor:
+    private class CommandProcessor(val meterRegistry: MeterRegistry):
         ContextualProcessor<CommandId, CommandEnvelope, EventId, EventEnvelope>() {
         private var transactor = KafkaStreamsCommandHandler()
 
@@ -149,7 +154,9 @@ object TransactorTopology {
             this.transactor = KafkaStreamsCommandHandler()
         }
 
-        override fun process(record: Record<CommandId, CommandEnvelope>?) = runBlocking {
+        override fun process(record: Record<CommandId, CommandEnvelope>?): Unit = runBlocking {
+            val sample = Timer.start()
+
             val command = record?.value() ?: throw IllegalStateException()
             LOGGER.info("Processing command: ${command.id}")
             LOGGER.debug("Command data: $command")
@@ -175,12 +182,13 @@ object TransactorTopology {
                     context().currentStreamTimeMs()
                 )
             )
-        }
 
-        companion object {
-            fun create(): CommandProcessor {
-                return CommandProcessor()
-            }
+            sample.stop(
+                meterRegistry.timer(
+                    "transactor.processing.duration",
+                    "event.type", event.type,
+                )
+            )
         }
     }
 

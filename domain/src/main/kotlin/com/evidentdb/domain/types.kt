@@ -135,6 +135,7 @@ interface Stream {
 
     companion object {
         fun create(databaseName: DatabaseName, name: StreamName, revision: StreamRevision = 0): Stream {
+            //
             // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
             return SimpleStream(databaseName, name, revision)
         }

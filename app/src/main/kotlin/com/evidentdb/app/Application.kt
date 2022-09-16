@@ -89,10 +89,7 @@ class TransactorTopologyRunner(
 //		log.flush.interval.messages=1
 //		log.flush.interval.ms=0
 
-		val topology = TransactorTopology.build(
-			logTopic,
-			meterRegistry,
-		)
+		val topology = TransactorTopology.build(logTopic)
 
 		this.streams = KafkaStreams(topology, config)
 		this.metrics = KafkaStreamsMetrics(streams, listOf(Tag.of("application.id", appId)))

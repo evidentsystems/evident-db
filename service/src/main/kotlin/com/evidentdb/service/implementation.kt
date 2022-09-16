@@ -68,24 +68,19 @@ class DatabaseIdPartitioner: Partitioner {
     override fun close() {}
 }
 
-class KafkaCommandManager(
+class StreamsCommandManager(
     kafkaBootstrapServers: String,
     private val internalCommandsTopic: String,
     private val internalEventsTopic: String,
     private val meterRegistry: MeterRegistry,
 ) : CommandManager, AutoCloseable {
-    private val running = AtomicBoolean(true)
-    private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
-    private val samples = ConcurrentHashMap<CommandId, Timer.Sample>()
-    private val producer: Producer<CommandId, CommandEnvelope>
+    private val producer: Producer<EventId, EventEnvelope>
     private val producerMetrics: KafkaClientMetrics
-    private val consumer: Consumer<EventId, EventEnvelope>
-    private val consumerMetrics: KafkaClientMetrics
 
     companion object {
         private const val REQUEST_TIMEOUT = 3000L
         private val CONSUMER_POLL_INTERVAL = Duration.ofMillis(5000) // TODO: configurable?
-        private val LOGGER: Logger = LoggerFactory.getLogger(KafkaCommandManager::class.java)
+        private val LOGGER: Logger = LoggerFactory.getLogger(StreamsCommandManager::class.java)
     }
 
     init {
@@ -231,7 +226,7 @@ class KafkaService(
             )
         )
     )
-    override val commandManager = KafkaCommandManager(
+    override val commandManager = StreamsCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,
         logTopic,

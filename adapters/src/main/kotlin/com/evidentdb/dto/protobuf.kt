@@ -339,8 +339,8 @@ fun Database.toProto(): ProtoDatabase =
 fun Database.toByteArray(): ByteArray =
     this.toProto().toByteArray()
 
-fun databaseFromProto(proto: ProtoDatabase) =
-    Database(DatabaseName.build(proto.name))
+fun databaseFromProto(proto: ProtoDatabase): Database =
+    TODO() // Database(DatabaseName.build(proto.name))
 
 fun databaseFromBytes(data: ByteArray): Database =
     databaseFromProto(ProtoDatabase.parseFrom(data))

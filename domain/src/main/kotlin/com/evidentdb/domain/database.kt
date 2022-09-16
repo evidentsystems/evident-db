@@ -36,8 +36,10 @@ fun nextStreamRevisions(
 ): Map<StreamName, StreamRevision> {
     val ret = streamRevisions.toMutableMap()
     batch.events.fold(ret) { acc, event ->
-        val revision = acc[event.stream] ?: 0
-        acc.put(event.stream, revision + 1)
+        event.stream?.let {
+            val revision = acc[event.stream] ?: 0
+            acc[it] = revision + 1
+        }
         acc
     }
     return ret

@@ -2,15 +2,12 @@ package com.evidentdb.transactor
 
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
-import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
-import org.apache.kafka.streams.processor.StreamPartitioner
 import org.apache.kafka.streams.processor.api.*
 import org.apache.kafka.streams.state.Stores
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.*
 
 object TransactorTopology {
     private val LOGGER: Logger = LoggerFactory.getLogger(TransactorTopology::class.java)
@@ -34,7 +31,7 @@ object TransactorTopology {
 
         topology.addSource(
             LOG_SOURCE,
-            Serdes.UUID().deserializer(),
+            databaseNameSerde.deserializer(),
             EventEnvelopeSerde.EventEnvelopeDeserializer(),
             logTopic,
         )
@@ -103,11 +100,6 @@ object TransactorTopology {
         return topology
     }
 
-    private class DatabaseStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
-        override fun partition(topic: String?, key: UUID?, value: EventEnvelope?, numPartitions: Int): Int =
-            partitionByDatabase(value!!.database, numPartitions)
-    }
-
     // private class CommandProcessor(val meterRegistry: MeterRegistry):
     //     ContextualProcessor<CommandId, CommandEnvelope, EventId, EventEnvelope>() {
     //     private var transactor = KafkaStreamsCommandHandler()
@@ -164,7 +156,7 @@ object TransactorTopology {
     // }
 
     private class DatabaseIndexer:
-        ContextualProcessor<EventId, EventEnvelope, DatabaseName, Database>() {
+        ContextualProcessor<DatabaseName, EventEnvelope, DatabaseName, Database>() {
         lateinit var databaseStore: DatabaseStore
 
         override fun init(context: ProcessorContext<DatabaseName, Database>?) {
@@ -174,10 +166,10 @@ object TransactorTopology {
             )
         }
 
-        override fun process(record: Record<EventId, EventEnvelope>?) {
+        override fun process(record: Record<DatabaseName, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val database = databaseStore.database(event.database)
-            val result = EventHandler.databaseUpdate(database, event)
+            val initialDatabase = databaseStore.database(event.database)
+            val result = EventHandler.databaseUpdate(initialDatabase, event)
             if (result != null) {
                 val (databaseName, database) = result
                 if (database == null) {

@@ -72,6 +72,7 @@ class KafkaCommandManager(
     kafkaBootstrapServers: String,
     private val internalCommandsTopic: String,
     private val internalEventsTopic: String,
+    producerLingerMs: Int,
     private val meterRegistry: MeterRegistry,
 ) : CommandManager, AutoCloseable {
     private val running = AtomicBoolean(true)
@@ -93,8 +94,7 @@ class KafkaCommandManager(
         producerConfig[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
         // TODO: configurable CLIENT_ID
         producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::class.java
-        producerConfig[ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG] = 30 * 1000 // TODO: configurable?
-        producerConfig[ProducerConfig.LINGER_MS_CONFIG] = 0
+        producerConfig[ProducerConfig.LINGER_MS_CONFIG] = producerLingerMs
         this.producer = KafkaProducer(
             producerConfig,
             UUIDSerializer(),
@@ -224,6 +224,7 @@ class KafkaService(
     // TODO: remove below, implement via gRPC client
     streams: KafkaStreams,
     databaseStoreName: String,
+    producerLingerMs: Int,
     meterRegistry: MeterRegistry,
 ): Service, AutoCloseable {
     override val databaseReadModel = DatabaseReadModelStore(
@@ -238,6 +239,7 @@ class KafkaService(
         kafkaBootstrapServers,
         internalCommandsTopic,
         internalEventsTopic,
+        producerLingerMs,
         meterRegistry,
     )
 

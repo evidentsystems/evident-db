@@ -16,6 +16,10 @@ evidentdb:
 kafka:
   bootstrap:
     servers: localhost:9092
+  producer:
+    linger.ms: 5
+  streams:
+    producer.linger.ms: 0
   topics:
     internal-commands:
       name: evidentdb-internal-commands

@@ -43,14 +43,17 @@ class Configuration {
 		internalCommandsTopic: String,
 		@Value("\${kafka.topics.internal-events.name}")
 		internalEventsTopic: String,
+		@Value("\${kafka.producer.linger.ms}")
+		producerLingerMs: Int,
 		meterRegistry: MeterRegistry,
-		): KafkaService =
+	): KafkaService =
 		KafkaService(
 			kafkaBootstrapServers,
 			internalCommandsTopic,
 			internalEventsTopic,
 			transactorTopologyRunner.streams,
 			TransactorTopology.DATABASE_STORE,
+			producerLingerMs,
 			meterRegistry,
 		)
 
@@ -72,6 +75,8 @@ class TransactorTopologyRunner(
 	applicationId: String,
 	@Value("\${kafka.bootstrap.servers}")
 	kafkaBootstrapServers: String,
+	@Value("\${kafka.streams.producer.linger.ms}")
+	producerLingerMs: Int,
 	meterRegistry: MeterRegistry,
 ) {
 	val streams: KafkaStreams
@@ -86,7 +91,7 @@ class TransactorTopologyRunner(
 		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "exactly_once_v2"
 		config[StreamsConfig.TOPOLOGY_OPTIMIZATION_CONFIG] = StreamsConfig.OPTIMIZE
 		config[StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG)] = "all"
-		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = 0
+		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = producerLingerMs
 		config[StreamsConfig.RETRY_BACKOFF_MS_CONFIG] = 0
 		config[StreamsConfig.NUM_STREAM_THREADS_CONFIG] = internalCommandsPartitions
 		// TODO: standby replicas for query high-availability

@@ -6,7 +6,6 @@ import com.evidentdb.service.KafkaService
 import com.evidentdb.transactor.TransactorTopology
 import io.grpc.BindableService
 import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Tag
 import io.micrometer.core.instrument.binder.kafka.KafkaStreamsMetrics
 import io.micronaut.context.annotation.Bean
 import io.micronaut.context.annotation.Factory
@@ -103,7 +102,7 @@ class TransactorTopologyRunner(
 		)
 
 		this.streams = KafkaStreams(topology, config)
-		this.metrics = KafkaStreamsMetrics(streams, listOf(Tag.of("application.id", appId)))
+		this.metrics = KafkaStreamsMetrics(streams)
 		metrics.bindTo(meterRegistry)
 	}
 

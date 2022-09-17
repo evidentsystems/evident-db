@@ -8,6 +8,7 @@ import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.DatabaseStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.transactor.TransactorTopology
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.TopologyTestDriver
 
@@ -18,6 +19,7 @@ fun topology() =
     TransactorTopology.build(
         INTERNAL_COMMAND_TOPIC,
         INTERNAL_EVENTS_TOPIC,
+        SimpleMeterRegistry()
     )
 
 fun driver(): TopologyTestDriver =

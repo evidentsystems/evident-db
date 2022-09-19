@@ -7,8 +7,7 @@ MAKEFLAGS += --no-builtin-rules
 
 GRADLE ?= ./gradlew
 CARGO  ?= cargo
-# or redpanda
-CLUSTER_TYPE ?= kafka
+CLUSTER_TYPE ?= kafka# or redpanda
 REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 PARTITION_COUNT ?= 4
@@ -109,7 +108,7 @@ run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
 .PHONY: perf
 perf:
 	-$(GHZ) --call com.evidentdb.EvidentDb/createDatabase -n $(LOAD_TEST_DB_COUNT) -d '{"name": "load-test-{{.RequestNumber}}"}' $(LOAD_TEST_GRPC_ENDPOINT) &>/dev/null
-	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) * 2 )) -n 1000 -d $(LOAD_TEST_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
+	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) / 2 )) -n 1000 -d $(LOAD_TEST_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
 	-$(GHZ) --call com.evidentdb.EvidentDb/deleteDatabase -n $(LOAD_TEST_DB_COUNT) -d '{"name": "load-test-{{.RequestNumber}}"}' $(LOAD_TEST_GRPC_ENDPOINT) &>/dev/null
 #	cd perf/ && $(CARGO) run
 

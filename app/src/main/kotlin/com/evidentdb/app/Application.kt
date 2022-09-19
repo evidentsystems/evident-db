@@ -88,7 +88,7 @@ class TransactorTopologyRunner(
 		config[StreamsConfig.APPLICATION_ID_CONFIG] = appId
 		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
-		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "exactly_once_v2"
+		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "at_least_once" // "exactly_once_v2"
 		config[StreamsConfig.TOPOLOGY_OPTIMIZATION_CONFIG] = StreamsConfig.OPTIMIZE
 		config[StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG)] = "all"
 		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = producerLingerMs

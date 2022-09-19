@@ -9,14 +9,19 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.binder.kafka.KafkaStreamsMetrics
 import io.micronaut.context.annotation.Bean
 import io.micronaut.context.annotation.Factory
+import io.micronaut.context.annotation.Requires
 import io.micronaut.context.annotation.Value
-import io.micronaut.runtime.Micronaut.*
+import io.micronaut.health.HealthStatus
+import io.micronaut.management.endpoint.health.HealthEndpoint
+import io.micronaut.management.health.indicator.AbstractHealthIndicator
+import io.micronaut.management.health.indicator.annotation.Liveness
+import io.micronaut.management.health.indicator.annotation.Readiness
+import io.micronaut.runtime.Micronaut.build
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.apache.kafka.clients.producer.ProducerConfig
-import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StreamsConfig
 import java.time.Duration
@@ -33,6 +38,9 @@ fun main(args: Array<String>) {
 class Configuration {
 	@Inject
 	lateinit var transactorTopologyRunner: TransactorTopologyRunner
+
+	@Inject
+	lateinit var transactorHealthIndicator: TransactorHealthIndicator
 
 	@Bean(preDestroy = "close")
 	@Singleton
@@ -120,5 +128,28 @@ class TransactorTopologyRunner(
 	fun stop() {
 		streams.close(Duration.ofMillis(10000))
 		metrics.close()
+	}
+}
+
+@Singleton
+@Liveness
+@Readiness
+@Requires(beans = [HealthEndpoint::class])
+class TransactorHealthIndicator(
+	private val runner: TransactorTopologyRunner,
+): AbstractHealthIndicator<KafkaStreams.State>() {
+	companion object {
+		const val NAME = "transactor"
+	}
+
+	override fun getName(): String = NAME
+
+	override fun getHealthInformation(): KafkaStreams.State {
+		val state = runner.streams.state()
+		when(state) {
+			KafkaStreams.State.RUNNING -> this.healthStatus = HealthStatus.UP
+			else -> this.healthStatus = HealthStatus.DOWN
+		}
+		return state
 	}
 }

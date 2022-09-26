@@ -105,7 +105,7 @@ suspend fun validateProposedBatch(
     batchReadModel: BatchReadModel,
     batch: ProposedBatch
 ): Either<BatchTransactionError, Batch> {
-    batchReadModel.batch(batch.id)?.let {
+    batchReadModel.batchSummary(batch.id)?.let {
         return DuplicateBatchError(batch).left()
     }
     val (errors, events) = batch.events.map{

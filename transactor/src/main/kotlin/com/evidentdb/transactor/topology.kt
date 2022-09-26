@@ -91,6 +91,7 @@ object TransactorTopology {
                 Serdes.UUID(), // BatchId
                 BatchSummarySerde(), // BatchSummary
             ),
+            COMMAND_PROCESSOR,
             BATCH_INDEXER,
         )
         topology.addStateStore(

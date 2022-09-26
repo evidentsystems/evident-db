@@ -3,7 +3,6 @@ package com.evidentdb.transactor
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
-import io.micrometer.core.annotation.Timed
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
@@ -15,7 +14,6 @@ import org.apache.kafka.streams.state.Stores
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.*
-import kotlin.concurrent.timer
 
 object TransactorTopology {
     private val LOGGER: Logger = LoggerFactory.getLogger(TransactorTopology::class.java)
@@ -90,8 +88,8 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
-                Serdes.String(), // BatchKey
-                listSerde(Serdes.UUID()), // List<EventId>
+                Serdes.UUID(), // BatchId
+                BatchSummarySerde(), // BatchSummary
             ),
             BATCH_INDEXER,
         )
@@ -145,7 +143,8 @@ object TransactorTopology {
             super.init(context)
             transactor.init(
                 context().getStateStore(DATABASE_STORE),
-                context().getStateStore(STREAM_STORE)
+                context().getStateStore(STREAM_STORE),
+                context().getStateStore(BATCH_STORE),
             )
         }
 
@@ -208,13 +207,6 @@ object TransactorTopology {
             val result = EventHandler.databaseUpdate(event)
             if (result != null) {
                 val (databaseName, database) = result
-                context().forward(
-                    Record(
-                        databaseName,
-                        database,
-                        context().currentStreamTimeMs()
-                    )
-                )
                 if (database == null) {
                     databaseStore.deleteDatabase(databaseName)
                 } else {
@@ -245,19 +237,8 @@ object TransactorTopology {
             val event = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.batchToIndex(event)
             if (result != null) {
-                val (batchKey, eventIds) = result
-                context().forward(
-                    Record(
-                        batchKey,
-                        eventIds,
-                        context().currentStreamTimeMs()
-                    )
-                )
-//                if (eventIds == null) {
-//                    streamStore.deleteStream(streamKey)
-//                } else {
-                batchStore.putBatchEventIds(batchKey, eventIds)
-//                }
+                val (batchId, eventIds) = result
+                batchStore.putBatchSummary(batchId, BatchSummary(event.database, eventIds))
             }
         }
 
@@ -287,18 +268,7 @@ object TransactorTopology {
             )
             if (result != null) {
                 for ((streamKey, eventIds) in result) {
-                    context().forward(
-                        Record(
-                            streamKey,
-                            eventIds,
-                            context().currentStreamTimeMs()
-                        )
-                    )
-//                if (eventIds == null) {
-//                    streamStore.deleteStream(streamKey)
-//                } else {
                     streamStore.putStreamEventIds(streamKey, eventIds)
-//                }
                 }
             }
         }

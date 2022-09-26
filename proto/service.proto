@@ -53,7 +53,8 @@ message TransactBatchReply {
     com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
     com.evidentdb.NoEventsProvidedError no_events_provided_error = 4;
     com.evidentdb.InvalidEventsError invalid_events_error = 5;
-    com.evidentdb.StreamStateConflictsError stream_state_conflict_error = 6;
-    com.evidentdb.InternalServerError internal_server_error = 7;
+    com.evidentdb.DuplicateBatchError duplicate_batch_error = 6;
+    com.evidentdb.StreamStateConflictsError stream_state_conflict_error = 7;
+    com.evidentdb.InternalServerError internal_server_error = 8;
   }
 }

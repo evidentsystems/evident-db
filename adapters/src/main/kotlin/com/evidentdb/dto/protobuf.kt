@@ -8,6 +8,7 @@ import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionI
 import com.evidentdb.dto.v1.proto.ProposedBatch        as ProtoProposedBatch
 import com.evidentdb.dto.v1.proto.ProposedEvent        as ProtoProposedEvent
 import com.evidentdb.dto.v1.proto.Batch                as ProtoBatch
+import com.evidentdb.dto.v1.proto.BatchSummary         as ProtoBatchSummary
 import com.evidentdb.dto.v1.proto.Event                as ProtoEvent
 import com.evidentdb.dto.v1.proto.StreamState          as ProtoStreamState
 import com.evidentdb.dto.v1.proto.Database             as ProtoDatabase
@@ -18,6 +19,7 @@ import com.evidentdb.dto.v1.proto.NoEventsProvidedError          as ProtoNoEvent
 import com.evidentdb.dto.v1.proto.EventInvalidation              as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InvalidEvent                   as ProtoInvalidEvent
 import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalidEventsError
+import com.evidentdb.dto.v1.proto.DuplicateBatchError            as ProtoDuplicateBatchError
 import com.evidentdb.dto.v1.proto.StreamStateConflict            as ProtoStreamStateConflict
 import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
 import com.evidentdb.dto.v1.proto.InternalServerError            as ProtoInternalServerError
@@ -160,6 +162,28 @@ fun batchFromProto(proto: ProtoBatch): Batch {
 fun batchFromBytes(bytes: ByteArray): Batch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
 
+fun BatchSummary.toProto(): ProtoBatchSummary =
+    ProtoBatchSummary.newBuilder()
+        .setDatabase(this.database.value)
+        .addAllEventIds(this.eventIds.map { it.toString() })
+        .build()
+
+fun BatchSummary.toByteArray(): ByteArray =
+    this.toProto().toByteArray()
+
+fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
+    val databaseName = DatabaseName.build(proto.database)
+    return BatchSummary(
+        databaseName,
+        proto.eventIdsList.map {
+            EventId.fromString(it)
+        }
+    )
+}
+
+fun batchSummaryFromBytes(bytes: ByteArray): BatchSummary =
+    batchSummaryFromProto(ProtoBatchSummary.parseFrom(bytes))
+
 fun InvalidDatabaseNameError.toProto(): ProtoInvalidDatabaseNameError =
     ProtoInvalidDatabaseNameError.newBuilder()
         .setName(this.name)
@@ -274,6 +298,17 @@ fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsEr
 fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEventsError =
     invalidEventsErrorFromProto(ProtoInvalidEventsError.parseFrom(bytes))
 
+fun DuplicateBatchError.toProto(): ProtoDuplicateBatchError =
+    ProtoDuplicateBatchError.newBuilder()
+        .setBatch(this.batch.toProto())
+        .build()
+
+fun duplicateBatchErrorFromProto(proto: ProtoDuplicateBatchError) =
+    DuplicateBatchError(proposedBatchFromProto(proto.batch))
+
+fun duplicateBatchErrorFromBytes(bytes: ByteArray) =
+    duplicateBatchErrorFromProto(ProtoDuplicateBatchError.parseFrom(bytes))
+
 fun StreamStateConflictsError.toProto(): ProtoStreamStateConflictsError =
     ProtoStreamStateConflictsError.newBuilder()
         .addAllConflicts(this.conflicts.map { conflict ->
@@ -327,6 +362,7 @@ fun EventBody.toProto(): Message =
         is DatabaseNotFoundError -> this.toProto()
         is NoEventsProvidedError -> this.toProto()
         is InvalidEventsError -> this.toProto()
+        is DuplicateBatchError -> this.toProto()
         is StreamStateConflictsError -> this.toProto()
         is InternalServerError -> this.toProto()
     }

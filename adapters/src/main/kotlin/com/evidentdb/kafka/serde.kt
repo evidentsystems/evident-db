@@ -229,3 +229,19 @@ class EventSerde: Serdes.WrapperSerde<Event>(EventSerializer(), EventDeserialize
             data?.let { eventFromBytes(it) }
     }
 }
+
+class BatchSummarySerde: Serdes.WrapperSerde<BatchSummary>(
+    BatchSummarySerializer(),
+    BatchSummaryDeserializer(),
+) {
+    class BatchSummarySerializer : Serializer<BatchSummary> {
+        override fun serialize(topic: String?, data: BatchSummary?): ByteArray? =
+            data?.toByteArray()
+    }
+
+    class BatchSummaryDeserializer : Deserializer<BatchSummary> {
+        override fun deserialize(topic: String?, data: ByteArray?): BatchSummary? =
+            data?.let { batchSummaryFromBytes(it) }
+    }
+
+}

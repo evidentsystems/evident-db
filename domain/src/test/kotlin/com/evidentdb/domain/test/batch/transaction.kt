@@ -22,7 +22,7 @@ class TransactionTests {
         runBlocking {
             val databaseName = DatabaseName.build("foo")
             val database = Database(databaseName)
-            val service = InMemoryService(listOf(database), listOf())
+            val service = InMemoryService(listOf(database), listOf(), listOf())
             val result = service.transactBatch(databaseName.value, listOf())
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
@@ -33,7 +33,7 @@ class TransactionTests {
         runBlocking {
             val databaseName = DatabaseName.build("foo")
             val database = Database(databaseName)
-            val service = InMemoryService(listOf(database), listOf())
+            val service = InMemoryService(listOf(database), listOf(), listOf())
             val result = service.transactBatch(databaseName.value, listOf(
                 UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
                 UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
@@ -52,7 +52,7 @@ class TransactionTests {
         runBlocking {
             val database = Database(DatabaseName.build("foo"))
             val existingStream = Stream.create(database.name, "my-stream")
-            val service = InMemoryService(listOf(database), listOf(existingStream))
+            val service = InMemoryService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
                 UnvalidatedProposedEvent(
                     buildTestEvent("event.stream.does-not-exist-but-should"),
@@ -91,7 +91,7 @@ class TransactionTests {
         runBlocking {
             val database = Database(DatabaseName.build("foo"))
             val existingStream = Stream.create(database.name, "my-stream")
-            val service = InMemoryService(listOf(database), listOf(existingStream))
+            val service = InMemoryService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
                 UnvalidatedProposedEvent(
                     buildTestEvent("event.stream.no-stream"),

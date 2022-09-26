@@ -131,7 +131,7 @@ class TransactionTests {
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
+            val batchStore = driver.getKeyValueStore<BatchId, BatchSummary>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
             val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverService(driver)
@@ -177,7 +177,7 @@ class TransactionTests {
                 Assertions.assertEquals(it.data.events.size, 4)
                 Assertions.assertNotNull(
                     batchStore.get(
-                        buildBatchKey(databaseName, it.data.id)
+                        it.data.id
                     )
                 )
                 for (event in it.data.events) {

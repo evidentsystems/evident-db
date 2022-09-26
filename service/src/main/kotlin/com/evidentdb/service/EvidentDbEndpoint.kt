@@ -4,6 +4,7 @@ import com.evidentdb.domain.*
 import com.evidentdb.domain.Database
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.DatabaseNotFoundError
+import com.evidentdb.domain.DuplicateBatchError
 import com.evidentdb.domain.InternalServerError
 import com.evidentdb.domain.InvalidDatabaseNameError
 import com.evidentdb.domain.InvalidEventsError
@@ -95,6 +96,9 @@ class EvidentDbEndpoint(val service: Service)
                         }
                         NoEventsProvidedError -> {
                             builder.noEventsProvidedErrorBuilder.build()
+                        }
+                        is DuplicateBatchError -> {
+                            builder.duplicateBatchError = it.toProto()
                         }
                         is StreamStateConflictsError -> {
                             builder.streamStateConflictError = it.toProto()

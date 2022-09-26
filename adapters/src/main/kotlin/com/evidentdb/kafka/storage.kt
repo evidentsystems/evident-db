@@ -7,7 +7,7 @@ import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 
 typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, Database>
 typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, Database>
-typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
+typealias BatchKeyValueStore = KeyValueStore<BatchId, BatchSummary>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
@@ -43,16 +43,15 @@ class DatabaseStore(
 class BatchStore(
     private val batchStore: BatchKeyValueStore
 ): BatchReadModel {
-    override fun batch(database: DatabaseName, id: BatchId): Batch? {
+    override fun batch(id: BatchId): Batch? {
         TODO("Not yet implemented")
     }
 
-    override fun batchEventIds(batchKey: BatchKey): List<EventId>? =
-        batchStore.get(batchKey)
+    override fun batchSummary(id: BatchId): BatchSummary? =
+        batchStore.get(id)
 
-    // eventIds must be the full list, not just the new ones to append
-    fun putBatchEventIds(batchKey: BatchKey, eventIds: List<EventId>) {
-        batchStore.put(batchKey, eventIds)
+    fun putBatchSummary(batchId: BatchId, batch: BatchSummary) {
+        batchStore.put(batchId, batch)
     }
 }
 

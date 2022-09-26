@@ -26,6 +26,7 @@ class DeletionTests {
             val database = Database(databaseName)
             val service = InMemoryService(
                 listOf(database),
+                listOf(),
                 listOf()
             )
             val result = service.deleteDatabase(databaseName.value)

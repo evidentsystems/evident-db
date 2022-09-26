@@ -228,6 +228,11 @@ data class Batch(
     val events: List<Event>
 ): EventBody
 
+data class BatchSummary(
+    val database: DatabaseName,
+    val eventIds: List<EventId>
+)
+
 data class TransactBatch(
     override val id: CommandId,
     override val database: DatabaseName,
@@ -261,6 +266,7 @@ data class InvalidEventType(val eventType: EventType): EventInvalidation
 data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)
 data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBatchError
 
+data class DuplicateBatchError(val batch: ProposedBatch): BatchTransactionError
 data class StreamStateConflict(val event: ProposedEvent, val streamState: StreamState)
 data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>): BatchTransactionError
 data class InternalServerError(val message: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError

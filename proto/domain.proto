@@ -61,6 +61,11 @@ message Batch {
   repeated io.cloudevents.v1.CloudEvent events = 3;
 }
 
+message BatchSummary {
+  string database = 1;
+  repeated string event_ids = 2;
+}
+
 // Errors
 
 message InvalidDatabaseNameError {
@@ -104,6 +109,10 @@ message InvalidEvent {
 
 message InvalidEventsError {
   repeated InvalidEvent invalid_events = 1;
+}
+
+message DuplicateBatchError {
+  ProposedBatch batch = 1;
 }
 
 message StreamStateConflict {

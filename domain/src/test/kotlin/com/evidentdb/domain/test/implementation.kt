@@ -53,19 +53,39 @@ class InMemoryStreamReadModel(
         }.filterNotNull().toSet()
 }
 
+class InMemoryBatchReadModel(batches: List<Batch>): BatchReadModel {
+    private val batches: Map<BatchId, Batch> =
+        batches.fold(mutableMapOf()) { acc, batch ->
+            acc[batch.id] = batch
+            acc
+        }
+
+    override fun batch(id: BatchId): Batch? =
+        batches[id]
+
+    override fun batchSummary(id: BatchId): BatchSummary? =
+        batch(id)?.let {
+            BatchSummary(it.database, it.events.map { event -> event.id })
+        }
+
+}
+
 class InMemoryCommandHandler(
     databases: List<Database>,
     streams: List<Stream>,
+    batches: List<Batch>,
 ): CommandHandler {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
     override val streamReadModel = InMemoryStreamReadModel(streams)
+    override val batchReadModel = InMemoryBatchReadModel(batches)
 }
 
 class InMemoryCommandManager(
     databases: List<Database>,
     streams: List<Stream>,
+    batches: List<Batch>,
 ): CommandManager {
-    private val commandHandler = InMemoryCommandHandler(databases, streams)
+    private val commandHandler = InMemoryCommandHandler(databases, streams, batches)
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> =
         commandHandler.handleCreateDatabase(command)
@@ -80,11 +100,12 @@ class InMemoryCommandManager(
 class InMemoryService(
     databases: List<Database>,
     streams: List<Stream>,
+    batches: List<Batch>,
 ): Service {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val commandManager = InMemoryCommandManager(databases, streams)
+    override val commandManager = InMemoryCommandManager(databases, streams, batches)
 
     companion object {
-        fun empty(): InMemoryService = InMemoryService(listOf(), listOf())
+        fun empty(): InMemoryService = InMemoryService(listOf(), listOf(), listOf())
     }
 }

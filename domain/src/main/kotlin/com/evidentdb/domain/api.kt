@@ -15,8 +15,8 @@ interface DatabaseReadModel {
 }
 
 interface BatchReadModel {
-    fun batch(database: DatabaseName, id: BatchId): Batch?
-    fun batchEventIds(batchKey: BatchKey): List<EventId>?
+    fun batch(id: BatchId): Batch?
+    fun batchSummary(id: BatchId): BatchSummary?
 }
 
 interface StreamReadModel {
@@ -108,6 +108,7 @@ interface CommandManager {
 interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
     val streamReadModel: StreamReadModel
+    val batchReadModel: BatchReadModel
 
     suspend fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
@@ -116,7 +117,6 @@ interface CommandHandler {
                 databaseReadModel,
                 command.data.name,
             ).bind()
-            val database = Database(availableName)
             DatabaseCreated(
                 EventId.randomUUID(),
                 command.id,
@@ -150,6 +150,7 @@ interface CommandHandler {
             val validBatch = validateProposedBatch(
                 databaseName,
                 streamReadModel,
+                batchReadModel,
                 command.data
             ).bind()
             BatchTransacted(
@@ -174,10 +175,10 @@ object EventHandler {
         return Pair(database, newDatabase)
     }
 
-    fun batchToIndex(event: EventEnvelope): Pair<BatchKey, List<EventId>>? {
+    fun batchToIndex(event: EventEnvelope): Pair<BatchId, List<EventId>>? {
         return when (event) {
             is BatchTransacted -> Pair(
-                buildBatchKey(event.database, event.data.id),
+                event.data.id,
                 event.data.events.map { it.id }
             )
             else -> null

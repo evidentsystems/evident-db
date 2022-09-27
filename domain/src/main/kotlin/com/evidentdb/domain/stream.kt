@@ -5,11 +5,11 @@ import arrow.core.invalidNel
 import arrow.core.validNel
 import java.net.URI
 
-const val STREAM_ENTITY_DELIMITER = '/'
+const val STREAM_SUBJECT_DELIMITER = '/'
 const val STREAM_URI_PATH_PREFIX = "/streams/"
 
 // TODO: naming rules? must be URL-friendly but provide
-// for a single delimiter for entity id
+// for a single delimiter for subject id
 fun validateStreamName(streamName: StreamName)
         : ValidatedNel<InvalidStreamName, StreamName> =
     if (streamName.isNotEmpty())
@@ -18,8 +18,8 @@ fun validateStreamName(streamName: StreamName)
         InvalidStreamName(streamName).invalidNel()
 
 fun parseStreamName(streamName: StreamName)
-        : Pair<StreamName, StreamEntityId?> {
-    val segments = streamName.split(STREAM_ENTITY_DELIMITER, limit = 2)
+        : Pair<StreamName, StreamSubject?> {
+    val segments = streamName.split(STREAM_SUBJECT_DELIMITER, limit = 2)
     return Pair(segments[0], segments[1])
 }
 

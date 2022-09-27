@@ -117,7 +117,7 @@ data class DatabaseDeleted(
 typealias StreamName = String
 typealias StreamKey = String
 typealias StreamRevision = Long
-typealias StreamEntityId = String
+typealias StreamSubject = String
 
 sealed interface ProposedEventStreamState
 
@@ -136,7 +136,7 @@ interface Stream {
     companion object {
         fun create(databaseName: DatabaseName, name: StreamName, revision: StreamRevision = 0): Stream {
             //
-            // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
+            // TODO: construct either a SimpleStream or an SubjectStream depending on parsing the naming rules for subject streams
             return SimpleStream(databaseName, name, revision)
         }
     }
@@ -148,11 +148,11 @@ data class SimpleStream(
     override val revision: StreamRevision
 ): Stream
 
-data class EntityStream(
+data class SubjectStream(
     override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision,
-    val entityId: StreamEntityId
+    val subject: StreamSubject
 ): Stream
 
 interface StreamWithEvents: Stream {
@@ -165,7 +165,7 @@ interface StreamWithEvents: Stream {
             revision: StreamRevision = 0,
             events: List<Event>
         ): StreamWithEvents {
-            // TODO: construct either a SimpleStream or an EntityStream depending on parsing the naming rules for entity streams
+            // TODO: construct either a SimpleStream or an SubjectStream depending on parsing the naming rules for subject streams
             TODO()
         }
     }
@@ -178,11 +178,11 @@ data class SimpleStreamWithEvents(
     override val events: List<Event>
 ): StreamWithEvents
 
-data class EntityStreamWithEvents(
+data class SubjectStreamWithEvents(
     override val database: DatabaseName,
     override val name: StreamName,
     override val revision: StreamRevision,
-    val entityId: StreamEntityId,
+    val subject: StreamSubject,
     override val events: List<Event>
 ): StreamWithEvents
 

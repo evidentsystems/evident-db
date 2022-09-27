@@ -42,7 +42,6 @@ interface EventReadModel {
 
 // TODO: Consistency levels!!!
 interface Service {
-    val databaseReadModel: DatabaseReadModel
     val commandManager: CommandManager
 
     suspend fun createDatabase(proposedName: String)
@@ -61,7 +60,6 @@ interface Service {
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
             val name = DatabaseName.of(nameStr).bind()
-            validateDatabaseExists(databaseReadModel, name).bind()
             val command = DeleteDatabase(
                 CommandId.randomUUID(),
                 name,
@@ -76,7 +74,6 @@ interface Service {
     ): Either<BatchTransactionError, BatchTransacted> =
         either {
             val databaseName = DatabaseName.of(databaseNameStr).bind()
-            validateDatabaseExists(databaseReadModel, databaseName).bind()
             val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
             val command = TransactBatch(
                 CommandId.randomUUID(),

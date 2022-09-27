@@ -221,20 +221,9 @@ class KafkaService(
     internalCommandsTopic: String,
     internalEventsTopic: String,
 
-    // TODO: remove below, implement via gRPC client
-    streams: KafkaStreams,
-    databaseStoreName: String,
     producerLingerMs: Int,
     meterRegistry: MeterRegistry,
 ): Service, AutoCloseable {
-    override val databaseReadModel = DatabaseReadModelStore(
-        streams.store(
-            StoreQueryParameters.fromNameAndType(
-                databaseStoreName,
-                QueryableStoreTypes.keyValueStore()
-            )
-        )
-    )
     override val commandManager = KafkaCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,

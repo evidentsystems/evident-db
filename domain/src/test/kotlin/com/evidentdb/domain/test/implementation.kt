@@ -104,7 +104,6 @@ class InMemoryService(
     streams: List<Stream>,
     batches: List<Batch>,
 ): Service {
-    override val databaseReadModel = InMemoryDatabaseReadModel(databases)
     override val commandManager = InMemoryCommandManager(databases, streams, batches)
 
     companion object {

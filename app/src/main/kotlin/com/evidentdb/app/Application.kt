@@ -59,8 +59,6 @@ class Configuration {
 			kafkaBootstrapServers,
 			internalCommandsTopic,
 			internalEventsTopic,
-			transactorTopologyRunner.streams,
-			TransactorTopology.DATABASE_STORE,
 			producerLingerMs,
 			meterRegistry,
 		)

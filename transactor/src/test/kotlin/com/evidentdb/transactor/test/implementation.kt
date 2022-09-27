@@ -86,8 +86,5 @@ class TopologyTestDriverCommandManager(
 class TopologyTestDriverService(
     driver: TopologyTestDriver
 ): Service {
-    override val databaseReadModel = DatabaseStore(
-        driver.getKeyValueStore(TransactorTopology.DATABASE_STORE),
-    )
     override val commandManager = TopologyTestDriverCommandManager(driver)
 }

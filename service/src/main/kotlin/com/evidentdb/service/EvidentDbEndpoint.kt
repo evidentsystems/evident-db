@@ -15,10 +15,17 @@ import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.dto.v1.proto.DatabaseRenameInfo
 import com.evidentdb.service.v1.*
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 class EvidentDbEndpoint(val service: Service)
     : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
+    companion object {
+        private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
+    }
+
     override suspend fun createDatabase(request: DatabaseCreationInfo): CreateDatabaseReply {
+        LOGGER.debug("createDatabase request received: $request")
         val builder = CreateDatabaseReply.newBuilder()
         service.createDatabase(request.name).bimap(
             {
@@ -43,6 +50,7 @@ class EvidentDbEndpoint(val service: Service)
 
     // TODO: reply needs database id
     override suspend fun renameDatabase(request: DatabaseRenameInfo): RenameDatabaseReply {
+        LOGGER.debug("renameDatabase request received: $request")
         val builder = RenameDatabaseReply.newBuilder()
         service.renameDatabase(request.oldName, request.newName)
             .bimap(
@@ -71,6 +79,7 @@ class EvidentDbEndpoint(val service: Service)
 
     // TODO: reply needs database id
     override suspend fun deleteDatabase(request: DatabaseDeletionInfo): DeleteDatabaseReply {
+        LOGGER.debug("deleteDatabase request received: $request")
         val builder = DeleteDatabaseReply.newBuilder()
         service.deleteDatabase(request.name)
             .bimap(
@@ -92,6 +101,7 @@ class EvidentDbEndpoint(val service: Service)
     }
 
     override suspend fun transactBatch(request: BatchProposal): TransactBatchReply {
+        LOGGER.debug("transactBatch request received: $request")
         val builder = TransactBatchReply.newBuilder()
         service.transactBatch(
             request.databaseName,

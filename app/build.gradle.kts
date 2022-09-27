@@ -45,5 +45,5 @@ micronaut {
 }
 
 application {
-    mainClass.set("com.evidentdb.ApplicationKt")
+    mainClass.set("com.evidentdb.app.ApplicationKt")
 }

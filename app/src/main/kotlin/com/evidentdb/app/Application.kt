@@ -12,6 +12,7 @@ import io.micronaut.context.annotation.Value
 import io.micronaut.runtime.Micronaut.*
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
+import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StreamsConfig
@@ -21,12 +22,15 @@ import java.util.*
 fun main(args: Array<String>) {
 	build()
 	    .args(*args)
-		.packages("com.evidentdb")
+		.packages("com.evidentdb.app")
 		.start()
 }
 
 @Factory
 class Configuration {
+	@Inject
+	lateinit var transactorTopologyRunner: TransactorTopologyRunner
+
 	@Bean(preDestroy = "close")
 	@Singleton
 	fun service(

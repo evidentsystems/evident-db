@@ -12,6 +12,7 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.kotlinx.coroutines)
     implementation(libs.arrow.core)
+    compileOnly(libs.slf4j.api)
 
     implementation(project(":domain"))
     implementation(project(":adapters"))
@@ -19,7 +20,7 @@ dependencies {
     implementation(libs.kafka.streams)
 
     implementation(libs.protobuf.java)
-    implementation(libs.grpc.stub)
+    compileOnly(libs.grpc.stub)
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
 

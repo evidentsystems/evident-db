@@ -2,6 +2,7 @@ package com.evidentdb.domain
 
 import arrow.core.Either
 import arrow.core.computations.either
+import java.time.Instant
 
 // TODO: pervasive offset tracking from system/tenent-level event-log
 //       offset down to database and stream revisions
@@ -25,12 +26,13 @@ interface StreamReadModel {
 
     fun streamEventIds(databaseName: DatabaseName, name: StreamName): List<EventId>? =
         streamEventIds(buildStreamKey(databaseName, name))
+
     fun streamEventIds(streamKey: StreamKey): List<EventId>?
 
     fun databaseStreams(databaseName: DatabaseName): Set<Stream>
 }
 
-interface StreamWithEventsReadModel: StreamReadModel {
+interface StreamWithEventsReadModel : StreamReadModel {
     fun streamWithEvents(database: DatabaseName, name: StreamName): StreamWithEvents?
 }
 
@@ -99,8 +101,10 @@ interface Service {
 interface CommandManager {
     suspend fun createDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated>
+
     suspend fun deleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted>
+
     suspend fun transactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted>
 }
@@ -117,70 +121,89 @@ interface CommandHandler {
                 databaseReadModel,
                 command.data.name,
             ).bind()
+            val eventId = EventId.randomUUID()
             DatabaseCreated(
-                EventId.randomUUID(),
+                eventId,
                 command.id,
                 availableName,
-                DatabaseCreationInfo(availableName),
+                DatabaseCreationResult(
+                    Database(
+                        availableName,
+                        Instant.now(),
+                        eventId,
+                    )
+                ),
             )
         }
 
     suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
-            val databaseName = validateDatabaseExists(
+            val database = validateDatabaseExists(
                 databaseReadModel,
                 command.database,
             ).bind()
+            val eventId = EventId.randomUUID()
             DatabaseDeleted(
-                EventId.randomUUID(),
+                eventId,
                 command.id,
-                databaseName,
-                DatabaseDeletionInfo(databaseName),
+                database.name,
+                DatabaseDeletionResult(database),
             )
         }
 
     suspend fun handleTransactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted> =
         either {
-            val databaseName = validateDatabaseExists(
+            val database = validateDatabaseExists(
                 databaseReadModel,
                 command.database
             ).bind()
             val validBatch = validateProposedBatch(
-                databaseName,
+                database.name,
                 streamReadModel,
                 batchReadModel,
                 command.data
             ).bind()
+            val eventId = EventId.randomUUID()
             BatchTransacted(
-                EventId.randomUUID(),
+                eventId,
                 command.id,
-                databaseName,
-                validBatch
+                database.name,
+                BatchTransactionResult(
+                    validBatch,
+                    databaseAfterBatchTransacted(
+                        database,
+                        validBatch,
+                        eventId,
+                    )
+                )
             )
         }
 }
 
-object EventHandler {
-    fun databaseUpdate(event: EventEnvelope)
-            : Pair<DatabaseName, Database?>? {
-        val database = event.database
-        val newDatabase = when (event) {
-            is DatabaseCreated -> Database(event.data.name)
-            is DatabaseDeleted -> null
-            else -> return null
-        }
+sealed interface DatabaseOperation {
+    data class StoreDatabase(val database: Database): DatabaseOperation
+    object DeleteDatabase: DatabaseOperation
+    object DoNothing: DatabaseOperation
+}
 
-        return Pair(database, newDatabase)
-    }
+object EventHandler {
+    fun databaseUpdate(event: EventEnvelope): Pair<DatabaseName, DatabaseOperation> =
+        Pair(event.database, when(event) {
+            is DatabaseCreated -> DatabaseOperation.StoreDatabase(event.data.database)
+            is DatabaseDeleted -> DatabaseOperation.DeleteDatabase
+            is BatchTransacted -> DatabaseOperation.StoreDatabase(event.data.database)
+            is ErrorEnvelope -> DatabaseOperation.DoNothing
+        })
 
     fun batchToIndex(event: EventEnvelope): Pair<BatchId, List<EventId>>? {
         return when (event) {
             is BatchTransacted -> Pair(
-                event.data.id,
-                event.data.events.map { it.id }
+                event.data.batch.id,
+                event.data.batch.events.map { it.id }
             )
+
             else -> null
         }
     }
@@ -193,14 +216,14 @@ object EventHandler {
         return when (event) {
             is BatchTransacted -> {
                 val updates = LinkedHashMap<StreamKey, List<EventId>>()
-                for (evt in event.data.events) {
+                for (evt in event.data.batch.events) {
                     val eventIds = updates.getOrPut(
                         buildStreamKey(database, evt.stream!!)
                     ) { mutableListOf() } as MutableList<EventId>
                     eventIds.add(evt.id)
                 }
                 val result = LinkedHashMap<StreamKey, List<EventId>>(
-                    event.data.events.size
+                    event.data.batch.events.size
                 )
                 for ((streamKey, eventIds) in updates) {
                     val idempotentEventIds = LinkedHashSet(
@@ -214,13 +237,14 @@ object EventHandler {
                 }
                 result
             }
+
             else -> null
         }
     }
 
     fun eventsToIndex(event: EventEnvelope): List<Pair<EventId, Event>>? =
         when (event) {
-            is BatchTransacted -> event.data.events.map { Pair(it.id, it) }
+            is BatchTransacted -> event.data.batch.events.map { Pair(it.id, it) }
             else -> null
         }
 }

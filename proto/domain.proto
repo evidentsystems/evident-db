@@ -3,6 +3,7 @@ syntax = "proto3";
 package com.evidentdb;
 
 import "spec.proto";
+import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";
@@ -16,12 +17,24 @@ message DatabaseCreationInfo {
   string name = 1;
 }
 
+message DatabaseCreationResult {
+  Database database = 1;
+}
+
 message DatabaseDeletionInfo {
   string name = 1;
 }
 
+message DatabaseDeletionResult {
+  Database database = 1;
+}
+
 message Database {
   string name = 1;
+  google.protobuf.Timestamp created = 2;
+  string latest_event = 3;
+  int64 revision = 4;
+  map<string, int64> stream_revisions = 5;
 }
 
 enum StreamState {
@@ -64,6 +77,11 @@ message Batch {
 message BatchSummary {
   string database = 1;
   repeated string event_ids = 2;
+}
+
+message BatchTransactionResult {
+  Batch batch = 1;
+  Database database = 2;
 }
 
 // Errors

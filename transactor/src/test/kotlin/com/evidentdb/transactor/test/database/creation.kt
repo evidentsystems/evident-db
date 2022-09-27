@@ -48,7 +48,7 @@ class CreationTests {
             Assertions.assertTrue(event.isRight())
             event.map {
                 Assertions.assertEquals(
-                    Database(it.data.name),
+                    it.data.database,
                     databaseStore.get(it.database),
                 )
 

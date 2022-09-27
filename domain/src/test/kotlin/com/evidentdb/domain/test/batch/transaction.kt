@@ -2,6 +2,7 @@ package com.evidentdb.domain.test.batch
 
 import com.evidentdb.domain.*
 import com.evidentdb.domain.test.InMemoryService
+import com.evidentdb.domain.test.buildTestDatabase
 import com.evidentdb.test.buildTestEvent
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
@@ -21,7 +22,7 @@ class TransactionTests {
     fun `reject transaction with no events`(): Unit =
         runBlocking {
             val databaseName = DatabaseName.build("foo")
-            val database = Database(databaseName)
+            val database = buildTestDatabase(databaseName)
             val service = InMemoryService(listOf(database), listOf(), listOf())
             val result = service.transactBatch(databaseName.value, listOf())
             Assertions.assertTrue(result.isLeft())
@@ -32,7 +33,7 @@ class TransactionTests {
     fun `reject transaction due to invalid events`(): Unit =
         runBlocking {
             val databaseName = DatabaseName.build("foo")
-            val database = Database(databaseName)
+            val database = buildTestDatabase(databaseName)
             val service = InMemoryService(listOf(database), listOf(), listOf())
             val result = service.transactBatch(databaseName.value, listOf(
                 UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
@@ -50,7 +51,7 @@ class TransactionTests {
     @Test
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
-            val database = Database(DatabaseName.build("foo"))
+            val database = buildTestDatabase(DatabaseName.build("foo"))
             val existingStream = Stream.create(database.name, "my-stream")
             val service = InMemoryService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
@@ -89,7 +90,7 @@ class TransactionTests {
     @Test
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
-            val database = Database(DatabaseName.build("foo"))
+            val database = buildTestDatabase(DatabaseName.build("foo"))
             val existingStream = Stream.create(database.name, "my-stream")
             val service = InMemoryService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
@@ -116,7 +117,7 @@ class TransactionTests {
             val result = service.transactBatch(database.name.value, batch)
             Assertions.assertTrue(result.isRight())
             result.map {
-                Assertions.assertEquals(it.data.events.size, 4)
+                Assertions.assertEquals(it.data.batch.events.size, 4)
             }
         }
 }

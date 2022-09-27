@@ -2,6 +2,8 @@ package com.evidentdb.domain.test
 
 import arrow.core.Either
 import com.evidentdb.domain.*
+import java.time.Instant
+import java.util.*
 
 class InMemoryDatabaseReadModel(
     databases: Iterable<Database> = listOf()
@@ -109,3 +111,10 @@ class InMemoryService(
         fun empty(): InMemoryService = InMemoryService(listOf(), listOf(), listOf())
     }
 }
+
+fun buildTestDatabase(name: DatabaseName) =
+    Database(
+        name,
+        Instant.now(),
+        UUID.randomUUID(),
+    )

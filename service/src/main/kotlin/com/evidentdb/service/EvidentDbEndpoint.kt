@@ -43,7 +43,7 @@ class EvidentDbEndpoint(val service: Service)
                 }
             },
             {
-                builder.database = Database(it.database).toProto()
+                builder.databaseCreation = it.data.toProto()
             }
         )
         return builder.build()
@@ -69,7 +69,7 @@ class EvidentDbEndpoint(val service: Service)
                     }
                 },
                 {
-                    builder.databaseDeletionInfo = it.data.toProto()
+                    builder.databaseDeletion = it.data.toProto()
                 }
             )
         return builder.build()
@@ -109,11 +109,7 @@ class EvidentDbEndpoint(val service: Service)
                     }
                 },
                 {
-                    builder.batchResultBuilder.id = it.data.id.toString()
-                    builder.batchResultBuilder.database = it.database.value
-                    builder.batchResultBuilder.addAllEventIds(
-                        it.data.events.map { event -> event.id.toString() }
-                    )
+                    builder.batchTransaction = it.data.toProto()
                 }
             )
         return builder.build()

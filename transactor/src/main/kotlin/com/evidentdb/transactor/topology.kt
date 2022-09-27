@@ -205,14 +205,11 @@ object TransactorTopology {
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.databaseUpdate(event)
-            if (result != null) {
-                val (databaseName, database) = result
-                if (database == null) {
-                    databaseStore.deleteDatabase(databaseName)
-                } else {
-                    databaseStore.putDatabase(databaseName, database)
-                }
+            val (databaseName, result) = EventHandler.databaseUpdate(event)
+            when(result) {
+                is DatabaseOperation.StoreDatabase -> databaseStore.putDatabase(databaseName, result.database)
+                DatabaseOperation.DeleteDatabase -> databaseStore.deleteDatabase(databaseName)
+                DatabaseOperation.DoNothing -> Unit
             }
         }
 

@@ -15,11 +15,9 @@ fun databaseNameFromUri(uri: URI): DatabaseName =
 fun validateDatabaseExists(
     databaseReadModel: DatabaseReadModel,
     name: DatabaseName
-) : Either<DatabaseNotFoundError, DatabaseName> =
-    if (databaseReadModel.exists(name))
-        name.right()
-    else
-        DatabaseNotFoundError(name).left()
+) : Either<DatabaseNotFoundError, Database> =
+    databaseReadModel.database(name)?.right()
+        ?: DatabaseNotFoundError(name).left()
 
 fun validateDatabaseNameNotTaken(
     databaseReadModel: DatabaseReadModel,
@@ -29,3 +27,31 @@ fun validateDatabaseNameNotTaken(
         DatabaseNameAlreadyExistsError(name).invalid()
     else
         name.valid()
+
+fun nextStreamRevisions(
+    streamRevisions: Map<StreamName, StreamRevision>,
+    batch: Batch,
+): Map<StreamName, StreamRevision> {
+    val ret = streamRevisions.toMutableMap()
+    batch.events.fold(ret) { acc, event ->
+        event.stream?.let {
+            val revision = acc[event.stream] ?: 0
+            acc[it] = revision + 1
+        }
+        acc
+    }
+    return ret
+}
+
+fun databaseAfterBatchTransacted(database: Database, batch: Batch, eventId: EventId): Database {
+    val streamRevisions = nextStreamRevisions(database.streamRevisions, batch)
+    return Database(
+        database.name,
+        database.created,
+        eventId,
+        streamRevisions.foldLeft(0L) { acc, (_, v) ->
+            acc + v
+        },
+        streamRevisions,
+    )
+}

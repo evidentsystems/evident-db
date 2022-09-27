@@ -5,6 +5,7 @@ import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.InvalidDatabaseNameError
 import com.evidentdb.domain.test.InMemoryService
+import com.evidentdb.domain.test.buildTestDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -23,7 +24,7 @@ class CreationTests {
     fun `reject a database creation proposal due to already existing name`(): Unit =
         runBlocking {
             val databaseName = DatabaseName.build("foo")
-            val database = Database(databaseName)
+            val database = buildTestDatabase(databaseName)
             val service = InMemoryService(listOf(database), listOf(), listOf())
             val result = service.createDatabase(databaseName.value)
             Assertions.assertTrue(result.isLeft())
@@ -37,6 +38,6 @@ class CreationTests {
             val service = InMemoryService.empty()
             val result = service.createDatabase(databaseName.value)
             Assertions.assertTrue(result.isRight())
-            result.map { Assertions.assertEquals(it.data.name, databaseName) }
+            result.map { Assertions.assertEquals(it.data.database.name, databaseName) }
         }
 }

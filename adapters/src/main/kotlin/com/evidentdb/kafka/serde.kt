@@ -131,19 +131,19 @@ class EventEnvelopeSerde:
                     eventId,
                     commandId,
                     databaseId,
-                    databaseCreationInfoFromBytes(dataBytes),
+                    databaseCreationResultFromBytes(dataBytes),
                 )
                 "DatabaseDeleted" -> DatabaseDeleted(
                     eventId,
                     commandId,
                     databaseId,
-                    databaseDeletionInfoFromBytes(dataBytes),
+                    databaseDeletionResultFromBytes(dataBytes),
                 )
                 "BatchTransacted" -> BatchTransacted(
                     eventId,
                     commandId,
                     databaseId,
-                    batchFromBytes(dataBytes),
+                    batchTransactionResultFromBytes(dataBytes),
                 )
 
                 "InvalidDatabaseNameError" -> ErrorEnvelope(
@@ -243,5 +243,4 @@ class BatchSummarySerde: Serdes.WrapperSerde<BatchSummary>(
         override fun deserialize(topic: String?, data: ByteArray?): BatchSummary? =
             data?.let { batchSummaryFromBytes(it) }
     }
-
 }

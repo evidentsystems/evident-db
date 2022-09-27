@@ -4,6 +4,7 @@ import arrow.core.Validated
 import io.cloudevents.CloudEvent
 import org.valiktor.functions.matches
 import org.valiktor.validate
+import java.time.Instant
 import java.util.*
 
 const val NAME_PATTERN = """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$"""
@@ -51,6 +52,7 @@ data class ErrorEnvelope(
 
 // Database
 
+typealias DatabaseRevision = Long
 typealias TenantRevision = Long
 
 @JvmInline
@@ -68,17 +70,16 @@ value class DatabaseName private constructor(val value: String) {
     }
 }
 
-typealias DatabaseRevision = Long
-
-sealed interface DatabaseEvent
-
 data class Database(
     val name: DatabaseName,
-    // val created: TenantRevision,
-    // val revision: DatabaseRevision
+    val created: Instant,
+    val latestEvent: EventId,
+    val revision: DatabaseRevision = 0,
+    val streamRevisions: Map<StreamName, StreamRevision> = mapOf(),
 )
 
-data class DatabaseCreationInfo(val name: DatabaseName): CommandBody, EventBody
+data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationResult(val database: Database): EventBody
 
 data class CreateDatabase(
     override val id: CommandId,
@@ -92,10 +93,11 @@ data class DatabaseCreated(
     override val id: EventId,
     override val commandId: CommandId,
     override val database: DatabaseName,
-    override val data: DatabaseCreationInfo
-): EventEnvelope, DatabaseEvent
+    override val data: DatabaseCreationResult,
+): EventEnvelope
 
-data class DatabaseDeletionInfo(val name: DatabaseName): CommandBody, EventBody
+data class DatabaseDeletionInfo(val name: DatabaseName): CommandBody
+data class DatabaseDeletionResult(val database: Database): EventBody
 
 data class DeleteDatabase(
     override val id: CommandId,
@@ -109,8 +111,8 @@ data class DatabaseDeleted(
     override val id: EventId,
     override val commandId: CommandId,
     override val database: DatabaseName,
-    override val data: DatabaseDeletionInfo
-): EventEnvelope, DatabaseEvent
+    override val data: DatabaseDeletionResult
+): EventEnvelope
 
 // Streams & Indexes
 
@@ -226,7 +228,7 @@ data class Batch(
     val id: BatchId,
     val database: DatabaseName,
     val events: List<Event>
-): EventBody
+)
 
 data class BatchSummary(
     val database: DatabaseName,
@@ -241,11 +243,16 @@ data class TransactBatch(
 
 sealed interface BatchTransactionError: ErrorBody
 
+data class BatchTransactionResult(
+    val batch: Batch,
+    val database: Database,
+): EventBody
+
 data class BatchTransacted(
     override val id: EventId,
     override val commandId: CommandId,
     override val database: DatabaseName,
-    override val data: Batch
+    override val data: BatchTransactionResult
 ): EventEnvelope, BatchEvent
 
 // Errors

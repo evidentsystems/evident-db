@@ -24,7 +24,7 @@ service EvidentDb {
 
 message CreateDatabaseReply {
   oneof result {
-    com.evidentdb.Database database = 1;
+    com.evidentdb.DatabaseCreationResult database_creation = 1;
     com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
     com.evidentdb.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
     com.evidentdb.InternalServerError internal_server_error = 4;
@@ -33,22 +33,16 @@ message CreateDatabaseReply {
 
 message DeleteDatabaseReply {
   oneof result {
-    com.evidentdb.DatabaseDeletionInfo database_deletion_info = 1;
+    com.evidentdb.DatabaseDeletionResult database_deletion = 1;
     com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
     com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
     com.evidentdb.InternalServerError internal_server_error = 4;
   }
 }
 
-message BatchResult {
-  string id = 1;
-  string database = 2;
-  repeated string event_ids = 3;
-}
-
 message TransactBatchReply {
   oneof result {
-    BatchResult batch_result = 1;
+    com.evidentdb.BatchTransactionResult batch_transaction = 1;
     com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
     com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
     com.evidentdb.NoEventsProvidedError no_events_provided_error = 4;

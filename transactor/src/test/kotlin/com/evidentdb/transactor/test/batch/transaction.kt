@@ -174,13 +174,13 @@ class TransactionTests {
             val result = service.transactBatch(databaseName.value, batch)
             Assertions.assertTrue(result.isRight())
             result.map {
-                Assertions.assertEquals(it.data.events.size, 4)
+                Assertions.assertEquals(it.data.batch.events.size, 4)
                 Assertions.assertNotNull(
                     batchStore.get(
-                        it.data.id
+                        it.data.batch.id
                     )
                 )
-                for (event in it.data.events) {
+                for (event in it.data.batch.events) {
                     Assertions.assertEquals(
                         event.event,
                         eventStore.get(event.id).event

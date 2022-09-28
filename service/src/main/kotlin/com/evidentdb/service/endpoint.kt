@@ -1,20 +1,15 @@
 package com.evidentdb.service
 
 import com.evidentdb.domain.*
-import com.evidentdb.domain.DatabaseNameAlreadyExistsError
-import com.evidentdb.domain.DatabaseNotFoundError
-import com.evidentdb.domain.DuplicateBatchError
-import com.evidentdb.domain.InternalServerError
-import com.evidentdb.domain.InvalidDatabaseNameError
-import com.evidentdb.domain.InvalidEventsError
-import com.evidentdb.domain.NoEventsProvidedError
-import com.evidentdb.domain.StreamStateConflictsError
 import com.evidentdb.dto.toProto
 import com.evidentdb.dto.unvalidatedProposedEventFromProto
-import com.evidentdb.dto.v1.proto.*
+import com.evidentdb.dto.v1.proto.BatchProposal
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
-import com.evidentdb.service.v1.*
+import com.evidentdb.service.v1.CreateDatabaseReply
+import com.evidentdb.service.v1.DeleteDatabaseReply
+import com.evidentdb.service.v1.EvidentDbGrpcKt
+import com.evidentdb.service.v1.TransactBatchReply
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 

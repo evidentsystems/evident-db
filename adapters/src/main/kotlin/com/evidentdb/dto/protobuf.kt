@@ -1,35 +1,36 @@
 package com.evidentdb.dto
 
 import com.evidentdb.domain.*
-import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.*
+import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.INVALID_EVENT_TYPE
+import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.INVALID_STREAM_NAME
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
+import io.cloudevents.protobuf.cloudEventFromProto
+import io.cloudevents.protobuf.toProto
+import java.time.Instant
+import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
+import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
+import com.evidentdb.dto.v1.proto.BatchTransactionResult as ProtoBatchTransactionResult
+import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseCreationResult as ProtoDatabaseCreationResult
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionResult as ProtoDatabaseDeletionResult
-import com.evidentdb.dto.v1.proto.ProposedBatch        as ProtoProposedBatch
-import com.evidentdb.dto.v1.proto.ProposedEvent        as ProtoProposedEvent
-import com.evidentdb.dto.v1.proto.Batch                as ProtoBatch
-import com.evidentdb.dto.v1.proto.BatchTransactionResult as ProtoBatchTransactionResult
-import com.evidentdb.dto.v1.proto.BatchSummary         as ProtoBatchSummary
-import com.evidentdb.dto.v1.proto.Event                as ProtoEvent
-import com.evidentdb.dto.v1.proto.StreamState          as ProtoStreamState
-import com.evidentdb.dto.v1.proto.Database             as ProtoDatabase
-import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError       as ProtoInvalidDatabaseNameError
 import com.evidentdb.dto.v1.proto.DatabaseNameAlreadyExistsError as ProtoDatabaseNameAlreadyExistsError
-import com.evidentdb.dto.v1.proto.DatabaseNotFoundError          as ProtoDatabaseNotFoundError
-import com.evidentdb.dto.v1.proto.NoEventsProvidedError          as ProtoNoEventsProvidedError
-import com.evidentdb.dto.v1.proto.EventInvalidation              as ProtoEventInvalidation
-import com.evidentdb.dto.v1.proto.InvalidEvent                   as ProtoInvalidEvent
-import com.evidentdb.dto.v1.proto.InvalidEventsError             as ProtoInvalidEventsError
-import com.evidentdb.dto.v1.proto.DuplicateBatchError            as ProtoDuplicateBatchError
-import com.evidentdb.dto.v1.proto.StreamStateConflict            as ProtoStreamStateConflict
-import com.evidentdb.dto.v1.proto.StreamStateConflictsError      as ProtoStreamStateConflictsError
-import com.evidentdb.dto.v1.proto.InternalServerError            as ProtoInternalServerError
-import io.cloudevents.protobuf.cloudEventFromProto
-import io.cloudevents.protobuf.toProto
-import java.time.Instant
+import com.evidentdb.dto.v1.proto.DatabaseNotFoundError as ProtoDatabaseNotFoundError
+import com.evidentdb.dto.v1.proto.DuplicateBatchError as ProtoDuplicateBatchError
+import com.evidentdb.dto.v1.proto.Event as ProtoEvent
+import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
+import com.evidentdb.dto.v1.proto.InternalServerError as ProtoInternalServerError
+import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError as ProtoInvalidDatabaseNameError
+import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
+import com.evidentdb.dto.v1.proto.InvalidEventsError as ProtoInvalidEventsError
+import com.evidentdb.dto.v1.proto.NoEventsProvidedError as ProtoNoEventsProvidedError
+import com.evidentdb.dto.v1.proto.ProposedBatch as ProtoProposedBatch
+import com.evidentdb.dto.v1.proto.ProposedEvent as ProtoProposedEvent
+import com.evidentdb.dto.v1.proto.StreamState as ProtoStreamState
+import com.evidentdb.dto.v1.proto.StreamStateConflict as ProtoStreamStateConflict
+import com.evidentdb.dto.v1.proto.StreamStateConflictsError as ProtoStreamStateConflictsError
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())

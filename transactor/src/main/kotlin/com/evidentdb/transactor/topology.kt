@@ -9,7 +9,10 @@ import kotlinx.coroutines.runBlocking
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
-import org.apache.kafka.streams.processor.api.*
+import org.apache.kafka.streams.processor.api.ContextualProcessor
+import org.apache.kafka.streams.processor.api.ProcessorContext
+import org.apache.kafka.streams.processor.api.ProcessorSupplier
+import org.apache.kafka.streams.processor.api.Record
 import org.apache.kafka.streams.state.Stores
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory

@@ -1,6 +1,9 @@
 package com.evidentdb.transactor
 
-import com.evidentdb.domain.*
+import com.evidentdb.domain.BatchSummaryReadModel
+import com.evidentdb.domain.CommandHandler
+import com.evidentdb.domain.DatabaseReadModel
+import com.evidentdb.domain.StreamSummaryReadModel
 import com.evidentdb.kafka.*
 
 class KafkaStreamsCommandHandler: CommandHandler {

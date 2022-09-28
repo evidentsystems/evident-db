@@ -1,19 +1,15 @@
 package com.evidentdb.service
 
-import kotlin.concurrent.thread
-import kotlin.coroutines.*
-import java.util.concurrent.ConcurrentHashMap
 import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
-import com.evidentdb.domain.CommandManager
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.kafka.partitionByDatabase
-import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -28,10 +24,14 @@ import org.apache.kafka.common.serialization.UUIDDeserializer
 import org.apache.kafka.common.serialization.UUIDSerializer
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.lang.RuntimeException
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 
 private suspend inline fun <reified K: Any, reified V : Any> Producer<K, V>.publish(record: ProducerRecord<K, V>) =
     suspendCoroutine { continuation ->

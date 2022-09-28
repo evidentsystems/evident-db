@@ -1,8 +1,8 @@
 package com.evidentdb.kafka
 
+import com.evidentdb.domain.*
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
-import com.evidentdb.domain.*
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 
 typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, Database>

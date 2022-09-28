@@ -1,3 +1,18 @@
+use std::collections::HashMap;
+use std::convert::From;
+use std::time::Instant;
+
+use cloudevents::{AttributesReader, Data, Event, EventBuilder, EventBuilderV10};
+use cloudevents::event::AttributeValue;
+use prost_types::Timestamp;
+use url::Url;
+
+use com::evidentdb::*;
+use com::evidentdb::evident_db_client::EvidentDbClient;
+use io::cloudevents::v1::cloud_event::Data as ProtoData;
+use io::cloudevents::v1::cloud_event::cloud_event_attribute_value::Attr;
+use io::cloudevents::v1::cloud_event::CloudEventAttributeValue;
+
 pub mod com {
     pub mod evidentdb {
         tonic::include_proto!("com.evidentdb");
@@ -11,19 +26,6 @@ pub mod io {
         }
     }
 }
-
-use std::collections::HashMap;
-use com::evidentdb::evident_db_client::EvidentDbClient;
-use com::evidentdb::*;
-use std::time::Instant;
-use std::convert::From;
-use cloudevents::{AttributesReader, Data, Event, EventBuilder, EventBuilderV10};
-use cloudevents::event::AttributeValue;
-use prost_types::Timestamp;
-use io::cloudevents::v1::cloud_event::{Data as ProtoData};
-use io::cloudevents::v1::cloud_event::CloudEventAttributeValue;
-use io::cloudevents::v1::cloud_event::cloud_event_attribute_value::Attr;
-use url::Url;
 
 const DATABASE: &str = "my-database";
 const DB_URL: &str = "http://[::1]:50051";

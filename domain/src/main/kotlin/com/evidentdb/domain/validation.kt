@@ -1,6 +1,8 @@
 package com.evidentdb.domain
 
-import arrow.core.*
+import arrow.core.Validated
+import arrow.core.invalid
+import arrow.core.valid
 import org.valiktor.ConstraintViolationException
 import org.valiktor.i18n.toMessage
 

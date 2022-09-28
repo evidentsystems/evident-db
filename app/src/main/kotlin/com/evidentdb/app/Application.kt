@@ -1,8 +1,8 @@
 package com.evidentdb.app
 
-import com.evidentdb.domain.Service
+import com.evidentdb.domain.CommandService
 import com.evidentdb.service.EvidentDbEndpoint
-import com.evidentdb.service.KafkaService
+import com.evidentdb.service.KafkaCommandService
 import com.evidentdb.transactor.TransactorTopology
 import io.grpc.BindableService
 import io.micrometer.core.instrument.MeterRegistry
@@ -54,8 +54,8 @@ class Configuration {
 		@Value("\${kafka.producer.linger.ms}")
 		producerLingerMs: Int,
 		meterRegistry: MeterRegistry,
-	): KafkaService =
-		KafkaService(
+	): KafkaCommandService =
+		KafkaCommandService(
 			kafkaBootstrapServers,
 			internalCommandsTopic,
 			internalEventsTopic,
@@ -64,7 +64,7 @@ class Configuration {
 		)
 
 	@Bean
-	fun endpoint(service: Service): BindableService = EvidentDbEndpoint(service)
+	fun endpoint(commandService: CommandService): BindableService = EvidentDbEndpoint(commandService)
 }
 
 @Singleton

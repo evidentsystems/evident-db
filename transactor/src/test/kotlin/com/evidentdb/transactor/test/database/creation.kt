@@ -2,7 +2,7 @@ package com.evidentdb.transactor.test.database
 
 import com.evidentdb.domain.*
 import com.evidentdb.transactor.TransactorTopology
-import com.evidentdb.transactor.test.TopologyTestDriverService
+import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
@@ -13,7 +13,7 @@ class CreationTests {
     fun `reject a database creation proposal due to invalid database name`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = ""
 
             val result = service.createDatabase(databaseName)
@@ -25,7 +25,7 @@ class CreationTests {
     fun `reject a database creation proposal due to already existing name`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
 
             service.createDatabase(databaseName)
@@ -40,7 +40,7 @@ class CreationTests {
         runBlocking {
             val driver = driver()
             val databaseStore = driver.getKeyValueStore<DatabaseName, Database>(TransactorTopology.DATABASE_STORE)
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
 
             val event = service.createDatabase(databaseName)

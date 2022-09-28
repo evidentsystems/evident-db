@@ -1,7 +1,6 @@
 package com.evidentdb.service
 
 import com.evidentdb.domain.*
-import com.evidentdb.domain.Database
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.DatabaseNotFoundError
 import com.evidentdb.domain.DuplicateBatchError
@@ -19,7 +18,7 @@ import com.evidentdb.service.v1.*
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class EvidentDbEndpoint(val service: Service)
+class EvidentDbEndpoint(private val commandService: CommandService)
     : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
@@ -28,7 +27,7 @@ class EvidentDbEndpoint(val service: Service)
     override suspend fun createDatabase(request: DatabaseCreationInfo): CreateDatabaseReply {
         LOGGER.debug("createDatabase request received: $request")
         val builder = CreateDatabaseReply.newBuilder()
-        service.createDatabase(request.name).bimap(
+        commandService.createDatabase(request.name).bimap(
             {
                 when(it) {
                     is DatabaseNameAlreadyExistsError -> {
@@ -49,11 +48,10 @@ class EvidentDbEndpoint(val service: Service)
         return builder.build()
     }
 
-    // TODO: reply needs database id
     override suspend fun deleteDatabase(request: DatabaseDeletionInfo): DeleteDatabaseReply {
         LOGGER.debug("deleteDatabase request received: $request")
         val builder = DeleteDatabaseReply.newBuilder()
-        service.deleteDatabase(request.name)
+        commandService.deleteDatabase(request.name)
             .bimap(
                 {
                     when(it) {
@@ -78,7 +76,7 @@ class EvidentDbEndpoint(val service: Service)
     override suspend fun transactBatch(request: BatchProposal): TransactBatchReply {
         LOGGER.debug("transactBatch request received: $request")
         val builder = TransactBatchReply.newBuilder()
-        service.transactBatch(
+        commandService.transactBatch(
             request.database,
             request.eventsList.map(::unvalidatedProposedEventFromProto)
         )

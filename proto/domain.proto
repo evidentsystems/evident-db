@@ -75,8 +75,9 @@ message Batch {
 }
 
 message BatchSummary {
-  string database = 1;
-  repeated string event_ids = 2;
+  string id = 1;
+  string database = 2;
+  repeated string event_ids = 3;
 }
 
 message BatchTransactionResult {

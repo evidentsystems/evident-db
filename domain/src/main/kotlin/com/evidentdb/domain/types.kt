@@ -130,67 +130,86 @@ sealed interface StreamState {
     data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
 }
 
-interface Stream {
+interface StreamSummary {
     val database: DatabaseName
     val name: StreamName
+    val eventIds: List<EventId>
     val revision: StreamRevision
+        get() = eventIds.size.toLong()
 
     companion object {
-        fun create(databaseName: DatabaseName, name: StreamName, revision: StreamRevision = 0): Stream {
-            //
-            // TODO: construct either a SimpleStream or an SubjectStream depending on parsing the naming rules for subject streams
-            return SimpleStream(databaseName, name, revision)
+        fun create(streamKey: StreamKey, eventIds: List<EventId> = listOf()): StreamSummary {
+            // TODO: support parsing subject (nullable) from stream key and passing to `create()`
+            val (database, stream) = parseStreamKey(streamKey)
+            return create(database, stream, eventIds = eventIds)
         }
+
+        fun create(
+            database: DatabaseName,
+            stream: StreamName,
+            subject: StreamSubject? = null,
+            eventIds: List<EventId> = listOf()
+        ): StreamSummary =
+            if (subject != null) {
+                SubjectStreamSummary(
+                    database,
+                    stream,
+                    subject,
+                    eventIds,
+                )
+            } else {
+                BaseStreamSummary(
+                    database,
+                    stream,
+                    eventIds
+                )
+            }
     }
 }
 
-data class SimpleStream(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    override val revision: StreamRevision
-): Stream
-
-data class SubjectStream(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    override val revision: StreamRevision,
-    val subject: StreamSubject
-): Stream
-
-interface StreamWithEvents: Stream {
+interface Stream: StreamSummary {
     val events: List<Event>
 
     companion object {
-        fun create(
-            databaseName: DatabaseName,
-            name: StreamName,
-            revision: StreamRevision = 0,
-            events: List<Event>
-        ): StreamWithEvents {
-            // TODO: construct either a SimpleStream or an SubjectStream depending on parsing the naming rules for subject streams
+        fun create(streamKey: StreamKey, events: List<Event> = listOf()): Stream {
             TODO()
         }
     }
 }
 
-data class SimpleStreamWithEvents(
+data class BaseStreamSummary(
     override val database: DatabaseName,
     override val name: StreamName,
-    override val revision: StreamRevision,
-    override val events: List<Event>
-): StreamWithEvents
+    override val eventIds: List<EventId>,
+): StreamSummary
 
-data class SubjectStreamWithEvents(
+data class SubjectStreamSummary(
     override val database: DatabaseName,
     override val name: StreamName,
-    override val revision: StreamRevision,
+    val subject: StreamSubject,
+    override val eventIds: List<EventId>,
+): StreamSummary
+
+data class BaseStream(
+    override val database: DatabaseName,
+    override val name: StreamName,
+    override val events: List<Event>
+): Stream {
+    override val eventIds: List<EventId>
+        get() = events.map { it.id }
+}
+
+data class SubjectStream(
+    override val database: DatabaseName,
+    override val name: StreamName,
     val subject: StreamSubject,
     override val events: List<Event>
-): StreamWithEvents
+): Stream {
+    override val eventIds: List<EventId>
+        get() = events.map { it.id }
+}
 
 // Events & Batches
-
-typealias EventAttributeKey = String
 
 data class UnvalidatedProposedEvent(
     val event: CloudEvent,
@@ -231,6 +250,7 @@ data class Batch(
 )
 
 data class BatchSummary(
+    val id: BatchId,
     val database: DatabaseName,
     val eventIds: List<EventId>
 )
@@ -260,6 +280,7 @@ data class BatchTransacted(
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: DatabaseName): DatabaseDeletionError, BatchTransactionError
+data class BatchNotFoundError(val batchId: BatchId)
 
 sealed interface InvalidBatchError: BatchTransactionError
 

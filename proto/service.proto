@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package com.evidentdb;
+package com.evidentdb.service;
 
 import "domain.proto";
 
@@ -20,6 +20,14 @@ service EvidentDb {
   rpc transactBatch(com.evidentdb.BatchProposal)         returns (TransactBatchReply)  {}
 
   // Query
+  rpc getCatalog(CatalogRequest) returns (CatalogReply) {}
+  rpc getDatabase(DatabaseRequest) returns (DatabaseReply) {}
+  rpc getDatabaseBatches(DatabaseBatchesRequest) returns (DatabaseBatchesReply) {}
+  rpc getBatch(BatchRequest) returns (BatchReply) {}
+  rpc getDatabaseStreams(DatabaseStreamsRequest) returns (DatabaseStreamsReply) {}
+  rpc getStream(StreamRequest) returns (StreamReply) {}
+  rpc getSubjectStream(SubjectStreamRequest) returns (SubjectStreamReply) {}
+  rpc getEvent(EventRequest) returns (EventReply) {}
 }
 
 message CreateDatabaseReply {
@@ -52,3 +60,20 @@ message TransactBatchReply {
     com.evidentdb.InternalServerError internal_server_error = 8;
   }
 }
+
+message CatalogRequest {}
+message CatalogReply {}
+message DatabaseRequest {}
+message DatabaseReply {}
+message DatabaseBatchesRequest {}
+message DatabaseBatchesReply {}
+message BatchRequest {}
+message BatchReply {}
+message DatabaseStreamsRequest {}
+message DatabaseStreamsReply {}
+message StreamRequest {}
+message StreamReply {}
+message SubjectStreamRequest {}
+message SubjectStreamReply {}
+message EventRequest {}
+message EventReply {}

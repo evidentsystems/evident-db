@@ -2,46 +2,12 @@ package com.evidentdb.domain
 
 import arrow.core.Either
 import arrow.core.computations.either
+import arrow.core.left
+import arrow.core.right
 import java.time.Instant
 
-// TODO: pervasive offset tracking from system/tenent-level event-log
-//       offset down to database and stream revisions
-
-interface DatabaseReadModel {
-    fun exists(name: DatabaseName): Boolean =
-        database(name) != null
-
-    fun database(name: DatabaseName): Database?
-    fun catalog(): Set<Database>
-}
-
-interface BatchReadModel {
-    fun batch(id: BatchId): Batch?
-    fun batchSummary(id: BatchId): BatchSummary?
-}
-
-interface StreamReadModel {
-    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
-    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
-
-    fun streamEventIds(databaseName: DatabaseName, name: StreamName): List<EventId>? =
-        streamEventIds(buildStreamKey(databaseName, name))
-
-    fun streamEventIds(streamKey: StreamKey): List<EventId>?
-
-    fun databaseStreams(databaseName: DatabaseName): Set<Stream>
-}
-
-interface StreamWithEventsReadModel : StreamReadModel {
-    fun streamWithEvents(database: DatabaseName, name: StreamName): StreamWithEvents?
-}
-
-interface EventReadModel {
-    fun event(id: EventId): Event?
-}
-
 // TODO: Consistency levels!!!
-interface Service {
+interface CommandService {
     val commandManager: CommandManager
 
     suspend fun createDatabase(proposedName: String)
@@ -86,12 +52,63 @@ interface Service {
             )
             commandManager.transactBatch(command).bind()
         }
+}
 
-    suspend fun getCatalog(): Set<Database> = TODO()
-    suspend fun getDatabase(name: DatabaseName): Database = TODO()
+interface DatabaseReadModel {
+    fun exists(name: DatabaseName): Boolean =
+        database(name) != null
+    fun database(name: DatabaseName): Database?
+    fun catalog(): Set<Database>
+}
+
+interface BatchSummaryReadModel {
+    fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary?
+}
+
+interface BatchReadModel: BatchSummaryReadModel {
+    fun batch(database: DatabaseName, id: BatchId): Batch?
+}
+
+interface StreamSummaryReadModel {
+    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
+    fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary>
+    fun streamSummary(streamKey: StreamKey): StreamSummary?
+    fun streamSummary(databaseName: DatabaseName, name: StreamName): StreamSummary? =
+        streamSummary(buildStreamKey(databaseName, name))
+}
+
+interface StreamReadModel: StreamSummaryReadModel {
+    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
+}
+
+interface EventReadModel {
+    fun event(id: EventId): Event?
+}
+
+interface QueryService {
+    val databaseReadModel: DatabaseReadModel
+    val batchReadModel: BatchReadModel
+    val streamReadModel: StreamReadModel
+    val eventReadModel: EventReadModel
+
+    suspend fun getCatalog(): Set<Database> =
+        databaseReadModel.catalog()
+
+    suspend fun getDatabase(name: DatabaseName): Either<DatabaseNotFoundError, Database> =
+        databaseReadModel.database(name)
+            ?.right()
+            ?: DatabaseNotFoundError(name).left()
+
+    suspend fun getDatabaseBatches(name: DatabaseName)
+            : Either<DatabaseNotFoundError, List<BatchSummary>> = TODO()
+
+    suspend fun getBatch(database: DatabaseName, batchId: BatchId)
+            : Either<BatchNotFoundError, Batch> =
+        batchReadModel.batch(database, batchId)?.right() ?: BatchNotFoundError(batchId).left()
+
     suspend fun getDatabaseStreams(name: DatabaseName): Set<Stream> = TODO()
-    suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream = TODO()
-    suspend fun getStreamEvents(name: DatabaseName, streamName: StreamName): List<Event> = TODO()
+    suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream? = TODO()
+    suspend fun getSubjectStream(name: DatabaseName, streamName: StreamName, subject: StreamSubject): SubjectStreamSummary = TODO()
     suspend fun getEvent(id: EventId): Event = TODO()
 }
 
@@ -108,8 +125,8 @@ interface CommandManager {
 
 interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
-    val streamReadModel: StreamReadModel
-    val batchReadModel: BatchReadModel
+    val streamSummaryReadModel: StreamSummaryReadModel
+    val batchSummaryReadModel: BatchSummaryReadModel
 
     suspend fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
@@ -158,8 +175,8 @@ interface CommandHandler {
             ).bind()
             val validBatch = validateProposedBatch(
                 database.name,
-                streamReadModel,
-                batchReadModel,
+                streamSummaryReadModel,
+                batchSummaryReadModel,
                 command.data
             ).bind()
             val eventId = EventId.randomUUID()
@@ -200,13 +217,12 @@ object EventHandler {
                 event.data.batch.id,
                 event.data.batch.events.map { it.id }
             )
-
             else -> null
         }
     }
 
     fun streamEventIdsToUpdate(
-        streamReadModel: StreamReadModel,
+        streamSummaryReadModel: StreamSummaryReadModel,
         event: EventEnvelope
     ): LinkedHashMap<StreamKey, List<EventId>>? {
         val database = event.database
@@ -224,8 +240,9 @@ object EventHandler {
                 )
                 for ((streamKey, eventIds) in updates) {
                     val idempotentEventIds = LinkedHashSet(
-                        streamReadModel
-                            .streamEventIds(streamKey)
+                        streamSummaryReadModel
+                            .streamSummary(streamKey)
+                            ?.eventIds
                             .orEmpty()
                     )
                     for (eventId in eventIds)

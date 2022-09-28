@@ -5,8 +5,8 @@ import com.evidentdb.kafka.*
 
 class KafkaStreamsCommandHandler: CommandHandler {
     override lateinit var databaseReadModel: DatabaseReadModel
-    override lateinit var streamReadModel: StreamReadModel
-    override lateinit var batchReadModel: BatchReadModel
+    override lateinit var streamSummaryReadModel: StreamSummaryReadModel
+    override lateinit var batchSummaryReadModel: BatchSummaryReadModel
 
     fun init(
         databaseStore: DatabaseKeyValueStore,
@@ -14,7 +14,7 @@ class KafkaStreamsCommandHandler: CommandHandler {
         batchStore: BatchKeyValueStore,
     ) {
         this.databaseReadModel = DatabaseStore(databaseStore)
-        this.streamReadModel = StreamStore(streamStore)
-        this.batchReadModel = BatchStore(batchStore)
+        this.streamSummaryReadModel = StreamSummaryStore(streamStore)
+        this.batchSummaryReadModel = BatchSummaryStore(batchStore)
     }
 }

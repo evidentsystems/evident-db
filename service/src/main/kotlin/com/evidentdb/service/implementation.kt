@@ -10,7 +10,6 @@ import arrow.core.right
 import com.evidentdb.domain.*
 import com.evidentdb.domain.CommandManager
 import com.evidentdb.kafka.CommandEnvelopeSerde
-import com.evidentdb.kafka.DatabaseReadModelStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.kafka.partitionByDatabase
 import io.micrometer.core.instrument.Timer
@@ -27,9 +26,6 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.WakeupException
 import org.apache.kafka.common.serialization.UUIDDeserializer
 import org.apache.kafka.common.serialization.UUIDSerializer
-import org.apache.kafka.streams.KafkaStreams
-import org.apache.kafka.streams.StoreQueryParameters
-import org.apache.kafka.streams.state.QueryableStoreTypes
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -159,7 +155,6 @@ class KafkaCommandManager(
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> = either {
         val deferred = publishCommand(command).bind()
 
-        // TODO: flatten this
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseDeleted -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
@@ -174,7 +169,6 @@ class KafkaCommandManager(
     override suspend fun transactBatch(command: TransactBatch): Either<BatchTransactionError, BatchTransacted> = either {
         val deferred = publishCommand(command).bind()
 
-        // TODO: flatten this such that DatabaseCreationError is sibling of DatabaseCreated event, and only one `else` branch is need
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is BatchTransacted -> result.right()
             is ErrorEnvelope -> when(val body = result.data){
@@ -216,14 +210,14 @@ class KafkaCommandManager(
     }
 }
 
-class KafkaService(
+class KafkaCommandService(
     kafkaBootstrapServers: String,
     internalCommandsTopic: String,
     internalEventsTopic: String,
 
     producerLingerMs: Int,
     meterRegistry: MeterRegistry,
-): Service, AutoCloseable {
+): CommandService, AutoCloseable {
     override val commandManager = KafkaCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,

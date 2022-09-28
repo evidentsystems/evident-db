@@ -7,7 +7,7 @@ import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 
 typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, Database>
 typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, Database>
-typealias BatchKeyValueStore = KeyValueStore<BatchId, BatchSummary>
+typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 
@@ -40,22 +40,42 @@ class DatabaseStore(
     }
 }
 
-class BatchStore(
-    private val batchStore: BatchKeyValueStore
-): BatchReadModel {
-    override fun batch(id: BatchId): Batch? {
-        TODO("Not yet implemented")
-    }
+interface IBatchSummaryStore: BatchSummaryReadModel {
+    val batchStore: BatchKeyValueStore
 
-    override fun batchSummary(id: BatchId): BatchSummary? =
-        batchStore.get(id)
+    override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
+        batchStore.get(buildBatchKey(database, id))?.let {eventIds ->
+            BatchSummary(
+                id,
+                database,
+                eventIds
+            )
+        }
 
-    fun putBatchSummary(batchId: BatchId, batch: BatchSummary) {
-        batchStore.put(batchId, batch)
+    fun putBatchSummary(batch: BatchSummary) {
+        batchStore.put(buildBatchKey(batch.database, batch.id), batch.eventIds)
     }
 }
 
-interface IStreamStore: StreamReadModel {
+class BatchSummaryStore(
+    override val batchStore: BatchKeyValueStore
+): IBatchSummaryStore
+
+class BatchStore(
+    override val batchStore: BatchKeyValueStore,
+    private val eventStore: EventKeyValueStore
+): IBatchSummaryStore, BatchReadModel {
+    override fun batch(database: DatabaseName, id: BatchId): Batch? =
+        batchStore.get(buildBatchKey(database, id))?.let {eventIds ->
+            Batch(
+                id,
+                database,
+                eventIds.map { eventStore.get(it) }
+            )
+        }
+}
+
+interface IStreamSummaryStore: StreamSummaryReadModel {
     val streamStore: StreamKeyValueStore
 
     override fun streamState(databaseName: DatabaseName, name: StreamName): StreamState {
@@ -66,27 +86,17 @@ interface IStreamStore: StreamReadModel {
             StreamState.AtRevision(eventIds.count().toLong())
     }
 
-    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
-        val eventIds = streamStore.get(buildStreamKey(databaseName, name))
-        return if (eventIds == null)
-            null
-        else
-            Stream.create(databaseName, name, eventIds.count().toLong())
-    }
-
-    override fun databaseStreams(databaseName: DatabaseName): Set<Stream> {
-        val ret = mutableSetOf<Stream>()
+    override fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary> {
+        val ret = mutableSetOf<StreamSummary>()
         streamStore.prefixScan(
             databaseName.value,
             Serdes.String().serializer()
         ).use { streamIterator ->
             for (kv in streamIterator) {
-                val parsedKey = parseStreamKey(kv.key)
                 ret.add(
-                    Stream.create(
-                        parsedKey.first,
-                        parsedKey.second,
-                        kv.value.count().toLong()
+                    StreamSummary.create(
+                        kv.key,
+                        kv.value
                     )
                 )
             }
@@ -94,9 +104,15 @@ interface IStreamStore: StreamReadModel {
         return ret
     }
 
-    override fun streamEventIds(streamKey: StreamKey)
-            : List<EventId>? =
-        streamStore.get(streamKey)
+    override fun streamSummary(streamKey: StreamKey): StreamSummary? =
+        streamStore.get(streamKey)?.let { eventIds ->
+            val (databaseName, streamName) = parseStreamKey(streamKey)
+            BaseStreamSummary(
+                databaseName,
+                streamName,
+                eventIds
+            )
+        }
 
     // eventIds must be the full list, not just the new ones to append
     fun putStreamEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
@@ -104,21 +120,20 @@ interface IStreamStore: StreamReadModel {
     }
 }
 
-class StreamStore(override val streamStore: StreamKeyValueStore): IStreamStore
+class StreamSummaryStore(override val streamStore: StreamKeyValueStore): IStreamSummaryStore
 
-class StreamWithEventsStore(
+class StreamStore(
     override val streamStore: StreamKeyValueStore,
     private val eventStore: EventKeyValueStore
-): IStreamStore, StreamWithEventsReadModel {
-    override fun streamWithEvents(database: DatabaseName, name: StreamName): StreamWithEvents? {
-        val eventIds = streamStore.get(buildStreamKey(database, name))
+): IStreamSummaryStore, StreamReadModel {
+    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
+        val eventIds = streamStore.get(buildStreamKey(databaseName, name))
         return if (eventIds == null)
             null
         else
-            StreamWithEvents.create(
-                database,
+            BaseStream(
+                databaseName,
                 name,
-                eventIds.count().toLong(),
                 eventIds.map { eventStore.get(it)!! }
             )
     }

@@ -1,9 +1,8 @@
 package com.evidentdb.domain.test.database
 
-import com.evidentdb.domain.Database
 import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNotFoundError
-import com.evidentdb.domain.test.InMemoryService
+import com.evidentdb.domain.test.InMemoryCommandService
 import com.evidentdb.domain.test.buildTestDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
@@ -14,7 +13,7 @@ class DeletionTests {
     fun `reject a database deletion proposal due to no database with name existing`(): Unit =
         runBlocking {
             val databaseName = "foo"
-            val service = InMemoryService.empty()
+            val service = InMemoryCommandService.empty()
             val result = service.deleteDatabase(databaseName)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
@@ -25,7 +24,7 @@ class DeletionTests {
         runBlocking {
             val databaseName = DatabaseName.build("foo")
             val database = buildTestDatabase(databaseName)
-            val service = InMemoryService(
+            val service = InMemoryCommandService(
                 listOf(database),
                 listOf(),
                 listOf()

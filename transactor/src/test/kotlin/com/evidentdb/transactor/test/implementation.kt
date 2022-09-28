@@ -5,7 +5,6 @@ import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.CommandEnvelopeSerde
-import com.evidentdb.kafka.DatabaseStore
 import com.evidentdb.kafka.EventEnvelopeSerde
 import com.evidentdb.transactor.TransactorTopology
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -83,8 +82,8 @@ class TopologyTestDriverCommandManager(
 
 }
 
-class TopologyTestDriverService(
+class TopologyTestDriverCommandService(
     driver: TopologyTestDriver
-): Service {
+): CommandService {
     override val commandManager = TopologyTestDriverCommandManager(driver)
 }

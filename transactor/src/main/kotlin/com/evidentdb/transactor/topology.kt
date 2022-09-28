@@ -88,8 +88,8 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
-                Serdes.UUID(), // BatchId
-                BatchSummarySerde(), // BatchSummary
+                Serdes.String(), // BatchKey
+                listSerde(Serdes.UUID()), // List<EventId>
             ),
             COMMAND_PROCESSOR,
             BATCH_INDEXER,
@@ -222,11 +222,11 @@ object TransactorTopology {
 
     private class BatchIndexer:
         ContextualProcessor<EventId, EventEnvelope, BatchKey, List<EventId>>() {
-        lateinit var batchStore: BatchStore
+        lateinit var batchSummaryStore: BatchSummaryStore
 
         override fun init(context: ProcessorContext<BatchKey, List<EventId>>?) {
             super.init(context)
-            this.batchStore = BatchStore(
+            this.batchSummaryStore = BatchSummaryStore(
                 context().getStateStore(BATCH_STORE)
             )
         }
@@ -236,7 +236,7 @@ object TransactorTopology {
             val result = EventHandler.batchToIndex(event)
             if (result != null) {
                 val (batchId, eventIds) = result
-                batchStore.putBatchSummary(batchId, BatchSummary(event.database, eventIds))
+                batchSummaryStore.putBatchSummary(BatchSummary(batchId, event.database, eventIds))
             }
         }
 
@@ -249,11 +249,11 @@ object TransactorTopology {
 
     private class StreamIndexer:
         ContextualProcessor<EventId, EventEnvelope, StreamKey, List<EventId>>() {
-        lateinit var streamStore: StreamStore
+        lateinit var streamStore: StreamSummaryStore
 
         override fun init(context: ProcessorContext<StreamKey, List<EventId>>?) {
             super.init(context)
-            this.streamStore = StreamStore(
+            this.streamStore = StreamSummaryStore(
                 context().getStateStore(STREAM_STORE)
             )
         }

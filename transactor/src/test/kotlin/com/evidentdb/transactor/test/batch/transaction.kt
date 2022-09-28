@@ -3,7 +3,7 @@ package com.evidentdb.transactor.test.batch
 import com.evidentdb.domain.*
 import com.evidentdb.test.buildTestEvent
 import com.evidentdb.transactor.TransactorTopology
-import com.evidentdb.transactor.test.TopologyTestDriverService
+import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
@@ -14,7 +14,7 @@ class TransactionTests {
     fun `fast reject transaction when database is not found`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
 
             val result = service.transactBatch(databaseName, listOf())
@@ -26,7 +26,7 @@ class TransactionTests {
     fun `reject transaction with no events`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
@@ -39,7 +39,7 @@ class TransactionTests {
     fun `reject transaction due to invalid events`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
@@ -61,7 +61,7 @@ class TransactionTests {
         runBlocking {
             val driver = driver()
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
@@ -134,7 +134,7 @@ class TransactionTests {
             val batchStore = driver.getKeyValueStore<BatchId, BatchSummary>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
             val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = DatabaseName.build("foo")
             service.createDatabase(databaseName.value)
 

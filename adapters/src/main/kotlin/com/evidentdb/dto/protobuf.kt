@@ -200,6 +200,7 @@ fun batchFromBytes(bytes: ByteArray): Batch =
 
 fun BatchSummary.toProto(): ProtoBatchSummary =
     ProtoBatchSummary.newBuilder()
+        .setId(this.id.toString())
         .setDatabase(this.database.value)
         .addAllEventIds(this.eventIds.map { it.toString() })
         .build()
@@ -210,6 +211,7 @@ fun BatchSummary.toByteArray(): ByteArray =
 fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
     val databaseName = DatabaseName.build(proto.database)
     return BatchSummary(
+        BatchId.fromString(proto.id),
         databaseName,
         proto.eventIdsList.map {
             EventId.fromString(it)

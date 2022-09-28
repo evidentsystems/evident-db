@@ -21,9 +21,9 @@ class InMemoryDatabaseReadModel(
         databases.values.toSet()
 }
 
-class InMemoryStreamReadModel(
-    streams: Iterable<Stream>
-): StreamReadModel {
+class InMemoryStreamSummaryReadModel(
+    streams: Iterable<StreamSummary>
+): StreamSummaryReadModel {
     private val streams: Map<StreamKey, List<EventId>> =
         streams.fold(mutableMapOf()) { acc, stream ->
             acc[buildStreamKey(stream.database, stream.name)] = listOf()
@@ -36,56 +36,49 @@ class InMemoryStreamReadModel(
         return StreamState.AtRevision(eventIds.size.toLong())
     }
 
-    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
-        val eventIds = streams[buildStreamKey(databaseName, name)] ?: return null
-        return Stream.create(databaseName, name, eventIds.size.toLong())
+    override fun streamSummary(streamKey: StreamKey): StreamSummary? {
+        val eventIds = streams[streamKey] ?: return null
+        return StreamSummary.create(streamKey, eventIds)
     }
 
-    override fun streamEventIds(streamKey: StreamKey): List<EventId>? =
-        streams[streamKey]
-
-    override fun databaseStreams(databaseName: DatabaseName): Set<Stream> =
+    override fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary> =
         streams.map { (streamKey, eventIds) ->
             val (dbId, name) = parseStreamKey(streamKey)
             if (dbId == databaseName) {
-                Stream.create(dbId, name, eventIds.size.toLong())
+                StreamSummary.create(dbId, name, eventIds = eventIds)
             } else {
                 null
             }
         }.filterNotNull().toSet()
 }
 
-class InMemoryBatchReadModel(batches: List<Batch>): BatchReadModel {
-    private val batches: Map<BatchId, Batch> =
+class InMemoryBatchSummaryReadModel(batches: List<BatchSummary>): BatchSummaryReadModel {
+    private val batches: Map<BatchKey, List<EventId>> =
         batches.fold(mutableMapOf()) { acc, batch ->
-            acc[batch.id] = batch
+            acc[buildBatchKey(batch.database, batch.id)] = batch.eventIds
             acc
         }
 
-    override fun batch(id: BatchId): Batch? =
-        batches[id]
-
-    override fun batchSummary(id: BatchId): BatchSummary? =
-        batch(id)?.let {
-            BatchSummary(it.database, it.events.map { event -> event.id })
+    override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
+        batches[buildBatchKey(database, id)]?.let {
+            BatchSummary(id, database, it)
         }
-
 }
 
 class InMemoryCommandHandler(
     databases: List<Database>,
-    streams: List<Stream>,
-    batches: List<Batch>,
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
 ): CommandHandler {
     override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val streamReadModel = InMemoryStreamReadModel(streams)
-    override val batchReadModel = InMemoryBatchReadModel(batches)
+    override val streamSummaryReadModel = InMemoryStreamSummaryReadModel(streams)
+    override val batchSummaryReadModel = InMemoryBatchSummaryReadModel(batches)
 }
 
 class InMemoryCommandManager(
     databases: List<Database>,
-    streams: List<Stream>,
-    batches: List<Batch>,
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
 ): CommandManager {
     private val commandHandler = InMemoryCommandHandler(databases, streams, batches)
 
@@ -99,15 +92,15 @@ class InMemoryCommandManager(
         commandHandler.handleTransactBatch(command)
 }
 
-class InMemoryService(
+class InMemoryCommandService(
     databases: List<Database>,
-    streams: List<Stream>,
-    batches: List<Batch>,
-): Service {
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
+): CommandService {
     override val commandManager = InMemoryCommandManager(databases, streams, batches)
 
     companion object {
-        fun empty(): InMemoryService = InMemoryService(listOf(), listOf(), listOf())
+        fun empty(): InMemoryCommandService = InMemoryCommandService(listOf(), listOf(), listOf())
     }
 }
 

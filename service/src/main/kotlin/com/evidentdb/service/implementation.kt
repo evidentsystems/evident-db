@@ -5,9 +5,7 @@ import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain.*
-import com.evidentdb.kafka.CommandEnvelopeSerde
-import com.evidentdb.kafka.EventEnvelopeSerde
-import com.evidentdb.kafka.partitionByDatabase
+import com.evidentdb.kafka.*
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics
@@ -22,6 +20,9 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.WakeupException
 import org.apache.kafka.common.serialization.UUIDDeserializer
 import org.apache.kafka.common.serialization.UUIDSerializer
+import org.apache.kafka.streams.KafkaStreams
+import org.apache.kafka.streams.StoreQueryParameters
+import org.apache.kafka.streams.state.QueryableStoreTypes
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.time.Duration
@@ -228,5 +229,58 @@ class KafkaCommandService(
 
     override fun close() {
         commandManager.close()
+    }
+}
+
+class KafkaQueryService(
+    kafkaStreams: KafkaStreams,
+    databaseStoreName: String,
+    batchStoreName: String,
+    streamStoreName: String,
+    eventStoreName: String,
+): QueryService {
+    override val databaseReadModel: DatabaseReadModelStore
+    override val batchReadModel: BatchReadOnlyStore
+    override val streamReadModel: StreamReadOnlyStore
+    override val eventReadModel: EventReadOnlyStore
+
+    init {
+        databaseReadModel = DatabaseReadModelStore(
+            kafkaStreams.store(
+                StoreQueryParameters.fromNameAndType(
+                    databaseStoreName,
+                    QueryableStoreTypes.keyValueStore()
+                )
+            )
+        )
+
+        val eventKeyValueStore: EventReadOnlyKeyValueStore = kafkaStreams.store(
+            StoreQueryParameters.fromNameAndType(
+                eventStoreName,
+                QueryableStoreTypes.keyValueStore()
+            )
+        )
+
+        batchReadModel = BatchReadOnlyStore(
+            kafkaStreams.store(
+                StoreQueryParameters.fromNameAndType(
+                    batchStoreName,
+                    QueryableStoreTypes.keyValueStore()
+                )
+            ),
+            eventKeyValueStore
+        )
+
+        streamReadModel = StreamReadOnlyStore(
+            kafkaStreams.store(
+                StoreQueryParameters.fromNameAndType(
+                    streamStoreName,
+                    QueryableStoreTypes.keyValueStore()
+                )
+            ),
+            eventKeyValueStore
+        )
+
+        eventReadModel = EventReadOnlyStore(eventKeyValueStore)
     }
 }

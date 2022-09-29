@@ -1,8 +1,10 @@
 package com.evidentdb.app
 
 import com.evidentdb.domain.CommandService
+import com.evidentdb.domain.QueryService
 import com.evidentdb.service.EvidentDbEndpoint
 import com.evidentdb.service.KafkaCommandService
+import com.evidentdb.service.KafkaQueryService
 import com.evidentdb.transactor.TransactorTopology
 import io.grpc.BindableService
 import io.micrometer.core.instrument.MeterRegistry
@@ -44,7 +46,7 @@ class Configuration {
 
 	@Bean(preDestroy = "close")
 	@Singleton
-	fun service(
+	fun commandService(
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
 		@Value("\${kafka.topics.internal-commands.name}")
@@ -63,8 +65,22 @@ class Configuration {
 			meterRegistry,
 		)
 
+	@Singleton
+	fun queryService(transactorTopologyRunner: TransactorTopologyRunner): KafkaQueryService =
+		KafkaQueryService(
+			transactorTopologyRunner.streams,
+			TransactorTopology.DATABASE_STORE,
+			TransactorTopology.BATCH_STORE,
+			TransactorTopology.STREAM_STORE,
+			TransactorTopology.EVENT_STORE,
+		)
+
 	@Bean
-	fun endpoint(commandService: CommandService): BindableService = EvidentDbEndpoint(commandService)
+	fun endpoint(
+		commandService: CommandService,
+		queryService: QueryService,
+	): BindableService =
+		EvidentDbEndpoint(commandService, queryService)
 }
 
 @Singleton

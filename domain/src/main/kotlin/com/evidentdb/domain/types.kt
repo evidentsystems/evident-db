@@ -172,8 +172,31 @@ interface Stream: StreamSummary {
 
     companion object {
         fun create(streamKey: StreamKey, events: List<Event> = listOf()): Stream {
-            TODO()
+            // TODO: support parsing subject (nullable) from stream key and passing to `create()`
+            val (database, stream) = parseStreamKey(streamKey)
+            return create(database, stream, events = events)
         }
+
+        fun create(
+            database: DatabaseName,
+            stream: StreamName,
+            subject: StreamSubject? = null,
+            events: List<Event> = listOf()
+        ): Stream =
+            if (subject != null) {
+                SubjectStream(
+                    database,
+                    stream,
+                    subject,
+                    events,
+                )
+            } else {
+                BaseStream(
+                    database,
+                    stream,
+                    events
+                )
+            }
     }
 }
 
@@ -280,7 +303,9 @@ data class BatchTransacted(
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: DatabaseName): DatabaseDeletionError, BatchTransactionError
-data class BatchNotFoundError(val batchId: BatchId)
+data class BatchNotFoundError(val batchKey: BatchKey)
+data class StreamNotFoundError(val streamKey: StreamKey)
+data class EventNotFoundError(val database: String, val eventId: EventId)
 
 sealed interface InvalidBatchError: BatchTransactionError
 

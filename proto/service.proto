@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package com.evidentdb.service;
+package com.evidentdb;
 
 import "domain.proto";
 
@@ -15,9 +15,9 @@ option objc_class_prefix = "EDB";
 
 service EvidentDb {
   // Command
-  rpc createDatabase(com.evidentdb.DatabaseCreationInfo) returns (CreateDatabaseReply) {}
-  rpc deleteDatabase(com.evidentdb.DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
-  rpc transactBatch(com.evidentdb.BatchProposal)         returns (TransactBatchReply)  {}
+  rpc createDatabase(DatabaseCreationInfo) returns (CreateDatabaseReply) {}
+  rpc deleteDatabase(DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
+  rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
 
   // Query
   rpc getCatalog(CatalogRequest) returns (CatalogReply) {}
@@ -32,48 +32,100 @@ service EvidentDb {
 
 message CreateDatabaseReply {
   oneof result {
-    com.evidentdb.DatabaseCreationResult database_creation = 1;
-    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
-    com.evidentdb.DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
-    com.evidentdb.InternalServerError internal_server_error = 4;
+    DatabaseCreationResult database_creation = 1;
+    InvalidDatabaseNameError invalid_database_name_error = 2;
+    DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
+    InternalServerError internal_server_error = 4;
   }
 }
 
 message DeleteDatabaseReply {
   oneof result {
-    com.evidentdb.DatabaseDeletionResult database_deletion = 1;
-    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
-    com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
-    com.evidentdb.InternalServerError internal_server_error = 4;
+    DatabaseDeletionResult database_deletion = 1;
+    InvalidDatabaseNameError invalid_database_name_error = 2;
+    DatabaseNotFoundError database_not_found_error = 3;
+    InternalServerError internal_server_error = 4;
   }
 }
 
 message TransactBatchReply {
   oneof result {
-    com.evidentdb.BatchTransactionResult batch_transaction = 1;
-    com.evidentdb.InvalidDatabaseNameError invalid_database_name_error = 2;
-    com.evidentdb.DatabaseNotFoundError database_not_found_error = 3;
-    com.evidentdb.NoEventsProvidedError no_events_provided_error = 4;
-    com.evidentdb.InvalidEventsError invalid_events_error = 5;
-    com.evidentdb.DuplicateBatchError duplicate_batch_error = 6;
-    com.evidentdb.StreamStateConflictsError stream_state_conflict_error = 7;
-    com.evidentdb.InternalServerError internal_server_error = 8;
+    BatchTransactionResult batch_transaction = 1;
+    InvalidDatabaseNameError invalid_database_name_error = 2;
+    DatabaseNotFoundError database_not_found_error = 3;
+    NoEventsProvidedError no_events_provided_error = 4;
+    InvalidEventsError invalid_events_error = 5;
+    DuplicateBatchError duplicate_batch_error = 6;
+    StreamStateConflictsError stream_state_conflict_error = 7;
+    InternalServerError internal_server_error = 8;
   }
 }
 
 message CatalogRequest {}
-message CatalogReply {}
-message DatabaseRequest {}
-message DatabaseReply {}
+message CatalogReply {
+  repeated Database databases = 1;
+}
+
+message DatabaseRequest {
+  string name = 1;
+}
+message DatabaseReply {
+  oneof result {
+    Database database = 1;
+    DatabaseNotFoundError not_found = 2;
+  }
+}
+
 message DatabaseBatchesRequest {}
 message DatabaseBatchesReply {}
-message BatchRequest {}
-message BatchReply {}
-message DatabaseStreamsRequest {}
-message DatabaseStreamsReply {}
-message StreamRequest {}
-message StreamReply {}
+
+message BatchRequest {
+  string database = 1;
+  string batchId = 2;
+}
+
+message BatchReply {
+  oneof result {
+    Batch batch = 1;
+    BatchNotFoundError batch_not_found = 3;
+  }
+}
+
+message DatabaseStreamsRequest {
+  string database = 1;
+}
+message StreamSummaries {
+  repeated StreamSummary summaries = 1;
+}
+message DatabaseStreamsReply {
+  oneof result {
+    StreamSummaries streams = 1;
+    DatabaseNotFoundError database_not_found = 2;
+  }
+}
+
+message StreamRequest {
+  string database = 1;
+  string stream = 2;
+}
+
+message StreamReply {
+  oneof result {
+    Stream stream = 1;
+    StreamNotFoundError stream_not_found = 2;
+  }
+}
+
 message SubjectStreamRequest {}
 message SubjectStreamReply {}
-message EventRequest {}
-message EventReply {}
+
+message EventRequest {
+  string database = 1;
+  string event_id = 2;
+}
+message EventReply {
+  oneof result {
+    Event event = 1;
+    EventNotFoundError event_not_found = 2;
+  }
+}

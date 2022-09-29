@@ -4,6 +4,7 @@ import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
+import arrow.core.toOption
 import java.time.Instant
 
 // TODO: Consistency levels!!!
@@ -85,6 +86,8 @@ interface EventReadModel {
     fun event(id: EventId): Event?
 }
 
+// TODO: as-of revision number option for all database read-model (i.e. stream) queries
+// TODO: add subscription/channel-returning function for subscription to a database
 interface QueryService {
     val databaseReadModel: DatabaseReadModel
     val batchReadModel: BatchReadModel
@@ -96,20 +99,53 @@ interface QueryService {
 
     suspend fun getDatabase(name: DatabaseName): Either<DatabaseNotFoundError, Database> =
         databaseReadModel.database(name)
-            ?.right()
-            ?: DatabaseNotFoundError(name).left()
+                .toOption()
+                .toEither { DatabaseNotFoundError(name) }
 
     suspend fun getDatabaseBatches(name: DatabaseName)
-            : Either<DatabaseNotFoundError, List<BatchSummary>> = TODO()
+            : Either<DatabaseNotFoundError, List<BatchSummary>> =
+        TODO("Add a database batch index")
 
     suspend fun getBatch(database: DatabaseName, batchId: BatchId)
             : Either<BatchNotFoundError, Batch> =
-        batchReadModel.batch(database, batchId)?.right() ?: BatchNotFoundError(batchId).left()
+        batchReadModel.batch(database, batchId)
+            ?.right()
+            ?: BatchNotFoundError(buildBatchKey(database, batchId)).left()
 
-    suspend fun getDatabaseStreams(name: DatabaseName): Set<Stream> = TODO()
-    suspend fun getStream(databaseName: DatabaseName, streamName: StreamName): Stream? = TODO()
-    suspend fun getSubjectStream(name: DatabaseName, streamName: StreamName, subject: StreamSubject): SubjectStreamSummary = TODO()
-    suspend fun getEvent(id: EventId): Event = TODO()
+    suspend fun getDatabaseStreams(name: DatabaseName)
+            : Either<DatabaseNotFoundError, Set<StreamSummary>> =
+        if (databaseReadModel.exists(name))
+            streamReadModel.databaseStreams(name).right()
+        else
+            DatabaseNotFoundError(name).left()
+
+    suspend fun getStream(
+        databaseName: DatabaseName,
+        streamName: StreamName
+    ) : Either<StreamNotFoundError, Stream> =
+        streamReadModel.stream(databaseName, streamName)
+            .toOption()
+            .toEither { StreamNotFoundError(buildStreamKey(databaseName, streamName)) }
+
+    suspend fun getSubjectStream(
+        database: DatabaseName,
+        stream: StreamName,
+        subject: StreamSubject,
+    ): Either<StreamNotFoundError, SubjectStream> = TODO()
+
+    suspend fun getEvent(
+        database: DatabaseName,
+        id: EventId,
+    ): Either<EventNotFoundError, Event> =
+        eventReadModel.event(id)
+            ?.let { event ->
+                if (event.database == database) {
+                    event.right()
+                } else {
+                    EventNotFoundError(database.value, id).left()
+                }
+            }
+            ?: EventNotFoundError(database.value, id).left()
 }
 
 interface CommandManager {

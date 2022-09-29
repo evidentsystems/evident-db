@@ -31,6 +31,14 @@ fun buildStreamKey(databaseName: DatabaseName, streamName: StreamName): String =
         null
     ).toString()
 
+fun buildStreamKeyPrefix(databaseName: DatabaseName): String =
+    URI(
+        "evdb",
+        databaseName.value,
+        "${STREAM_URI_PATH_PREFIX}",
+        null
+    ).toString()
+
 
 fun parseStreamKey(streamKey: StreamKey)
         : Pair<DatabaseName, StreamName> {

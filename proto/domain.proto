@@ -85,6 +85,18 @@ message BatchTransactionResult {
   Database database = 2;
 }
 
+message StreamSummary {
+  string database = 1;
+  string name = 2;
+  repeated string event_ids = 3;
+}
+
+message Stream {
+  string database = 1;
+  string name = 2;
+  repeated Event events = 3;
+}
+
 // Errors
 
 message InvalidDatabaseNameError {
@@ -97,6 +109,19 @@ message DatabaseNameAlreadyExistsError {
 
 message DatabaseNotFoundError {
   string name = 1;
+}
+
+message BatchNotFoundError {
+  string batch_key = 1;
+}
+
+message StreamNotFoundError {
+  string stream_key = 1;
+}
+
+message EventNotFoundError {
+  string database = 1;
+  string event_id = 2;
 }
 
 message NoEventsProvidedError {}

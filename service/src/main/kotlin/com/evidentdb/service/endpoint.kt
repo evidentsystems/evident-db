@@ -175,9 +175,10 @@ class EvidentDbEndpoint(
         val eventId = EventId.fromString(request.eventId)
         when (val result = queryService.getEvent(databaseName, eventId)
         ) {
-            is Either.Left -> builder.eventNotFoundBuilder
-                .setDatabase(request.database)
-                .setEventId(request.eventId)
+            is Either.Left -> {
+                builder.eventNotFoundBuilder.database = request.database
+                builder.eventNotFoundBuilder.eventId = request.eventId
+            }
             is Either.Right -> builder.event = result.value.toProto()
         }
         return builder.build()

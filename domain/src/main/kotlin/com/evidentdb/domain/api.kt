@@ -97,11 +97,14 @@ interface QueryService {
     suspend fun getCatalog(): Set<Database> =
         databaseReadModel.catalog()
 
-    suspend fun getDatabase(name: DatabaseName): Either<DatabaseNotFoundError, Database> =
+    // TODO: monadic binding for invalid database name
+    suspend fun getDatabase(name: DatabaseName)
+            : Either<DatabaseNotFoundError, Database> =
         databaseReadModel.database(name)
                 .toOption()
                 .toEither { DatabaseNotFoundError(name) }
 
+    // TODO: monadic binding for invalid database name
     suspend fun getDatabaseBatches(name: DatabaseName)
             : Either<DatabaseNotFoundError, List<BatchSummary>> =
         TODO("Add a database batch index")
@@ -112,6 +115,7 @@ interface QueryService {
             ?.right()
             ?: BatchNotFoundError(buildBatchKey(database, batchId)).left()
 
+    // TODO: monadic binding for invalid database name
     suspend fun getDatabaseStreams(name: DatabaseName)
             : Either<DatabaseNotFoundError, Set<StreamSummary>> =
         if (databaseReadModel.exists(name))
@@ -119,6 +123,7 @@ interface QueryService {
         else
             DatabaseNotFoundError(name).left()
 
+    // TODO: monadic binding for invalid database name
     suspend fun getStream(
         databaseName: DatabaseName,
         streamName: StreamName
@@ -127,16 +132,18 @@ interface QueryService {
             .toOption()
             .toEither { StreamNotFoundError(buildStreamKey(databaseName, streamName)) }
 
+    // TODO: monadic binding for invalid database name
     suspend fun getSubjectStream(
         database: DatabaseName,
         stream: StreamName,
         subject: StreamSubject,
-    ): Either<StreamNotFoundError, SubjectStream> = TODO()
+    ) : Either<StreamNotFoundError, SubjectStream> = TODO()
 
+    // TODO: monadic binding for invalid database name
     suspend fun getEvent(
         database: DatabaseName,
         id: EventId,
-    ): Either<EventNotFoundError, Event> =
+    ) : Either<EventNotFoundError, Event> =
         eventReadModel.event(id)
             ?.let { event ->
                 if (event.database == database) {

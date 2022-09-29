@@ -115,7 +115,6 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    // TODO: monadic binding for invalid database name
     override suspend fun getDatabase(request: DatabaseRequest): DatabaseReply {
         LOGGER.debug("getDatabase request received: $request")
         val builder = DatabaseReply.newBuilder()
@@ -127,7 +126,6 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    // TODO: monadic binding for invalid database name
     override suspend fun getBatch(request: BatchRequest): BatchReply {
         LOGGER.debug("getBatch request received: $request")
         val builder = BatchReply.newBuilder()

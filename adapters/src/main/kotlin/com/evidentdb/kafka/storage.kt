@@ -142,8 +142,23 @@ class BatchSummaryReadOnlyStore(
 
 class BatchSummaryStore(
     override val batchKeyLookup: BatchIndexKeyValueStore,
-    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
-): IBatchSummaryStore
+    override val databaseLogStore: DatabaseLogKeyValueStore,
+    private val eventStore: EventKeyValueStore,
+): IBatchSummaryStore {
+    fun deleteDatabaseLog(database: DatabaseName) {
+        databaseLogStore.range(minDatabaseLogKey(database), maxDatabaseLogKey(database))
+            .use {
+                for (keyValue in it.asSequence()) {
+                    val batch = keyValue.value
+                    for (eventId in batch.eventIds) {
+                        eventStore.delete(eventId)
+                    }
+                    batchKeyLookup.delete(batch.id)
+                    databaseLogStore.delete(keyValue.key)
+                }
+            }
+    }
+}
 
 class BatchReadOnlyStore(
     override val batchKeyLookup: BatchIndexReadOnlyKeyValueStore,
@@ -204,6 +219,10 @@ interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
     // eventIds must be the full list, not just the new ones to append
     fun putStreamEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
         streamStore.put(streamKey, eventIds)
+    }
+
+    fun deleteStream(streamKey: StreamKey) {
+        streamStore.delete(streamKey)
     }
 }
 

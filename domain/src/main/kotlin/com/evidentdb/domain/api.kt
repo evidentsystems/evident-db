@@ -247,6 +247,20 @@ sealed interface DatabaseOperation {
     object DoNothing: DatabaseOperation
 }
 
+sealed interface BatchOperation {
+    data class StoreBatch(val batchSummary: BatchSummary): BatchOperation
+    data class DeleteLog(val database: DatabaseName): BatchOperation
+    object DoNothing: BatchOperation
+
+}
+
+sealed interface StreamOperation {
+    data class StoreStreams(val updates: LinkedHashMap<StreamKey, List<EventId>>): StreamOperation
+    data class DeleteStreams(val streams: List<StreamKey>): StreamOperation
+    object DoNothing: StreamOperation
+
+}
+
 object EventHandler {
     fun databaseUpdate(event: EventEnvelope): Pair<DatabaseName, DatabaseOperation> =
         Pair(event.database, when(event) {
@@ -262,24 +276,27 @@ object EventHandler {
             else -> DatabaseOperation.DoNothing
         })
 
-    fun batchToIndex(event: EventEnvelope): BatchSummary? {
+    fun batchUpdate(event: EventEnvelope): BatchOperation {
         return when (event) {
-            is BatchTransacted -> event.data.batch.let { batch ->
-                BatchSummary(
-                    batch.id,
-                    batch.database,
-                    batch.events.map { it.id },
-                    batch.streamRevisions
-                )
-            }
-            else -> null
+            is BatchTransacted -> BatchOperation.StoreBatch(
+                event.data.batch.let { batch ->
+                    BatchSummary(
+                        batch.id,
+                        batch.database,
+                        batch.events.map { it.id },
+                        batch.streamRevisions
+                    )
+                }
+            )
+            is DatabaseDeleted -> BatchOperation.DeleteLog(event.database)
+            else -> BatchOperation.DoNothing
         }
     }
 
-    fun streamEventIdsToUpdate(
+    fun streamUpdate(
         streamSummaryReadModel: StreamSummaryReadModel,
         event: EventEnvelope
-    ): LinkedHashMap<StreamKey, List<EventId>>? {
+    ): StreamOperation {
         val database = event.database
         return when (event) {
             is BatchTransacted -> {
@@ -304,10 +321,13 @@ object EventHandler {
                         idempotentEventIds.add(eventId)
                     result[streamKey] = idempotentEventIds.toList()
                 }
-                result
+                StreamOperation.StoreStreams(result)
             }
-
-            else -> null
+            is DatabaseDeleted -> StreamOperation.DeleteStreams(
+                streamSummaryReadModel.databaseStreams(database)
+                    .map { buildStreamKey(database, it.name) }
+            )
+            else -> StreamOperation.DoNothing
         }
     }
 

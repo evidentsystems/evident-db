@@ -128,6 +128,7 @@ object TransactorTopology {
                 Serdes.UUID(), // EventId
                 eventStoreSerde,
             ),
+            BATCH_INDEXER,
             STREAM_INDEXER,
             EVENT_INDEXER,
         )
@@ -242,17 +243,23 @@ object TransactorTopology {
             val databaseLogKeyValueStore: DatabaseLogKeyValueStore = context().getStateStore(DATABASE_LOG_STORE)
             this.batchSummaryStore = BatchSummaryStore(
                 context().getStateStore(BATCH_STORE),
-                databaseLogKeyValueStore
+                databaseLogKeyValueStore,
+                context().getStateStore(EVENT_STORE),
             )
             this.databaseLogStore = DatabaseLogStore(databaseLogKeyValueStore)
         }
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            EventHandler.batchToIndex(event)?.let { batchSummary ->
-                batchSummaryStore.addKeyLookup(batchSummary)
-                databaseLogStore.append(batchSummary)
+            when(val result = EventHandler.batchUpdate(event)) {
+                is BatchOperation.StoreBatch -> {
+                    batchSummaryStore.addKeyLookup(result.batchSummary)
+                    databaseLogStore.append(result.batchSummary)
+                }
+                is BatchOperation.DeleteLog -> batchSummaryStore.deleteDatabaseLog(result.database)
+                BatchOperation.DoNothing -> Unit
             }
+
         }
 
         companion object {
@@ -275,14 +282,16 @@ object TransactorTopology {
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.streamEventIdsToUpdate(
-                streamStore,
-                event
-            )
-            if (result != null) {
-                for ((streamKey, eventIds) in result) {
-                    streamStore.putStreamEventIds(streamKey, eventIds)
-                }
+            when(val result = EventHandler.streamUpdate(streamStore, event)) {
+                is StreamOperation.StoreStreams ->
+                    for ((streamKey, eventIds) in result.updates) {
+                        streamStore.putStreamEventIds(streamKey, eventIds)
+                    }
+                is StreamOperation.DeleteStreams ->
+                    for (streamKey in result.streams) {
+                        streamStore.deleteStream(streamKey)
+                    }
+                StreamOperation.DoNothing -> Unit
             }
         }
 

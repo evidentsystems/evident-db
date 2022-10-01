@@ -19,7 +19,7 @@ RPK ?= docker exec -it redpanda-0 rpk
 GHZ ?= ghz --insecure --proto ./proto/service.proto
 LOAD_TEST_GRPC_ENDPOINT ?= localhost:50051
 LOAD_TEST_DB_COUNT ?= 20
-LOAD_TEST_REQUEST := "{\
+LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
   \"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
   \"events\":[\
     {\
@@ -34,6 +34,8 @@ LOAD_TEST_REQUEST := "{\
     }\
   ]\
 }"
+
+LOAD_TEST_LOG_REQUEST := "{\"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\"}"
 
 default: build
 
@@ -108,7 +110,8 @@ run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
 .PHONY: perf
 perf:
 	-$(GHZ) --call com.evidentdb.EvidentDb/createDatabase -n $(LOAD_TEST_DB_COUNT) -d '{"name": "load-test-{{.RequestNumber}}"}' $(LOAD_TEST_GRPC_ENDPOINT) &>/dev/null
-	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) / 2 )) -n 1000 -d $(LOAD_TEST_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
+	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) / 2 )) -n 1000 -d $(LOAD_TEST_TRANSACT_BATCH_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
+	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) * 2 )) -n 1000 -d $(LOAD_TEST_LOG_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
 	-$(GHZ) --call com.evidentdb.EvidentDb/deleteDatabase -n $(LOAD_TEST_DB_COUNT) -d '{"name": "load-test-{{.RequestNumber}}"}' $(LOAD_TEST_GRPC_ENDPOINT) &>/dev/null
 #	cd perf/ && $(CARGO) run
 

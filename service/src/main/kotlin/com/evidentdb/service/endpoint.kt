@@ -133,7 +133,9 @@ class EvidentDbEndpoint(
         val batchId = BatchId.fromString(request.batchId)
         when (val result = queryService.getBatch(databaseName, batchId)
         ) {
-            is Either.Left -> builder.batchNotFoundBuilder.batchKey = result.value.batchKey
+            is Either.Left -> builder.batchNotFoundBuilder
+                .setDatabase(result.value.database.value)
+                .setBatchId(result.value.batchId.toString())
             is Either.Right -> builder.batch = result.value.toProto()
         }
         return builder.build()

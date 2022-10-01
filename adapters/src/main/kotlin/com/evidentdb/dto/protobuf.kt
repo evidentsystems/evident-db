@@ -12,6 +12,7 @@ import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
 import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
 import com.evidentdb.dto.v1.proto.BatchTransactionResult as ProtoBatchTransactionResult
 import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
+import com.evidentdb.dto.v1.proto.DatabaseSummary as ProtoDatabaseSummary
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseCreationResult as ProtoDatabaseCreationResult
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
@@ -195,6 +196,7 @@ fun Batch.toProto(): ProtoBatch =
         .setId(this.id.toString())
         .setDatabase(this.database.value)
         .addAllEvents(this.events.map { it.event.toProto() })
+        .putAllStreamRevisions(this.streamRevisions)
         .build()
 
 fun batchFromProto(proto: ProtoBatch): Batch {
@@ -208,7 +210,8 @@ fun batchFromProto(proto: ProtoBatch): Batch {
                 databaseName,
                 cloudEventFromProto(it)
             )
-        }
+        },
+        proto.streamRevisionsMap
     )
 }
 
@@ -220,6 +223,7 @@ fun BatchSummary.toProto(): ProtoBatchSummary =
         .setId(this.id.toString())
         .setDatabase(this.database.value)
         .addAllEventIds(this.eventIds.map { it.toString() })
+        .putAllStreamRevisions(this.streamRevisions)
         .build()
 
 fun BatchSummary.toByteArray(): ByteArray =
@@ -232,7 +236,8 @@ fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
         databaseName,
         proto.eventIdsList.map {
             EventId.fromString(it)
-        }
+        },
+        proto.streamRevisionsMap
     )
 }
 
@@ -441,8 +446,6 @@ fun Database.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
         .setName(this.name.value)
         .setCreated(this.created.toTimestamp())
-        .setLatestEvent(this.latestEvent.toString())
-        .setRevision(this.revision)
         .putAllStreamRevisions(this.streamRevisions)
         .build()
 
@@ -453,10 +456,26 @@ fun databaseFromProto(proto: ProtoDatabase) =
     Database(
         DatabaseName.build(proto.name),
         proto.created.toInstant(),
-        EventId.fromString(proto.latestEvent),
-        proto.revision,
         proto.streamRevisionsMap
     )
 
 fun databaseFromBytes(data: ByteArray): Database =
     databaseFromProto(ProtoDatabase.parseFrom(data))
+
+fun DatabaseSummary.toProto(): ProtoDatabaseSummary =
+    ProtoDatabaseSummary.newBuilder()
+        .setName(this.name.value)
+        .setCreated(this.created.toTimestamp())
+        .build()
+
+fun DatabaseSummary.toByteArray(): ByteArray =
+    this.toProto().toByteArray()
+
+fun databaseSummaryFromProto(proto: ProtoDatabaseSummary) =
+    DatabaseSummary(
+        DatabaseName.build(proto.name),
+        proto.created.toInstant(),
+    )
+
+fun databaseSummaryFromBytes(data: ByteArray): DatabaseSummary =
+    databaseSummaryFromProto(ProtoDatabaseSummary.parseFrom(data))

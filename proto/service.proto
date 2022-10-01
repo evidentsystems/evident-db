@@ -63,7 +63,7 @@ message TransactBatchReply {
 
 message CatalogRequest {}
 message CatalogReply {
-  repeated Database databases = 1;
+  repeated DatabaseSummary databases = 1;
 }
 
 message DatabaseRequest {
@@ -87,7 +87,7 @@ message BatchRequest {
 message BatchReply {
   oneof result {
     Batch batch = 1;
-    BatchNotFoundError batch_not_found = 3;
+    BatchNotFoundError batch_not_found = 2;
   }
 }
 

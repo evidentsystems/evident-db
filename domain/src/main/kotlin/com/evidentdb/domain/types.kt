@@ -1,6 +1,7 @@
 package com.evidentdb.domain
 
 import arrow.core.Validated
+import arrow.core.foldLeft
 import io.cloudevents.CloudEvent
 import org.valiktor.functions.matches
 import org.valiktor.validate
@@ -54,6 +55,7 @@ data class ErrorEnvelope(
 
 typealias DatabaseRevision = Long
 typealias TenantRevision = Long
+typealias DatabaseLogKey = String
 
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
@@ -70,16 +72,23 @@ value class DatabaseName private constructor(val value: String) {
     }
 }
 
+data class DatabaseSummary(
+    val name: DatabaseName,
+    val created: Instant,
+)
+
 data class Database(
     val name: DatabaseName,
     val created: Instant,
-    val latestEvent: EventId,
-    val revision: DatabaseRevision = 0,
-    val streamRevisions: Map<StreamName, StreamRevision> = mapOf(),
-)
+    val streamRevisions: Map<StreamName, StreamRevision>,
+) {
+    val revision: DatabaseRevision
+        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
+            acc + v
+        }
+}
 
 data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
-data class DatabaseCreationResult(val database: Database): EventBody
 
 data class CreateDatabase(
     override val id: CommandId,
@@ -89,6 +98,8 @@ data class CreateDatabase(
 
 sealed interface DatabaseCreationError: ErrorBody
 
+data class DatabaseCreationResult(val database: Database): EventBody
+
 data class DatabaseCreated(
     override val id: EventId,
     override val commandId: CommandId,
@@ -97,8 +108,6 @@ data class DatabaseCreated(
 ): EventEnvelope
 
 data class DatabaseDeletionInfo(val name: DatabaseName): CommandBody
-data class DatabaseDeletionResult(val database: Database): EventBody
-
 data class DeleteDatabase(
     override val id: CommandId,
     override val database: DatabaseName,
@@ -106,6 +115,8 @@ data class DeleteDatabase(
 ): CommandEnvelope
 
 sealed interface DatabaseDeletionError: ErrorBody
+
+data class DatabaseDeletionResult(val database: Database): EventBody
 
 data class DatabaseDeleted(
     override val id: EventId,
@@ -269,14 +280,26 @@ data class ProposedBatch(
 data class Batch(
     val id: BatchId,
     val database: DatabaseName,
-    val events: List<Event>
-)
+    val events: List<Event>,
+    val streamRevisions: Map<StreamName, StreamRevision>,
+) {
+    val revision: DatabaseRevision
+        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
+            acc + v
+        }
+}
 
 data class BatchSummary(
     val id: BatchId,
     val database: DatabaseName,
-    val eventIds: List<EventId>
-)
+    val eventIds: List<EventId>,
+    val streamRevisions: Map<StreamName, StreamRevision>,
+) {
+    val revision: DatabaseRevision
+        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
+            acc + v
+        }
+}
 
 data class TransactBatch(
     override val id: CommandId,
@@ -303,7 +326,7 @@ data class BatchTransacted(
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: DatabaseName): DatabaseDeletionError, BatchTransactionError
-data class BatchNotFoundError(val batchKey: BatchKey)
+data class BatchNotFoundError(val database: DatabaseName, val batchId: BatchId)
 data class StreamNotFoundError(val streamKey: StreamKey)
 data class EventNotFoundError(val database: String, val eventId: EventId)
 

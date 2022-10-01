@@ -70,6 +70,7 @@ class Configuration {
 		KafkaQueryService(
 			transactorTopologyRunner.streams,
 			TransactorTopology.DATABASE_STORE,
+			TransactorTopology.DATABASE_LOG_STORE,
 			TransactorTopology.BATCH_STORE,
 			TransactorTopology.STREAM_STORE,
 			TransactorTopology.EVENT_STORE,

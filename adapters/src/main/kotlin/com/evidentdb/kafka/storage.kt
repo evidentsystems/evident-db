@@ -4,28 +4,94 @@ import com.evidentdb.domain.*
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
-import java.util.logging.Level
-import java.util.logging.Logger
+import java.util.NoSuchElementException
 
-typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, Database>
-typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, Database>
-typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
-typealias BatchReadOnlyKeyValueStore = ReadOnlyKeyValueStore<BatchKey, List<EventId>>
+typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, DatabaseSummary>
+typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseSummary>
+typealias DatabaseLogKeyValueStore = KeyValueStore<DatabaseLogKey, BatchSummary>
+typealias DatabaseLogReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseLogKey, BatchSummary>
+typealias BatchIndexKeyValueStore = KeyValueStore<BatchId, DatabaseLogKey>
+typealias BatchIndexReadOnlyKeyValueStore = ReadOnlyKeyValueStore<BatchId, DatabaseLogKey>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias StreamReadOnlyKeyValueStore = ReadOnlyKeyValueStore<StreamKey, List<EventId>>
 typealias EventKeyValueStore = KeyValueStore<EventId, Event>
 typealias EventReadOnlyKeyValueStore = ReadOnlyKeyValueStore<EventId, Event>
 
-// TODO: Abstract away DatabaseNameLookup into an interface, implement via gRPC
-open class DatabaseReadModelStore(
-    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore
-): DatabaseReadModel {
-    override fun database(name: DatabaseName): Database? =
-        databaseLookupStore.get(name)
+open class DatabaseLogReadModelStore(
+    private val logKeyValueStore: DatabaseLogReadOnlyKeyValueStore,
+) {
+    fun log(database: DatabaseName): List<BatchSummary> {
+        val ret = mutableListOf<BatchSummary>()
+        logKeyValueStore.range(minDatabaseLogKey(database), maxDatabaseLogKey(database)).use {
+            for(kv in it) {
+                ret.add(kv.value.copy())
+            }
+        }
+        return ret
+    }
 
-    override fun catalog(): Set<Database> {
-        val ret = mutableSetOf<Database>()
-        databaseLookupStore.all().use { databaseIterator ->
+    fun entry(database: DatabaseName, revision: DatabaseRevision): BatchSummary? =
+        logKeyValueStore.get(buildDatabaseLogKey(database, revision))
+
+    fun latest(database: DatabaseName): BatchSummary? =
+        logKeyValueStore.reverseRange(minDatabaseLogKey(database), maxDatabaseLogKey(database)).use {
+            try {
+                it.next().value
+            } catch (_: NoSuchElementException) {
+                null
+            }
+        }
+}
+
+class DatabaseLogStore(
+    private val logKeyValueStore: DatabaseLogKeyValueStore,
+): DatabaseLogReadModelStore(logKeyValueStore) {
+    fun append(batch: BatchSummary) {
+        logKeyValueStore.put(
+            buildDatabaseLogKey(batch.database, batch.revision),
+            batch,
+        )
+    }
+}
+
+open class DatabaseReadModelStore(
+    private val databaseStore: DatabaseReadOnlyKeyValueStore,
+    logKeyValueStore: DatabaseLogReadOnlyKeyValueStore
+): DatabaseReadModel {
+    private val logStore = DatabaseLogReadModelStore(logKeyValueStore)
+
+    override fun database(name: DatabaseName): Database? =
+        databaseStore.get(name)?.let {
+            logStore.latest(name)?.let {batchSummary ->
+                Database(
+                    name,
+                    it.created,
+                    batchSummary.streamRevisions
+                )
+            } ?: Database(name, it.created, mapOf())
+        }
+
+    // TODO: seek to revision key, rather than exact lookup, to tolerate users speculating about revision
+    override fun database(
+        name: DatabaseName,
+        revision: DatabaseRevision
+    ): Database? =
+        databaseStore.get(name)?.let { databaseSummary ->
+            logStore.entry(name, revision)?.let { batchSummary ->
+                Database(
+                    name,
+                    databaseSummary.created,
+                    batchSummary.streamRevisions
+                )
+            }
+        }
+
+    override fun summary(name: DatabaseName): DatabaseSummary? =
+        databaseStore.get(name)
+
+    override fun catalog(): Set<DatabaseSummary> {
+        val ret = mutableSetOf<DatabaseSummary>()
+        databaseStore.all().use { databaseIterator ->
             for (kv in databaseIterator)
                 ret.add(kv.value.copy())
         }
@@ -33,11 +99,11 @@ open class DatabaseReadModelStore(
     }
 }
 
-class DatabaseStore(
+class DatabaseWriteModel(
     private val databaseStore: DatabaseKeyValueStore,
-): DatabaseReadModelStore(databaseStore) {
-    fun putDatabase(databaseName: DatabaseName, database: Database) {
-        databaseStore.put(databaseName, database)
+) {
+    fun putDatabaseSummary(databaseName: DatabaseName, databaseSummary: DatabaseSummary) {
+        databaseStore.put(databaseName, databaseSummary)
     }
 
     fun deleteDatabase(databaseName: DatabaseName) {
@@ -46,45 +112,48 @@ class DatabaseStore(
 }
 
 interface IBatchSummaryReadOnlyStore: BatchSummaryReadModel {
-    val batchStore: BatchReadOnlyKeyValueStore
+    val batchKeyLookup: BatchIndexReadOnlyKeyValueStore
+    val databaseLogStore: DatabaseLogReadOnlyKeyValueStore
 
     override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
-        batchStore.get(buildBatchKey(database, id))?.let {eventIds ->
-            BatchSummary(
-                id,
-                database,
-                eventIds
-            )
+        batchKeyLookup.get(id)?.let {
+            databaseLogStore.get(it)
         }
 }
 
 interface IBatchSummaryStore: IBatchSummaryReadOnlyStore {
-    override val batchStore: BatchKeyValueStore
+    override val batchKeyLookup: BatchIndexKeyValueStore
 
-    fun putBatchSummary(batch: BatchSummary) {
-        batchStore.put(buildBatchKey(batch.database, batch.id), batch.eventIds)
+    fun addKeyLookup(batch: BatchSummary) {
+        batchKeyLookup.put(batch.id, buildDatabaseLogKey(batch.database, batch.revision))
     }
 }
 
 class BatchSummaryReadOnlyStore(
-    override val batchStore: BatchReadOnlyKeyValueStore
+    override val batchKeyLookup: BatchIndexReadOnlyKeyValueStore,
+    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
 ): IBatchSummaryReadOnlyStore
 
 class BatchSummaryStore(
-    override val batchStore: BatchKeyValueStore
+    override val batchKeyLookup: BatchIndexKeyValueStore,
+    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
 ): IBatchSummaryStore
 
 class BatchReadOnlyStore(
-    override val batchStore: BatchReadOnlyKeyValueStore,
-    private val eventStore: EventReadOnlyKeyValueStore
+    override val batchKeyLookup: BatchIndexReadOnlyKeyValueStore,
+    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
+    private val eventStore: EventReadOnlyKeyValueStore,
 ): IBatchSummaryReadOnlyStore, BatchReadModel {
-    override fun batch(database: DatabaseName, id: BatchId): Batch? =
-        batchStore.get(buildBatchKey(database, id))?.let { eventIds ->
-            Batch(
-                id,
-                database,
-                eventIds.map { eventStore.get(it)!! }
-            )
+    override fun batch(id: BatchId): Batch? =
+        batchKeyLookup.get(id)?.let { databaseLogKey ->
+            databaseLogStore.get(databaseLogKey)?.let { summary ->
+                Batch(
+                    summary.id,
+                    summary.database,
+                    summary.eventIds.map { eventStore.get(it)!! },
+                    summary.streamRevisions
+                )
+            }
         }
 }
 

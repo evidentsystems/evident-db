@@ -32,9 +32,12 @@ message DatabaseDeletionResult {
 message Database {
   string name = 1;
   google.protobuf.Timestamp created = 2;
-  string latest_event = 3;
-  int64 revision = 4;
-  map<string, int64> stream_revisions = 5;
+  map<string, int64> stream_revisions = 3;
+}
+
+message DatabaseSummary {
+  string name = 1;
+  google.protobuf.Timestamp created = 2;
 }
 
 enum StreamState {
@@ -72,12 +75,14 @@ message Batch {
   string id = 1;
   string database = 2;
   repeated io.cloudevents.v1.CloudEvent events = 3;
+  map<string, int64> stream_revisions = 4;
 }
 
 message BatchSummary {
   string id = 1;
   string database = 2;
   repeated string event_ids = 3;
+  map<string, int64> stream_revisions = 4;
 }
 
 message BatchTransactionResult {
@@ -112,7 +117,8 @@ message DatabaseNotFoundError {
 }
 
 message BatchNotFoundError {
-  string batch_key = 1;
+  string database = 1;
+  string batch_id = 2;
 }
 
 message StreamNotFoundError {

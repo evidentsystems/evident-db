@@ -218,6 +218,18 @@ class DatabaseSerde: Serdes.WrapperSerde<Database>(DatabaseSerializer(), Databas
     }
 }
 
+class DatabaseSummarySerde: Serdes.WrapperSerde<DatabaseSummary>(DatabaseSummarySerializer(), DatabaseSummaryDeserializer()) {
+    class DatabaseSummarySerializer : Serializer<DatabaseSummary> {
+        override fun serialize(topic: String?, data: DatabaseSummary?): ByteArray? =
+            data?.toByteArray()
+    }
+
+    class DatabaseSummaryDeserializer : Deserializer<DatabaseSummary> {
+        override fun deserialize(topic: String?, data: ByteArray?): DatabaseSummary? =
+            data?.let { databaseSummaryFromBytes(it) }
+    }
+}
+
 class EventSerde: Serdes.WrapperSerde<Event>(EventSerializer(), EventDeserializer()) {
     class EventSerializer : Serializer<Event> {
         override fun serialize(topic: String?, data: Event?): ByteArray? =

@@ -6,77 +6,59 @@ import java.time.Instant
 import java.util.*
 
 class InMemoryDatabaseReadModel(
-    databases: Iterable<Database> = listOf()
+    databases: Iterable<DatabaseSummary> = listOf(),
+    streams: Iterable<StreamSummary> = listOf()
 ): DatabaseReadModel {
     private val databases: Map<DatabaseName, Database> =
         databases.fold(mutableMapOf()) { acc, database ->
-        acc[database.name] = database
+        acc[database.name] = Database(
+            database.name,
+            database.created,
+            streams.fold(mutableMapOf()) { acc, stream ->
+                acc[stream.name] = stream.eventIds.size.toLong()
+                acc
+            }
+        )
         acc
     }
 
     override fun database(name: DatabaseName): Database? =
         databases[name]
 
-    override fun catalog(): Set<Database> =
-        databases.values.toSet()
-}
+    override fun database(name: DatabaseName, revision: DatabaseRevision): Database? =
+        TODO("Not yet implemented")
 
-class InMemoryStreamSummaryReadModel(
-    streams: Iterable<StreamSummary>
-): StreamSummaryReadModel {
-    private val streams: Map<StreamKey, List<EventId>> =
-        streams.fold(mutableMapOf()) { acc, stream ->
-            acc[buildStreamKey(stream.database, stream.name)] = listOf()
-            acc
-        }
+    override fun summary(name: DatabaseName): DatabaseSummary? =
+        databases[name]?.let { DatabaseSummary(it.name, it.created) }
 
-    override fun streamState(databaseName: DatabaseName, name: StreamName): StreamState {
-        val eventIds = streams[buildStreamKey(databaseName, name)]
-            ?: return StreamState.NoStream
-        return StreamState.AtRevision(eventIds.size.toLong())
-    }
-
-    override fun streamSummary(streamKey: StreamKey): StreamSummary? {
-        val eventIds = streams[streamKey] ?: return null
-        return StreamSummary.create(streamKey, eventIds)
-    }
-
-    override fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary> =
-        streams.map { (streamKey, eventIds) ->
-            val (dbId, name) = parseStreamKey(streamKey)
-            if (dbId == databaseName) {
-                StreamSummary.create(dbId, name, eventIds = eventIds)
-            } else {
-                null
-            }
-        }.filterNotNull().toSet()
+    override fun catalog(): Set<DatabaseSummary> =
+        databases.values.map { DatabaseSummary(it.name, it.created) }.toSet()
 }
 
 class InMemoryBatchSummaryReadModel(batches: List<BatchSummary>): BatchSummaryReadModel {
-    private val batches: Map<BatchKey, List<EventId>> =
+    private val batches: Map<BatchId, List<EventId>> =
         batches.fold(mutableMapOf()) { acc, batch ->
-            acc[buildBatchKey(batch.database, batch.id)] = batch.eventIds
+            acc[batch.id] = batch.eventIds
             acc
         }
 
     override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
-        batches[buildBatchKey(database, id)]?.let {
-            BatchSummary(id, database, it)
+        batches[id]?.let {
+            BatchSummary(id, database, it, mapOf())
         }
 }
 
 class InMemoryCommandHandler(
-    databases: List<Database>,
+    databases: List<DatabaseSummary>,
     streams: List<StreamSummary>,
     batches: List<BatchSummary>,
 ): CommandHandler {
-    override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val streamSummaryReadModel = InMemoryStreamSummaryReadModel(streams)
+    override val databaseReadModel = InMemoryDatabaseReadModel(databases, streams)
     override val batchSummaryReadModel = InMemoryBatchSummaryReadModel(batches)
 }
 
 class InMemoryCommandManager(
-    databases: List<Database>,
+    databases: List<DatabaseSummary>,
     streams: List<StreamSummary>,
     batches: List<BatchSummary>,
 ): CommandManager {
@@ -93,7 +75,7 @@ class InMemoryCommandManager(
 }
 
 class InMemoryCommandService(
-    databases: List<Database>,
+    databases: List<DatabaseSummary>,
     streams: List<StreamSummary>,
     batches: List<BatchSummary>,
 ): CommandService {
@@ -105,8 +87,7 @@ class InMemoryCommandService(
 }
 
 fun buildTestDatabase(name: DatabaseName) =
-    Database(
+    DatabaseSummary(
         name,
         Instant.now(),
-        UUID.randomUUID(),
     )

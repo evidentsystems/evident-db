@@ -30,6 +30,7 @@ object TransactorTopology {
     private const val EVENT_INDEXER = "EVENT_INDEXER"
 
     const val DATABASE_STORE = "DATABASE_STORE"
+    const val DATABASE_LOG_STORE = "DATABASE_LOG_STORE"
     const val BATCH_STORE = "BATCH_STORE"
     const val STREAM_STORE = "STREAM_STORE"
     const val EVENT_STORE = "EVENT_STORE"
@@ -82,7 +83,7 @@ object TransactorTopology {
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(DATABASE_STORE),
                 databaseNameSerde,
-                DatabaseSerde(),
+                DatabaseSummarySerde(),
             ),
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
@@ -90,9 +91,19 @@ object TransactorTopology {
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
+                Stores.persistentKeyValueStore(DATABASE_LOG_STORE),
+                Serdes.String(), // DatabaseLogKey
+                BatchSummarySerde(),
+            ),
+            COMMAND_PROCESSOR,
+            DATABASE_INDEXER,
+            BATCH_INDEXER,
+        )
+        topology.addStateStore(
+            Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
-                Serdes.String(), // BatchKey
-                listSerde(Serdes.UUID()), // List<EventId>
+                Serdes.UUID(), // BatchId
+                Serdes.String(), // DatabaseLogKey
             ),
             COMMAND_PROCESSOR,
             BATCH_INDEXER,
@@ -147,7 +158,7 @@ object TransactorTopology {
             super.init(context)
             transactor.init(
                 context().getStateStore(DATABASE_STORE),
-                context().getStateStore(STREAM_STORE),
+                context().getStateStore(DATABASE_LOG_STORE),
                 context().getStateStore(BATCH_STORE),
             )
         }
@@ -196,22 +207,20 @@ object TransactorTopology {
     }
 
     private class DatabaseIndexer:
-        ContextualProcessor<EventId, EventEnvelope, DatabaseName, Database>() {
-        lateinit var databaseStore: DatabaseStore
+        ContextualProcessor<EventId, EventEnvelope, DatabaseName, DatabaseSummary>() {
+        lateinit var databaseWriteModel: DatabaseWriteModel
 
-        override fun init(context: ProcessorContext<DatabaseName, Database>?) {
+        override fun init(context: ProcessorContext<DatabaseName, DatabaseSummary>?) {
             super.init(context)
-            this.databaseStore = DatabaseStore(
-                context().getStateStore(DATABASE_STORE)
-            )
+            this.databaseWriteModel = DatabaseWriteModel(context().getStateStore(DATABASE_STORE))
         }
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
             val (databaseName, result) = EventHandler.databaseUpdate(event)
             when(result) {
-                is DatabaseOperation.StoreDatabase -> databaseStore.putDatabase(databaseName, result.database)
-                DatabaseOperation.DeleteDatabase -> databaseStore.deleteDatabase(databaseName)
+                is DatabaseOperation.StoreDatabase -> databaseWriteModel.putDatabaseSummary(databaseName, result.databaseSummary)
+                DatabaseOperation.DeleteDatabase -> databaseWriteModel.deleteDatabase(databaseName)
                 DatabaseOperation.DoNothing -> Unit
             }
         }
@@ -224,22 +233,25 @@ object TransactorTopology {
     }
 
     private class BatchIndexer:
-        ContextualProcessor<EventId, EventEnvelope, BatchKey, List<EventId>>() {
+        ContextualProcessor<EventId, EventEnvelope, BatchKey, BatchSummary>() {
         lateinit var batchSummaryStore: BatchSummaryStore
+        lateinit var databaseLogStore: DatabaseLogStore
 
-        override fun init(context: ProcessorContext<BatchKey, List<EventId>>?) {
+        override fun init(context: ProcessorContext<BatchKey, BatchSummary>?) {
             super.init(context)
+            val databaseLogKeyValueStore: DatabaseLogKeyValueStore = context().getStateStore(DATABASE_LOG_STORE)
             this.batchSummaryStore = BatchSummaryStore(
-                context().getStateStore(BATCH_STORE)
+                context().getStateStore(BATCH_STORE),
+                databaseLogKeyValueStore
             )
+            this.databaseLogStore = DatabaseLogStore(databaseLogKeyValueStore)
         }
 
         override fun process(record: Record<EventId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            val result = EventHandler.batchToIndex(event)
-            if (result != null) {
-                val (batchId, eventIds) = result
-                batchSummaryStore.putBatchSummary(BatchSummary(batchId, event.database, eventIds))
+            EventHandler.batchToIndex(event)?.let { batchSummary ->
+                batchSummaryStore.addKeyLookup(batchSummary)
+                databaseLogStore.append(batchSummary)
             }
         }
 

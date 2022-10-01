@@ -48,3 +48,13 @@ fun parseStreamKey(streamKey: StreamKey)
         uri.path.substring(STREAM_URI_PATH_PREFIX.length)
     )
 }
+
+fun streamStateFromRevisions(
+    streamRevisions: Map<StreamName, StreamRevision>,
+    streamName: StreamName
+): StreamState =
+    streamRevisions[streamName]
+        ?.let {
+            StreamState.AtRevision(it)
+        }
+        ?: StreamState.NoStream

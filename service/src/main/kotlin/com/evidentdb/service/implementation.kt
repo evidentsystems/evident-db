@@ -235,6 +235,7 @@ class KafkaCommandService(
 class KafkaQueryService(
     kafkaStreams: KafkaStreams,
     databaseStoreName: String,
+    logStoreName: String,
     batchStoreName: String,
     streamStoreName: String,
     eventStoreName: String,
@@ -245,13 +246,21 @@ class KafkaQueryService(
     override val eventReadModel: EventReadOnlyStore
 
     init {
+        val logStore: DatabaseLogReadOnlyKeyValueStore = kafkaStreams.store(
+            StoreQueryParameters.fromNameAndType(
+                logStoreName,
+                QueryableStoreTypes.keyValueStore()
+            )
+        )
+
         databaseReadModel = DatabaseReadModelStore(
             kafkaStreams.store(
                 StoreQueryParameters.fromNameAndType(
                     databaseStoreName,
                     QueryableStoreTypes.keyValueStore()
                 )
-            )
+            ),
+            logStore
         )
 
         val eventKeyValueStore: EventReadOnlyKeyValueStore = kafkaStreams.store(
@@ -268,7 +277,8 @@ class KafkaQueryService(
                     QueryableStoreTypes.keyValueStore()
                 )
             ),
-            eventKeyValueStore
+            logStore,
+            eventKeyValueStore,
         )
 
         streamReadModel = StreamReadOnlyStore(

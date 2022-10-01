@@ -1,6 +1,6 @@
 package com.evidentdb.transactor.test.database
 
-import com.evidentdb.domain.Database
+import com.evidentdb.domain.DatabaseSummary
 import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNameAlreadyExistsError
 import com.evidentdb.domain.InvalidDatabaseNameError
@@ -42,7 +42,7 @@ class CreationTests {
     fun `topology creates a database`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseName, Database>(TransactorTopology.DATABASE_STORE)
+            val databaseStore = driver.getKeyValueStore<DatabaseName, DatabaseSummary>(TransactorTopology.DATABASE_STORE)
             val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
 

@@ -59,7 +59,9 @@ interface DatabaseReadModel {
     fun exists(name: DatabaseName): Boolean =
         database(name) != null
     fun database(name: DatabaseName): Database?
-    fun catalog(): Set<Database>
+    fun database(name: DatabaseName, revision: DatabaseRevision): Database?
+    fun summary(name: DatabaseName): DatabaseSummary?
+    fun catalog(): Set<DatabaseSummary>
 }
 
 interface BatchSummaryReadModel {
@@ -67,7 +69,7 @@ interface BatchSummaryReadModel {
 }
 
 interface BatchReadModel: BatchSummaryReadModel {
-    fun batch(database: DatabaseName, id: BatchId): Batch?
+    fun batch(id: BatchId): Batch?
 }
 
 interface StreamSummaryReadModel {
@@ -94,7 +96,7 @@ interface QueryService {
     val streamReadModel: StreamReadModel
     val eventReadModel: EventReadModel
 
-    suspend fun getCatalog(): Set<Database> =
+    suspend fun getCatalog(): Set<DatabaseSummary> =
         databaseReadModel.catalog()
 
     // TODO: monadic binding for invalid database name
@@ -111,9 +113,8 @@ interface QueryService {
 
     suspend fun getBatch(database: DatabaseName, batchId: BatchId)
             : Either<BatchNotFoundError, Batch> =
-        batchReadModel.batch(database, batchId)
-            ?.right()
-            ?: BatchNotFoundError(buildBatchKey(database, batchId)).left()
+        batchReadModel.batch(batchId)?.right()
+            ?: BatchNotFoundError(database, batchId).left()
 
     // TODO: monadic binding for invalid database name
     suspend fun getDatabaseStreams(name: DatabaseName)
@@ -168,7 +169,6 @@ interface CommandManager {
 
 interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
-    val streamSummaryReadModel: StreamSummaryReadModel
     val batchSummaryReadModel: BatchSummaryReadModel
 
     suspend fun handleCreateDatabase(command: CreateDatabase)
@@ -187,7 +187,7 @@ interface CommandHandler {
                     Database(
                         availableName,
                         Instant.now(),
-                        eventId,
+                        mapOf()
                     )
                 ),
             )
@@ -196,7 +196,7 @@ interface CommandHandler {
     suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
         either {
-            val database = validateDatabaseExists(
+            val database = lookupDatabase(
                 databaseReadModel,
                 command.database,
             ).bind()
@@ -212,13 +212,12 @@ interface CommandHandler {
     suspend fun handleTransactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted> =
         either {
-            val database = validateDatabaseExists(
+            val database = lookupDatabase(
                 databaseReadModel,
                 command.database
             ).bind()
             val validBatch = validateProposedBatch(
-                database.name,
-                streamSummaryReadModel,
+                database,
                 batchSummaryReadModel,
                 command.data
             ).bind()
@@ -232,7 +231,6 @@ interface CommandHandler {
                     databaseAfterBatchTransacted(
                         database,
                         validBatch,
-                        eventId,
                     )
                 )
             )
@@ -240,7 +238,7 @@ interface CommandHandler {
 }
 
 sealed interface DatabaseOperation {
-    data class StoreDatabase(val database: Database): DatabaseOperation
+    data class StoreDatabase(val databaseSummary: DatabaseSummary): DatabaseOperation
     object DeleteDatabase: DatabaseOperation
     object DoNothing: DatabaseOperation
 }
@@ -248,18 +246,28 @@ sealed interface DatabaseOperation {
 object EventHandler {
     fun databaseUpdate(event: EventEnvelope): Pair<DatabaseName, DatabaseOperation> =
         Pair(event.database, when(event) {
-            is DatabaseCreated -> DatabaseOperation.StoreDatabase(event.data.database)
+            is DatabaseCreated -> DatabaseOperation.StoreDatabase(
+                event.data.database.let {
+                    DatabaseSummary(
+                        it.name,
+                        it.created
+                    )
+                }
+            )
             is DatabaseDeleted -> DatabaseOperation.DeleteDatabase
-            is BatchTransacted -> DatabaseOperation.StoreDatabase(event.data.database)
-            is ErrorEnvelope -> DatabaseOperation.DoNothing
+            else -> DatabaseOperation.DoNothing
         })
 
-    fun batchToIndex(event: EventEnvelope): Pair<BatchId, List<EventId>>? {
+    fun batchToIndex(event: EventEnvelope): BatchSummary? {
         return when (event) {
-            is BatchTransacted -> Pair(
-                event.data.batch.id,
-                event.data.batch.events.map { it.id }
-            )
+            is BatchTransacted -> event.data.batch.let { batch ->
+                BatchSummary(
+                    batch.id,
+                    batch.database,
+                    batch.events.map { it.id },
+                    batch.streamRevisions
+                )
+            }
             else -> null
         }
     }

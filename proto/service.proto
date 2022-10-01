@@ -22,7 +22,7 @@ service EvidentDb {
   // Query
   rpc getCatalog(CatalogRequest) returns (CatalogReply) {}
   rpc getDatabase(DatabaseRequest) returns (DatabaseReply) {}
-  rpc getDatabaseBatches(DatabaseBatchesRequest) returns (DatabaseBatchesReply) {}
+  rpc getDatabaseLog(DatabaseLogRequest) returns (DatabaseLogReply) {}
   rpc getBatch(BatchRequest) returns (BatchReply) {}
   rpc getDatabaseStreams(DatabaseStreamsRequest) returns (DatabaseStreamsReply) {}
   rpc getStream(StreamRequest) returns (StreamReply) {}
@@ -76,8 +76,18 @@ message DatabaseReply {
   }
 }
 
-message DatabaseBatchesRequest {}
-message DatabaseBatchesReply {}
+message DatabaseLogRequest {
+  string database = 1;
+}
+message BatchSummaries {
+  repeated BatchSummary batches = 1;
+}
+message DatabaseLogReply {
+  oneof result {
+    BatchSummaries log = 1;
+    DatabaseNotFoundError database_not_found = 2;
+  }
+}
 
 message BatchRequest {
   string database = 1;
@@ -95,7 +105,7 @@ message DatabaseStreamsRequest {
   string database = 1;
 }
 message StreamSummaries {
-  repeated StreamSummary summaries = 1;
+  repeated StreamSummary streams = 1;
 }
 message DatabaseStreamsReply {
   oneof result {

@@ -58,6 +58,7 @@ interface CommandService {
 interface DatabaseReadModel {
     fun exists(name: DatabaseName): Boolean =
         database(name) != null
+    fun log(name: DatabaseName): List<BatchSummary>?
     fun database(name: DatabaseName): Database?
     fun database(name: DatabaseName, revision: DatabaseRevision): Database?
     fun summary(name: DatabaseName): DatabaseSummary?
@@ -107,13 +108,16 @@ interface QueryService {
                 .toEither { DatabaseNotFoundError(name) }
 
     // TODO: monadic binding for invalid database name
-    suspend fun getDatabaseBatches(name: DatabaseName)
+    suspend fun getDatabaseLog(name: DatabaseName)
             : Either<DatabaseNotFoundError, List<BatchSummary>> =
-        TODO("Add a database batch index")
+        databaseReadModel.log(name)
+            ?.right()
+            ?: DatabaseNotFoundError(name).left()
 
     suspend fun getBatch(database: DatabaseName, batchId: BatchId)
             : Either<BatchNotFoundError, Batch> =
-        batchReadModel.batch(batchId)?.right()
+        batchReadModel.batch(batchId)
+            ?.right()
             ?: BatchNotFoundError(database, batchId).left()
 
     // TODO: monadic binding for invalid database name

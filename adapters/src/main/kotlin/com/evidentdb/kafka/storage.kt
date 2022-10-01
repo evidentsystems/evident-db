@@ -60,6 +60,12 @@ open class DatabaseReadModelStore(
 ): DatabaseReadModel {
     private val logStore = DatabaseLogReadModelStore(logKeyValueStore)
 
+    override fun log(name: DatabaseName): List<BatchSummary>? =
+        if (this.exists(name))
+            logStore.log(name)
+        else
+            null
+
     override fun database(name: DatabaseName): Database? =
         databaseStore.get(name)?.let {
             logStore.latest(name)?.let {batchSummary ->

@@ -22,6 +22,10 @@ class InMemoryDatabaseReadModel(
         acc
     }
 
+    override fun log(name: DatabaseName): List<BatchSummary>? {
+        TODO("Not yet implemented")
+    }
+
     override fun database(name: DatabaseName): Database? =
         databases[name]
 

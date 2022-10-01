@@ -126,6 +126,17 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
+    override suspend fun getDatabaseLog(request: DatabaseLogRequest): DatabaseLogReply {
+        LOGGER.debug("getDatabaseLog request received: $request")
+        val builder = DatabaseLogReply.newBuilder()
+        val databaseName = DatabaseName.build(request.database)
+        when (val result = queryService.getDatabaseLog(databaseName)) {
+            is Either.Left -> builder.databaseNotFoundBuilder.name = result.value.name.value
+            is Either.Right -> builder.logBuilder.addAllBatches(result.value.map { it.toProto() })
+        }
+        return builder.build()
+    }
+
     override suspend fun getBatch(request: BatchRequest): BatchReply {
         LOGGER.debug("getBatch request received: $request")
         val builder = BatchReply.newBuilder()
@@ -148,7 +159,7 @@ class EvidentDbEndpoint(
             DatabaseName.build(request.database)
         )) {
             is Either.Left -> builder.databaseNotFoundBuilder.name = request.database
-            is Either.Right -> builder.streamsBuilder.addAllSummaries(
+            is Either.Right -> builder.streamsBuilder.addAllStreams(
                 result.value.map { it.toProto() }
             )
         }
@@ -167,6 +178,9 @@ class EvidentDbEndpoint(
         }
         return builder.build()
     }
+
+    override suspend fun getSubjectStream(request: SubjectStreamRequest): SubjectStreamReply =
+        TODO("Not Implemented Yet")
 
     override suspend fun getEvent(request: EventRequest): EventReply {
         LOGGER.debug("getEvent request received: $request")

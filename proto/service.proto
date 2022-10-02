@@ -3,6 +3,7 @@ syntax = "proto3";
 package com.evidentdb;
 
 import "domain.proto";
+import "spec.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";
@@ -135,7 +136,7 @@ message EventRequest {
 }
 message EventReply {
   oneof result {
-    Event event = 1;
+    io.cloudevents.v1.CloudEvent event = 1;
     EventNotFoundError event_not_found = 2;
   }
 }

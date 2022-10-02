@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":adapters"))
 
     implementation(libs.kafka.streams)
+    implementation(libs.cloudevents.protobuf)
 
     implementation(libs.protobuf.java)
     compileOnly(libs.grpc.stub)

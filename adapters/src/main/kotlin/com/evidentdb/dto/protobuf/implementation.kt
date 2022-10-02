@@ -1,4 +1,4 @@
-package com.evidentdb.dto
+package com.evidentdb.dto.protobuf
 
 import com.evidentdb.domain.*
 import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.INVALID_EVENT_TYPE
@@ -9,6 +9,7 @@ import io.cloudevents.protobuf.cloudEventFromProto
 import io.cloudevents.protobuf.toProto
 import java.time.Instant
 import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
+import com.evidentdb.dto.v1.proto.BatchSummaryEvent as ProtoBatchSummaryEvent
 import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
 import com.evidentdb.dto.v1.proto.BatchTransactionResult as ProtoBatchTransactionResult
 import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
@@ -170,32 +171,17 @@ fun Stream.toProto(): ProtoStream =
 
 fun Event.toProto(): ProtoEvent {
     val builder = ProtoEvent.newBuilder()
-        .setDatabase(this.database.value)
         .setEvent(this.event.toProto())
-    this.stream?.let { builder.setStream(it) }
+        .setStream(this.stream)
 
     return builder.build()
 }
-
-fun Event.toByteArray(): ByteArray =
-    this.toProto().toByteArray()
-
-fun eventFromProto(proto: ProtoEvent): Event =
-    Event(
-        EventId.fromString(proto.event.id),
-        DatabaseName.build(proto.database),
-        cloudEventFromProto(proto.event),
-        proto.stream.ifEmpty { null }
-    )
-
-fun eventFromBytes(bytes: ByteArray): Event =
-    eventFromProto(ProtoEvent.parseFrom(bytes))
 
 fun Batch.toProto(): ProtoBatch =
     ProtoBatch.newBuilder()
         .setId(this.id.toString())
         .setDatabase(this.database.value)
-        .addAllEvents(this.events.map { it.event.toProto() })
+        .addAllEvents(this.events.map { it.toProto() })
         .putAllStreamRevisions(this.streamRevisions)
         .build()
 
@@ -206,9 +192,9 @@ fun batchFromProto(proto: ProtoBatch): Batch {
         databaseName,
         proto.eventsList.map {
             Event(
-                EventId.fromString(it.id),
                 databaseName,
-                cloudEventFromProto(it)
+                cloudEventFromProto(it.event),
+                it.stream
             )
         },
         proto.streamRevisionsMap
@@ -218,11 +204,23 @@ fun batchFromProto(proto: ProtoBatch): Batch {
 fun batchFromBytes(bytes: ByteArray): Batch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
 
+fun BatchSummaryEvent.toProto(): ProtoBatchSummaryEvent =
+    ProtoBatchSummaryEvent.newBuilder()
+        .setId(this.id.toString())
+        .setStream(this.stream)
+        .build()
+
+fun batchSummaryEventFromProto(proto: ProtoBatchSummaryEvent) =
+    BatchSummaryEvent(
+        EventId.fromString(proto.id),
+        proto.stream,
+    )
+
 fun BatchSummary.toProto(): ProtoBatchSummary =
     ProtoBatchSummary.newBuilder()
         .setId(this.id.toString())
         .setDatabase(this.database.value)
-        .addAllEventIds(this.eventIds.map { it.toString() })
+        .addAllEvents(this.events.map { it.toProto() })
         .putAllStreamRevisions(this.streamRevisions)
         .build()
 
@@ -234,9 +232,7 @@ fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
     return BatchSummary(
         BatchId.fromString(proto.id),
         databaseName,
-        proto.eventIdsList.map {
-            EventId.fromString(it)
-        },
+        proto.eventsList.map(::batchSummaryEventFromProto),
         proto.streamRevisionsMap
     )
 }
@@ -295,7 +291,7 @@ fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError =
 fun NoEventsProvidedError.toProto(): ProtoNoEventsProvidedError =
     ProtoNoEventsProvidedError.newBuilder().build()
 
-fun noEventsProvidedErrorFromProto(proto: ProtoNoEventsProvidedError): NoEventsProvidedError =
+fun noEventsProvidedErrorFromProto(_proto: ProtoNoEventsProvidedError): NoEventsProvidedError =
     NoEventsProvidedError
 
 fun noEventsProvidedErrorFromBytes(bytes: ByteArray): NoEventsProvidedError =

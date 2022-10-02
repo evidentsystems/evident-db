@@ -50,7 +50,6 @@ fun validateStreamState(
     event: ProposedEvent
 ): Validated<StreamStateConflict, Event> {
     val valid = Event(
-        event.id,
         databaseName,
         event.event,
         event.stream
@@ -126,9 +125,8 @@ fun nextStreamRevisions(
 ): Map<StreamName, StreamRevision> {
     val ret = initialStreamRevisions.toMutableMap()
     return events.fold(ret) { acc, event ->
-        event.stream?.let {
-            val revision = acc[event.stream] ?: 0
-            acc[it] = revision + 1
+        acc[event.stream]?.let {
+            acc[event.stream] = it + 1
         }
         acc
     }

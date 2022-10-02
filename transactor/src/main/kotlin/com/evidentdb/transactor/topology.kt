@@ -3,6 +3,7 @@ package com.evidentdb.transactor
 import arrow.core.getOrHandle
 import com.evidentdb.domain.*
 import com.evidentdb.kafka.*
+import io.cloudevents.CloudEvent
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
@@ -120,13 +121,13 @@ object TransactorTopology {
 
         // Configure structured event serialization for storage (i.e. no headers)
         val eventStoreSerde = EventSerde()
-        eventStoreSerde.configure(EvidentDbSerializer.structuredConfig(), false)
+        eventStoreSerde.configure(EventSerde.structuredConfig(), false)
 
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(EVENT_STORE),
                 Serdes.UUID(), // EventId
-                eventStoreSerde,
+                eventStoreSerde, // CloudEvent
             ),
             BATCH_INDEXER,
             STREAM_INDEXER,
@@ -303,10 +304,10 @@ object TransactorTopology {
     }
 
     private class EventIndexer:
-        ContextualProcessor<EventId, EventEnvelope, EventId, Event>() {
+        ContextualProcessor<EventId, EventEnvelope, StreamKey, CloudEvent>() {
         lateinit var eventStore: EventStore
 
-        override fun init(context: ProcessorContext<EventId, Event>?) {
+        override fun init(context: ProcessorContext<StreamKey, CloudEvent>?) {
             super.init(context)
             this.eventStore = EventStore(
                 context().getStateStore(EVENT_STORE)
@@ -320,12 +321,12 @@ object TransactorTopology {
                 for ((eventId, event) in result) {
                     context().forward(
                         Record(
-                            eventId,
-                            event,
+                            buildStreamKey(event.database, event.stream),
+                            event.event,
                             context().currentStreamTimeMs()
                         )
                     )
-                    eventStore.putEvent(eventId, event)
+                    eventStore.putEvent(eventId, event.event)
                 }
             }
         }

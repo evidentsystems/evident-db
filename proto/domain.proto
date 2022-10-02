@@ -66,7 +66,6 @@ message ProposedBatch {
 }
 
 message Event {
-  string database = 1;
   io.cloudevents.v1.CloudEvent event = 2;
   optional string stream = 3;
 }
@@ -74,14 +73,19 @@ message Event {
 message Batch {
   string id = 1;
   string database = 2;
-  repeated io.cloudevents.v1.CloudEvent events = 3;
+  repeated Event events = 3;
   map<string, int64> stream_revisions = 4;
+}
+
+message BatchSummaryEvent {
+  string id = 2;
+  optional string stream = 3;
 }
 
 message BatchSummary {
   string id = 1;
   string database = 2;
-  repeated string event_ids = 3;
+  repeated BatchSummaryEvent events = 3;
   map<string, int64> stream_revisions = 4;
 }
 
@@ -114,20 +118,6 @@ message DatabaseNameAlreadyExistsError {
 
 message DatabaseNotFoundError {
   string name = 1;
-}
-
-message BatchNotFoundError {
-  string database = 1;
-  string batch_id = 2;
-}
-
-message StreamNotFoundError {
-  string stream_key = 1;
-}
-
-message EventNotFoundError {
-  string database = 1;
-  string event_id = 2;
 }
 
 message NoEventsProvidedError {}
@@ -177,4 +167,19 @@ message StreamStateConflictsError {
 
 message InternalServerError {
   string message = 1;
+}
+
+message BatchNotFoundError {
+  string database = 1;
+  string batch_id = 2;
+}
+
+message StreamNotFoundError {
+  string database = 1;
+  string stream = 2;
+}
+
+message EventNotFoundError {
+  string database = 1;
+  string event_id = 2;
 }

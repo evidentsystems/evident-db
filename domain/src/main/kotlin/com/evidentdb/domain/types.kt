@@ -259,11 +259,13 @@ data class ProposedEvent(
 )
 
 data class Event(
-    val id: EventId,
     val database: DatabaseName,
     val event: CloudEvent,
-    val stream: StreamName? = null
-)
+    val stream: StreamName
+) {
+    val id: EventId
+        get() = EventId.fromString(event.id)
+}
 
 typealias BatchId = UUID
 typealias BatchKey = String
@@ -289,10 +291,12 @@ data class Batch(
         }
 }
 
+data class BatchSummaryEvent(val id: EventId, val stream: StreamName)
+
 data class BatchSummary(
     val id: BatchId,
     val database: DatabaseName,
-    val eventIds: List<EventId>,
+    val events: List<BatchSummaryEvent>,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
     val revision: DatabaseRevision
@@ -327,7 +331,7 @@ data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, Da
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: DatabaseName): DatabaseDeletionError, BatchTransactionError
 data class BatchNotFoundError(val database: DatabaseName, val batchId: BatchId)
-data class StreamNotFoundError(val streamKey: StreamKey)
+data class StreamNotFoundError(val database: String, val stream: StreamName)
 data class EventNotFoundError(val database: String, val eventId: EventId)
 
 sealed interface InvalidBatchError: BatchTransactionError

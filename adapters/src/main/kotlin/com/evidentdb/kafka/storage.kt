@@ -1,6 +1,7 @@
 package com.evidentdb.kafka
 
 import com.evidentdb.domain.*
+import io.cloudevents.CloudEvent
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
@@ -14,8 +15,8 @@ typealias BatchIndexKeyValueStore = KeyValueStore<BatchId, DatabaseLogKey>
 typealias BatchIndexReadOnlyKeyValueStore = ReadOnlyKeyValueStore<BatchId, DatabaseLogKey>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
 typealias StreamReadOnlyKeyValueStore = ReadOnlyKeyValueStore<StreamKey, List<EventId>>
-typealias EventKeyValueStore = KeyValueStore<EventId, Event>
-typealias EventReadOnlyKeyValueStore = ReadOnlyKeyValueStore<EventId, Event>
+typealias EventKeyValueStore = KeyValueStore<EventId, CloudEvent>
+typealias EventReadOnlyKeyValueStore = ReadOnlyKeyValueStore<EventId, CloudEvent>
 
 open class DatabaseLogReadModelStore(
     private val logKeyValueStore: DatabaseLogReadOnlyKeyValueStore,
@@ -150,8 +151,8 @@ class BatchSummaryStore(
             .use {
                 for (keyValue in it.asSequence()) {
                     val batch = keyValue.value
-                    for (eventId in batch.eventIds) {
-                        eventStore.delete(eventId)
+                    for (event in batch.events) {
+                        eventStore.delete(event.id)
                     }
                     batchKeyLookup.delete(batch.id)
                     databaseLogStore.delete(keyValue.key)
@@ -171,7 +172,13 @@ class BatchReadOnlyStore(
                 Batch(
                     summary.id,
                     summary.database,
-                    summary.eventIds.map { eventStore.get(it)!! },
+                    summary.events.map { summaryEvent ->
+                        Event(
+                            summary.database,
+                            eventStore.get(summaryEvent.id)!!,
+                            summaryEvent.stream
+                        )
+                    },
                     summary.streamRevisions
                 )
             }
@@ -237,7 +244,13 @@ class StreamReadOnlyStore(
         return streamStore.get(streamKey)?.let { eventIds ->
             Stream.create(
                 streamKey,
-                eventIds.map { eventStore.get(it)!! }
+                eventIds.map {
+                    Event(
+                        databaseName,
+                        eventStore.get(it)!!,
+                        name,
+                    )
+                }
             )
         }
     }
@@ -246,14 +259,14 @@ class StreamReadOnlyStore(
 interface IEventReadOnlyStore: EventReadModel {
     val eventStore: EventReadOnlyKeyValueStore
 
-    override fun event(id: EventId): Event? =
+    override fun event(id: EventId): CloudEvent? =
         eventStore.get(id)
 }
 
 interface IEventStore: IEventReadOnlyStore {
     override val eventStore: EventKeyValueStore
 
-    fun putEvent(eventId: EventId, event: Event) {
+    fun putEvent(eventId: EventId, event: CloudEvent) {
         eventStore.put(eventId, event)
     }
 }

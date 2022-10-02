@@ -3,7 +3,6 @@ package com.evidentdb.domain.test
 import arrow.core.Either
 import com.evidentdb.domain.*
 import java.time.Instant
-import java.util.*
 
 class InMemoryDatabaseReadModel(
     databases: Iterable<DatabaseSummary> = listOf(),
@@ -14,9 +13,9 @@ class InMemoryDatabaseReadModel(
         acc[database.name] = Database(
             database.name,
             database.created,
-            streams.fold(mutableMapOf()) { acc, stream ->
-                acc[stream.name] = stream.eventIds.size.toLong()
-                acc
+            streams.fold(mutableMapOf()) { acc1, stream ->
+                acc1[stream.name] = stream.eventIds.size.toLong()
+                acc1
             }
         )
         acc
@@ -40,16 +39,14 @@ class InMemoryDatabaseReadModel(
 }
 
 class InMemoryBatchSummaryReadModel(batches: List<BatchSummary>): BatchSummaryReadModel {
-    private val batches: Map<BatchId, List<EventId>> =
+    private val batches: Map<BatchId, BatchSummary> =
         batches.fold(mutableMapOf()) { acc, batch ->
-            acc[batch.id] = batch.eventIds
+            acc[batch.id] = batch
             acc
         }
 
     override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
-        batches[id]?.let {
-            BatchSummary(id, database, it, mapOf())
-        }
+        batches[id]
 }
 
 class InMemoryCommandHandler(

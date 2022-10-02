@@ -5,6 +5,7 @@ import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
 import arrow.core.toOption
+import io.cloudevents.CloudEvent
 import java.time.Instant
 
 // TODO: Consistency levels!!!
@@ -86,7 +87,7 @@ interface StreamReadModel: StreamSummaryReadModel {
 }
 
 interface EventReadModel {
-    fun event(id: EventId): Event?
+    fun event(id: EventId): CloudEvent?
 }
 
 // TODO: as-of revision number option for all database read-model (i.e. stream) queries
@@ -135,7 +136,7 @@ interface QueryService {
     ) : Either<StreamNotFoundError, Stream> =
         streamReadModel.stream(databaseName, streamName)
             .toOption()
-            .toEither { StreamNotFoundError(buildStreamKey(databaseName, streamName)) }
+            .toEither { StreamNotFoundError(databaseName.value, streamName) }
 
     // TODO: monadic binding for invalid database name
     suspend fun getSubjectStream(
@@ -148,15 +149,9 @@ interface QueryService {
     suspend fun getEvent(
         database: DatabaseName,
         id: EventId,
-    ) : Either<EventNotFoundError, Event> =
+    ) : Either<EventNotFoundError, CloudEvent> =
         eventReadModel.event(id)
-            ?.let { event ->
-                if (event.database == database) {
-                    event.right()
-                } else {
-                    EventNotFoundError(database.value, id).left()
-                }
-            }
+            ?.right()
             ?: EventNotFoundError(database.value, id).left()
 }
 
@@ -283,7 +278,12 @@ object EventHandler {
                     BatchSummary(
                         batch.id,
                         batch.database,
-                        batch.events.map { it.id },
+                        batch.events.map {
+                            BatchSummaryEvent(
+                                it.id,
+                                it.stream
+                            )
+                        },
                         batch.streamRevisions
                     )
                 }
@@ -303,7 +303,7 @@ object EventHandler {
                 val updates = LinkedHashMap<StreamKey, List<EventId>>()
                 for (evt in event.data.batch.events) {
                     val eventIds = updates.getOrPut(
-                        buildStreamKey(database, evt.stream!!)
+                        buildStreamKey(database, evt.stream)
                     ) { mutableListOf() } as MutableList<EventId>
                     eventIds.add(evt.id)
                 }

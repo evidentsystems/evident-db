@@ -2,12 +2,13 @@ package com.evidentdb.service
 
 import arrow.core.Either
 import com.evidentdb.domain.*
-import com.evidentdb.dto.toProto
-import com.evidentdb.dto.unvalidatedProposedEventFromProto
+import com.evidentdb.dto.protobuf.toProto
+import com.evidentdb.dto.protobuf.unvalidatedProposedEventFromProto
 import com.evidentdb.dto.v1.proto.BatchProposal
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
+import io.cloudevents.protobuf.toProto
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -173,7 +174,9 @@ class EvidentDbEndpoint(
         val stream = request.stream
         when (val result = queryService.getStream(databaseName, stream)
         ) {
-            is Either.Left -> builder.streamNotFoundBuilder.streamKey = result.value.streamKey
+            is Either.Left -> builder.streamNotFoundBuilder
+                .setDatabase(result.value.database)
+                .setStream(result.value.stream)
             is Either.Right -> builder.stream = result.value.toProto()
         }
         return builder.build()

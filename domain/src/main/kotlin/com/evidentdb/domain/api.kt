@@ -143,9 +143,11 @@ interface QueryService {
         database: DatabaseName,
         stream: StreamName,
         subject: StreamSubject,
-    ) : Either<StreamNotFoundError, SubjectStream> = TODO()
+    ) : Either<StreamNotFoundError, SubjectStream> =
+        TODO()
 
     // TODO: monadic binding for invalid database name
+    // TODO: key events on EventKey (databaseName@eventId)?
     suspend fun getEvent(
         database: DatabaseName,
         id: EventId,

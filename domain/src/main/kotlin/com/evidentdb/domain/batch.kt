@@ -125,9 +125,8 @@ fun nextStreamRevisions(
 ): Map<StreamName, StreamRevision> {
     val ret = initialStreamRevisions.toMutableMap()
     return events.fold(ret) { acc, event ->
-        acc[event.stream]?.let {
-            acc[event.stream] = it + 1
-        }
+        val revision = acc[event.stream] ?: 0
+        acc[event.stream] = revision + 1
         acc
     }
 }

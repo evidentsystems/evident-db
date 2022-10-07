@@ -1,5 +1,5 @@
 rootProject.name = "evident-db"
-include("test", "domain", "adapters", "service", "transactor", "app")
+include("test", "domain", "adapters", "service", "transactor", "app", "client")
 
 dependencyResolutionManagement {
     repositories {

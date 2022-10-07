@@ -137,11 +137,14 @@ sealed interface ProposedEventStreamState
 sealed interface StreamState {
     object Any: ProposedEventStreamState
     object StreamExists: ProposedEventStreamState
+    // TODO: object SubjectStreamExists: ProposedEventStreamState
     object NoStream: StreamState, ProposedEventStreamState
+    // TODO: object NoSubjectStream: ProposedEventStreamState
     data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
+    // TODO: data class SubjectStreamAtRevision(val revision: StreamRevision): ProposedEventStreamState
 }
 
-interface StreamSummary {
+sealed interface StreamSummary {
     val database: DatabaseName
     val name: StreamName
     val eventIds: List<EventId>
@@ -178,7 +181,7 @@ interface StreamSummary {
     }
 }
 
-interface Stream: StreamSummary {
+sealed interface Stream: StreamSummary {
     val events: List<Event>
 
     companion object {

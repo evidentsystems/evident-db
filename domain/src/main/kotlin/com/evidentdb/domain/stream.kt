@@ -58,3 +58,34 @@ fun streamStateFromRevisions(
             StreamState.AtRevision(it)
         }
         ?: StreamState.NoStream
+
+fun filterStreamByRevisions(
+    stream: StreamSummary,
+    streamRevisions: Map<StreamName, StreamRevision>,
+): StreamSummary? =
+    streamRevisions[stream.name]?.let { revision ->
+        when (stream) {
+            is BaseStreamSummary -> BaseStreamSummary(
+                stream.database,
+                stream.name,
+                stream.eventIds.take(revision.toInt())
+            )
+            is BaseStream -> BaseStream(
+                stream.database,
+                stream.name,
+                stream.events.take(revision.toInt())
+            )
+            is SubjectStreamSummary -> SubjectStreamSummary(
+                stream.database,
+                stream.name,
+                stream.subject,
+                stream.eventIds.take(revision.toInt()),
+            )
+            is SubjectStream -> SubjectStream(
+                stream.database,
+                stream.name,
+                stream.subject,
+                stream.events.take(revision.toInt()),
+            )
+        }
+    }

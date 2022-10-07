@@ -4,7 +4,6 @@ import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
-import arrow.core.toOption
 import io.cloudevents.CloudEvent
 import java.time.Instant
 
@@ -56,114 +55,11 @@ interface CommandService {
         }
 }
 
-interface DatabaseReadModel {
-    fun exists(name: DatabaseName): Boolean =
-        database(name) != null
-    fun log(name: DatabaseName): List<BatchSummary>?
-    fun database(name: DatabaseName): Database?
-    fun database(name: DatabaseName, revision: DatabaseRevision): Database?
-    fun summary(name: DatabaseName): DatabaseSummary?
-    fun catalog(): Set<DatabaseSummary>
-}
-
-interface BatchSummaryReadModel {
-    fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary?
-}
-
-interface BatchReadModel: BatchSummaryReadModel {
-    fun batch(id: BatchId): Batch?
-}
-
-interface StreamSummaryReadModel {
-    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
-    fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary>
-    fun streamSummary(streamKey: StreamKey): StreamSummary?
-    fun streamSummary(databaseName: DatabaseName, name: StreamName): StreamSummary? =
-        streamSummary(buildStreamKey(databaseName, name))
-}
-
-interface StreamReadModel: StreamSummaryReadModel {
-    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
-}
-
-interface EventReadModel {
-    fun event(id: EventId): CloudEvent?
-}
-
-// TODO: as-of revision number option for all database read-model (i.e. stream) queries
-// TODO: add subscription/channel-returning function for subscription to a database
-interface QueryService {
-    val databaseReadModel: DatabaseReadModel
-    val batchReadModel: BatchReadModel
-    val streamReadModel: StreamReadModel
-    val eventReadModel: EventReadModel
-
-    suspend fun getCatalog(): Set<DatabaseSummary> =
-        databaseReadModel.catalog()
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getDatabase(name: DatabaseName)
-            : Either<DatabaseNotFoundError, Database> =
-        databaseReadModel.database(name)
-                .toOption()
-                .toEither { DatabaseNotFoundError(name) }
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getDatabaseLog(name: DatabaseName)
-            : Either<DatabaseNotFoundError, List<BatchSummary>> =
-        databaseReadModel.log(name)
-            ?.right()
-            ?: DatabaseNotFoundError(name).left()
-
-    suspend fun getBatch(database: DatabaseName, batchId: BatchId)
-            : Either<BatchNotFoundError, Batch> =
-        batchReadModel.batch(batchId)
-            ?.right()
-            ?: BatchNotFoundError(database, batchId).left()
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getDatabaseStreams(name: DatabaseName)
-            : Either<DatabaseNotFoundError, Set<StreamSummary>> =
-        if (databaseReadModel.exists(name))
-            streamReadModel.databaseStreams(name).right()
-        else
-            DatabaseNotFoundError(name).left()
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getStream(
-        databaseName: DatabaseName,
-        streamName: StreamName
-    ) : Either<StreamNotFoundError, Stream> =
-        streamReadModel.stream(databaseName, streamName)
-            .toOption()
-            .toEither { StreamNotFoundError(databaseName.value, streamName) }
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getSubjectStream(
-        database: DatabaseName,
-        stream: StreamName,
-        subject: StreamSubject,
-    ) : Either<StreamNotFoundError, SubjectStream> =
-        TODO()
-
-    // TODO: monadic binding for invalid database name
-    // TODO: key events on EventKey (databaseName@eventId)?
-    suspend fun getEvent(
-        database: DatabaseName,
-        id: EventId,
-    ) : Either<EventNotFoundError, CloudEvent> =
-        eventReadModel.event(id)
-            ?.right()
-            ?: EventNotFoundError(database.value, id).left()
-}
-
 interface CommandManager {
     suspend fun createDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated>
-
     suspend fun deleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted>
-
     suspend fun transactBatch(command: TransactBatch)
             : Either<BatchTransactionError, BatchTransacted>
 }
@@ -238,6 +134,40 @@ interface CommandHandler {
         }
 }
 
+interface DatabaseReadModel {
+    fun exists(name: DatabaseName): Boolean =
+        database(name) != null
+    fun log(name: DatabaseName): List<BatchSummary>?
+    fun database(name: DatabaseName): Database?
+    fun database(name: DatabaseName, revision: DatabaseRevision): Database?
+    fun summary(name: DatabaseName): DatabaseSummary?
+    fun catalog(): Set<DatabaseSummary>
+}
+
+interface BatchSummaryReadModel {
+    fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary?
+}
+
+interface BatchReadModel: BatchSummaryReadModel {
+    fun batch(id: BatchId): Batch?
+}
+
+interface StreamSummaryReadModel {
+    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
+    fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary>
+    fun streamSummary(streamKey: StreamKey): StreamSummary?
+    fun streamSummary(databaseName: DatabaseName, name: StreamName): StreamSummary? =
+        streamSummary(buildStreamKey(databaseName, name))
+}
+
+interface StreamReadModel: StreamSummaryReadModel {
+    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
+}
+
+interface EventReadModel {
+    fun event(id: EventId): CloudEvent?
+}
+
 sealed interface DatabaseOperation {
     data class StoreDatabase(val databaseSummary: DatabaseSummary): DatabaseOperation
     object DeleteDatabase: DatabaseOperation
@@ -248,14 +178,12 @@ sealed interface BatchOperation {
     data class StoreBatch(val batchSummary: BatchSummary): BatchOperation
     data class DeleteLog(val database: DatabaseName): BatchOperation
     object DoNothing: BatchOperation
-
 }
 
 sealed interface StreamOperation {
     data class StoreStreams(val updates: LinkedHashMap<StreamKey, List<EventId>>): StreamOperation
     data class DeleteStreams(val streams: List<StreamKey>): StreamOperation
     object DoNothing: StreamOperation
-
 }
 
 object EventHandler {
@@ -338,4 +266,95 @@ object EventHandler {
             is BatchTransacted -> event.data.batch.events.map { Pair(it.id, it) }
             else -> null
         }
+}
+
+// 0 is the protobuf default for int64 fields if not specified
+const val NO_REVISION_SPECIFIED = 0L
+
+// TODO: add subscription/channel-returning function for subscription to a database
+interface QueryService {
+    val databaseReadModel: DatabaseReadModel
+    val batchReadModel: BatchReadModel
+    val streamReadModel: StreamReadModel
+    val eventReadModel: EventReadModel
+
+    suspend fun getCatalog(): Set<DatabaseSummary> =
+        databaseReadModel.catalog()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getDatabase(
+        name: DatabaseName,
+        revision: DatabaseRevision,
+    ): Either<DatabaseNotFoundError, Database> =
+        (if (revision == NO_REVISION_SPECIFIED)
+            databaseReadModel.database(name)
+        else
+            databaseReadModel.database(name, revision))
+            ?.right()
+            ?: DatabaseNotFoundError(name).left()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getDatabaseLog(name: DatabaseName)
+            : Either<DatabaseNotFoundError, List<BatchSummary>> =
+        databaseReadModel.log(name)
+            ?.right()
+            ?: DatabaseNotFoundError(name).left()
+
+    suspend fun getBatch(database: DatabaseName, batchId: BatchId)
+            : Either<BatchNotFoundError, Batch> =
+        batchReadModel.batch(batchId)
+            ?.right()
+            ?: BatchNotFoundError(database, batchId).left()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getEvent(
+        database: DatabaseName,
+        id: EventId,
+    ) : Either<EventNotFoundError, CloudEvent> =
+        eventReadModel.event(id)
+            ?.right()
+            ?: EventNotFoundError(database.value, id).left()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getDatabaseStreams(
+        name: DatabaseName,
+        revision: DatabaseRevision,
+    ) : Either<DatabaseNotFoundError, Set<StreamSummary>> =
+        (if (revision == NO_REVISION_SPECIFIED)
+            databaseReadModel.database(name)
+        else
+            databaseReadModel.database(name, revision))
+            ?.let { database ->
+                streamReadModel.databaseStreams(name)
+                    .mapNotNull { filterStreamByRevisions(it, database.streamRevisions) }
+                    .toSet()
+                    .right()
+            }
+            ?: DatabaseNotFoundError(name).left()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getStream(
+        databaseName: DatabaseName,
+        databaseRevision: DatabaseRevision,
+        streamName: StreamName,
+    ) : Either<StreamNotFoundError, Stream> =
+        (if (databaseRevision == NO_REVISION_SPECIFIED)
+            databaseReadModel.database(databaseName)
+        else
+            databaseReadModel.database(databaseName, databaseRevision))
+            ?.let { database ->
+                streamReadModel.stream(databaseName, streamName)?.let { stream ->
+                    (filterStreamByRevisions(stream, database.streamRevisions) as Stream?)?.right()
+                }
+            }
+            ?: StreamNotFoundError(databaseName.value, streamName).left()
+
+    // TODO: monadic binding for invalid database name
+    suspend fun getSubjectStream(
+        database: DatabaseName,
+        databaseRevision: DatabaseRevision,
+        stream: StreamName,
+        subject: StreamSubject,
+    ) : Either<StreamNotFoundError, SubjectStream> =
+        TODO("Filter per revision lookup of database streamRevisions")
 }

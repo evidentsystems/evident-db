@@ -78,7 +78,9 @@ open class DatabaseReadModelStore(
             } ?: Database(name, it.created, mapOf())
         }
 
-    // TODO: seek to revision key, rather than exact lookup, to tolerate users speculating about revision
+    // TODO: seek to revision key, rather than exact lookup, to
+    //  tolerate users speculating about revision? Still fail if
+    //  given revision exceeds available revision
     override fun database(
         name: DatabaseName,
         revision: DatabaseRevision

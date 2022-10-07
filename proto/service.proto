@@ -69,6 +69,7 @@ message CatalogReply {
 
 message DatabaseRequest {
   string name = 1;
+  int64 revision = 2;
 }
 message DatabaseReply {
   oneof result {
@@ -104,6 +105,7 @@ message BatchReply {
 
 message DatabaseStreamsRequest {
   string database = 1;
+  int64 revision = 2;
 }
 message StreamSummaries {
   repeated StreamSummary streams = 1;
@@ -117,7 +119,8 @@ message DatabaseStreamsReply {
 
 message StreamRequest {
   string database = 1;
-  string stream = 2;
+  int64 database_revision = 2;
+  string stream = 3;
 }
 
 message StreamReply {
@@ -127,7 +130,12 @@ message StreamReply {
   }
 }
 
-message SubjectStreamRequest {}
+message SubjectStreamRequest {
+  string database = 1;
+  int64 database_revision = 2;
+  string stream = 3;
+  string subject = 4;
+}
 message SubjectStreamReply {}
 
 message EventRequest {

@@ -119,7 +119,10 @@ class EvidentDbEndpoint(
     override suspend fun getDatabase(request: DatabaseRequest): DatabaseReply {
         LOGGER.debug("getDatabase request received: $request")
         val builder = DatabaseReply.newBuilder()
-        when (val result = queryService.getDatabase(DatabaseName.build(request.name))) {
+        when (val result = queryService.getDatabase(
+            DatabaseName.build(request.name),
+            request.revision
+        )) {
             is Either.Left -> builder.notFoundBuilder.name = request.name
             is Either.Right -> builder.database = result.value.toProto()
         }
@@ -157,7 +160,8 @@ class EvidentDbEndpoint(
         LOGGER.debug("getDatabaseStreams request received: $request")
         val builder = DatabaseStreamsReply.newBuilder()
         when (val result = queryService.getDatabaseStreams(
-            DatabaseName.build(request.database)
+            DatabaseName.build(request.database),
+            request.revision,
         )) {
             is Either.Left -> builder.databaseNotFoundBuilder.name = request.database
             is Either.Right -> builder.streamsBuilder.addAllStreams(
@@ -171,8 +175,11 @@ class EvidentDbEndpoint(
         LOGGER.debug("getStream request received: $request")
         val builder = StreamReply.newBuilder()
         val databaseName = DatabaseName.build(request.database)
-        val stream = request.stream
-        when (val result = queryService.getStream(databaseName, stream)
+        when (val result = queryService.getStream(
+            databaseName,
+            request.databaseRevision,
+            request.stream,
+        )
         ) {
             is Either.Left -> builder.streamNotFoundBuilder
                 .setDatabase(result.value.database)

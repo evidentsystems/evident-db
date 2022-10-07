@@ -10,23 +10,24 @@ import org.junit.jupiter.api.Test
 
 class TransactionTests {
     @Test
-    fun `fast reject transaction when database is not found`(): Unit =
+    fun `fast reject transaction with no events`(): Unit =
         runBlocking {
             val service = InMemoryCommandService.empty()
             val result = service.transactBatch("foo", listOf())
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
+            result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
         }
 
     @Test
-    fun `reject transaction with no events`(): Unit =
+    fun `reject transaction when database is not found`(): Unit =
         runBlocking {
-            val databaseName = DatabaseName.build("foo")
-            val database = buildTestDatabase(databaseName)
-            val service = InMemoryCommandService(listOf(database), listOf(), listOf())
-            val result = service.transactBatch(databaseName.value, listOf())
+            val service = InMemoryCommandService.empty()
+            val result = service.transactBatch("foo", listOf(
+                UnvalidatedProposedEvent(buildTestEvent("event.valid"), "foo"),
+            ))
+            println(result)
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
+            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
         }
 
     @Test

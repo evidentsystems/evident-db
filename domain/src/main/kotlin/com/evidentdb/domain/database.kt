@@ -41,13 +41,6 @@ fun lookupDatabase(
     databaseReadModel.database(name)?.right()
         ?: DatabaseNotFoundError(name).left()
 
-fun validateDatabaseExists(
-    databaseReadModel: DatabaseReadModel,
-    name: DatabaseName
-) : Either<DatabaseNotFoundError, DatabaseSummary> =
-    databaseReadModel.summary(name)?.right()
-        ?: DatabaseNotFoundError(name).left()
-
 fun validateDatabaseNameNotTaken(
     databaseReadModel: DatabaseReadModel,
     name: DatabaseName

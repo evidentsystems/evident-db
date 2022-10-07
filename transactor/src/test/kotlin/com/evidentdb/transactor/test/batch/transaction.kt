@@ -5,34 +5,36 @@ import com.evidentdb.test.buildTestEvent
 import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver
+import io.cloudevents.CloudEvent
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
 class TransactionTests {
     @Test
-    fun `fast reject transaction when database is not found`(): Unit =
+    fun `fast reject transaction with no events`(): Unit =
         runBlocking {
             val driver = driver()
             val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
-
-            val result = service.transactBatch(databaseName, listOf())
-            Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
-        }
-
-    @Test
-    fun `reject transaction with no events`(): Unit =
-        runBlocking {
-            val driver = driver()
-            val service = TopologyTestDriverCommandService(driver)
-            val databaseName = "foo"
-            service.createDatabase(databaseName)
 
             val result = service.transactBatch(databaseName, listOf())
             Assertions.assertTrue(result.isLeft())
             result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
+        }
+
+    @Test
+    fun `reject transaction when database is not found`(): Unit =
+        runBlocking {
+            val driver = driver()
+            val service = TopologyTestDriverCommandService(driver)
+            val databaseName = "foo"
+
+            val result = service.transactBatch(databaseName, listOf(
+                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), "foo"),
+            ))
+            Assertions.assertTrue(result.isLeft())
+            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
         }
 
     @Test
@@ -131,9 +133,9 @@ class TransactionTests {
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<BatchId, BatchSummary>(TransactorTopology.BATCH_STORE)
+            val batchStore = driver.getKeyValueStore<BatchId, DatabaseLogKey>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
+            val eventStore = driver.getKeyValueStore<EventId, CloudEvent>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverCommandService(driver)
             val databaseName = DatabaseName.build("foo")
             service.createDatabase(databaseName.value)
@@ -183,7 +185,7 @@ class TransactionTests {
                 for (event in it.data.batch.events) {
                     Assertions.assertEquals(
                         event.event,
-                        eventStore.get(event.id).event
+                        eventStore.get(event.id)
                     )
                 }
             }

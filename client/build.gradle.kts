@@ -11,6 +11,7 @@ version = "0.1.0-SNAPSHOT"
 dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.kotlinx.coroutines)
+    implementation(libs.arrow.core)
     compileOnly(libs.slf4j.api)
 
     implementation(libs.cloudevents.core)

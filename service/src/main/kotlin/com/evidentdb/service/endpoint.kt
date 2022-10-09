@@ -120,7 +120,7 @@ class EvidentDbEndpoint(
         LOGGER.debug("getDatabase request received: $request")
         val builder = DatabaseReply.newBuilder()
         when (val result = queryService.getDatabase(
-            DatabaseName.build(request.name),
+            request.name,
             request.revision
         )) {
             is Either.Left -> builder.notFoundBuilder.name = request.name
@@ -133,9 +133,8 @@ class EvidentDbEndpoint(
     override suspend fun getDatabaseLog(request: DatabaseLogRequest): DatabaseLogReply {
         LOGGER.debug("getDatabaseLog request received: $request")
         val builder = DatabaseLogReply.newBuilder()
-        val databaseName = DatabaseName.build(request.database)
-        when (val result = queryService.getDatabaseLog(databaseName)) {
-            is Either.Left -> builder.databaseNotFoundBuilder.name = result.value.name.value
+        when (val result = queryService.getDatabaseLog(request.database)) {
+            is Either.Left -> builder.databaseNotFoundBuilder.name = result.value.name
             is Either.Right -> builder.logBuilder.addAllBatches(result.value.map { it.toProto() })
         }
         return builder.build()
@@ -144,12 +143,11 @@ class EvidentDbEndpoint(
     override suspend fun getBatch(request: BatchRequest): BatchReply {
         LOGGER.debug("getBatch request received: $request")
         val builder = BatchReply.newBuilder()
-        val databaseName = DatabaseName.build(request.database)
         val batchId = BatchId.fromString(request.batchId)
-        when (val result = queryService.getBatch(databaseName, batchId)
+        when (val result = queryService.getBatch(request.database, batchId)
         ) {
             is Either.Left -> builder.batchNotFoundBuilder
-                .setDatabase(result.value.database.value)
+                .setDatabase(result.value.database)
                 .setBatchId(result.value.batchId.toString())
             is Either.Right -> builder.batch = result.value.toProto()
         }
@@ -160,7 +158,7 @@ class EvidentDbEndpoint(
         LOGGER.debug("getDatabaseStreams request received: $request")
         val builder = DatabaseStreamsReply.newBuilder()
         when (val result = queryService.getDatabaseStreams(
-            DatabaseName.build(request.database),
+            request.database,
             request.revision,
         )) {
             is Either.Left -> builder.databaseNotFoundBuilder.name = request.database
@@ -174,9 +172,8 @@ class EvidentDbEndpoint(
     override suspend fun getStream(request: StreamRequest): StreamReply {
         LOGGER.debug("getStream request received: $request")
         val builder = StreamReply.newBuilder()
-        val databaseName = DatabaseName.build(request.database)
         when (val result = queryService.getStream(
-            databaseName,
+            request.database,
             request.databaseRevision,
             request.stream,
         )
@@ -195,9 +192,8 @@ class EvidentDbEndpoint(
     override suspend fun getEvent(request: EventRequest): EventReply {
         LOGGER.debug("getEvent request received: $request")
         val builder = EventReply.newBuilder()
-        val databaseName = DatabaseName.build(request.database)
         val eventId = EventId.fromString(request.eventId)
-        when (val result = queryService.getEvent(databaseName, eventId)
+        when (val result = queryService.getEvent(request.database, eventId)
         ) {
             is Either.Left -> {
                 builder.eventNotFoundBuilder.database = request.database

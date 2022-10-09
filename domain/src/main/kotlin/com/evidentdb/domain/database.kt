@@ -39,7 +39,7 @@ fun lookupDatabase(
     name: DatabaseName,
 ) : Either<DatabaseNotFoundError, Database> =
     databaseReadModel.database(name)?.right()
-        ?: DatabaseNotFoundError(name).left()
+        ?: DatabaseNotFoundError(name.value).left()
 
 fun validateDatabaseNameNotTaken(
     databaseReadModel: DatabaseReadModel,

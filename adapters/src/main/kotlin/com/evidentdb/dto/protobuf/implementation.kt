@@ -279,11 +279,11 @@ fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlrea
 
 fun DatabaseNotFoundError.toProto(): ProtoDatabaseNotFoundError =
     ProtoDatabaseNotFoundError.newBuilder()
-        .setName(this.name.value)
+        .setName(this.name)
         .build()
 
 fun databaseNotFoundErrorFromProto(proto: ProtoDatabaseNotFoundError): DatabaseNotFoundError =
-    DatabaseNotFoundError(DatabaseName.build(proto.name))
+    DatabaseNotFoundError(proto.name)
 
 fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError =
     databaseNotFoundErrorFromProto(ProtoDatabaseNotFoundError.parseFrom(bytes))

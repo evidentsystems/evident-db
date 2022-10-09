@@ -4,10 +4,10 @@ import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
+import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
 import java.time.Instant
 
-// TODO: Consistency levels!!!
 interface CommandService {
     val commandManager: CommandManager
 
@@ -268,90 +268,118 @@ object EventHandler {
         }
 }
 
-// 0 is the protobuf default for int64 fields if not specified
-const val NO_REVISION_SPECIFIED = 0L
-
-// TODO: add subscription/channel-returning function for subscription to a database
 interface QueryService {
+    companion object {
+        // 0 is the protobuf default for int64 fields if not specified
+        const val NO_REVISION_SPECIFIED = 0L
+    }
+
     val databaseReadModel: DatabaseReadModel
     val batchReadModel: BatchReadModel
     val streamReadModel: StreamReadModel
     val eventReadModel: EventReadModel
 
+    private fun lookupDatabaseMaybeAtRevision(
+        name: DatabaseName,
+        revision: DatabaseRevision,
+    ): Database? =
+        if (revision == NO_REVISION_SPECIFIED)
+            databaseReadModel.database(name)
+        else
+            databaseReadModel.database(name, revision)
+
     suspend fun getCatalog(): Set<DatabaseSummary> =
         databaseReadModel.catalog()
 
-    // TODO: monadic binding for invalid database name
     suspend fun getDatabase(
-        name: DatabaseName,
+        name: String,
         revision: DatabaseRevision,
-    ): Either<DatabaseNotFoundError, Database> =
-        (if (revision == NO_REVISION_SPECIFIED)
-            databaseReadModel.database(name)
-        else
-            databaseReadModel.database(name, revision))
-            ?.right()
-            ?: DatabaseNotFoundError(name).left()
+    ): Either<DatabaseNotFoundError, Database> = either {
+        val validName = DatabaseName.of(name)
+            .mapLeft { DatabaseNotFoundError(name) }
+            .bind()
+        lookupDatabaseMaybeAtRevision(validName, revision)
+            .rightIfNotNull { DatabaseNotFoundError(name) }
+            .bind()
+    }
 
-    // TODO: monadic binding for invalid database name
-    suspend fun getDatabaseLog(name: DatabaseName)
-            : Either<DatabaseNotFoundError, List<BatchSummary>> =
-        databaseReadModel.log(name)
-            ?.right()
-            ?: DatabaseNotFoundError(name).left()
+    suspend fun getDatabaseLog(name: String)
+            : Either<DatabaseNotFoundError, List<BatchSummary>> = either {
+        val validName = DatabaseName.of(name)
+            .mapLeft { DatabaseNotFoundError(name) }
+            .bind()
+        databaseReadModel.log(validName)
+            .rightIfNotNull { DatabaseNotFoundError(name) }
+            .bind()
+    }
 
-    suspend fun getBatch(database: DatabaseName, batchId: BatchId)
-            : Either<BatchNotFoundError, Batch> =
+    // TODO: support fetching multiple batches at once
+    // TODO: ensure batch with id exists w/in database
+    suspend fun getBatch(database: String, batchId: BatchId)
+            : Either<BatchNotFoundError, Batch> = either {
+        val validName = DatabaseName.of(database)
+            .mapLeft { BatchNotFoundError(database, batchId) }
+            .bind()
+        databaseReadModel.exists(validName)
+            .rightIfNotNull { BatchNotFoundError(database, batchId) }
+            .bind()
         batchReadModel.batch(batchId)
-            ?.right()
-            ?: BatchNotFoundError(database, batchId).left()
+            .rightIfNotNull { BatchNotFoundError(database, batchId) }
+            .bind()
+    }
 
-    // TODO: monadic binding for invalid database name
+    // TODO: support fetching multiple events at once
+    // TODO: ensure Event with id exists w/in database
     suspend fun getEvent(
-        database: DatabaseName,
-        id: EventId,
-    ) : Either<EventNotFoundError, CloudEvent> =
-        eventReadModel.event(id)
-            ?.right()
-            ?: EventNotFoundError(database.value, id).left()
+        database: String,
+        eventId: EventId,
+    ) : Either<EventNotFoundError, CloudEvent> = either {
+        val validName = DatabaseName.of(database)
+            .mapLeft { EventNotFoundError(database, eventId) }
+            .bind()
+        databaseReadModel.exists(validName)
+            .rightIfNotNull { EventNotFoundError(database, eventId) }
+            .bind()
+        eventReadModel.event(eventId)
+            .rightIfNotNull { EventNotFoundError(database, eventId) }
+            .bind()
+    }
 
     // TODO: monadic binding for invalid database name
     suspend fun getDatabaseStreams(
-        name: DatabaseName,
+        database: String,
         revision: DatabaseRevision,
-    ) : Either<DatabaseNotFoundError, Set<StreamSummary>> =
-        (if (revision == NO_REVISION_SPECIFIED)
-            databaseReadModel.database(name)
-        else
-            databaseReadModel.database(name, revision))
-            ?.let { database ->
-                streamReadModel.databaseStreams(name)
-                    .mapNotNull { filterStreamByRevisions(it, database.streamRevisions) }
-                    .toSet()
-                    .right()
-            }
-            ?: DatabaseNotFoundError(name).left()
+    ) : Either<DatabaseNotFoundError, Set<StreamSummary>> = either {
+        val validName = DatabaseName.of(database)
+            .mapLeft { DatabaseNotFoundError(database) }
+            .bind()
+        val db = lookupDatabaseMaybeAtRevision(validName, revision)
+            .rightIfNotNull { DatabaseNotFoundError(database) }
+            .bind()
+        streamReadModel.databaseStreams(validName)
+            .mapNotNull { filterStreamByRevisions(it, db.streamRevisions) }
+            .toSet()
+    }
 
-    // TODO: monadic binding for invalid database name
     suspend fun getStream(
-        databaseName: DatabaseName,
+        database: String,
         databaseRevision: DatabaseRevision,
         streamName: StreamName,
-    ) : Either<StreamNotFoundError, Stream> =
-        (if (databaseRevision == NO_REVISION_SPECIFIED)
-            databaseReadModel.database(databaseName)
-        else
-            databaseReadModel.database(databaseName, databaseRevision))
-            ?.let { database ->
-                streamReadModel.stream(databaseName, streamName)?.let { stream ->
-                    (filterStreamByRevisions(stream, database.streamRevisions) as Stream?)?.right()
-                }
-            }
-            ?: StreamNotFoundError(databaseName.value, streamName).left()
+    ) : Either<StreamNotFoundError, Stream> = either {
+        val validName = DatabaseName.of(database)
+            .mapLeft { StreamNotFoundError(database, streamName) }
+            .bind()
+        val db = lookupDatabaseMaybeAtRevision(validName, databaseRevision)
+            .rightIfNotNull { StreamNotFoundError(database, streamName) }
+            .bind()
+        val stream = streamReadModel.stream(validName, streamName)
+            .rightIfNotNull { StreamNotFoundError(database, streamName) }
+            .bind()
+        filterStreamByRevisions(stream, db.streamRevisions) as Stream
+    }
 
-    // TODO: monadic binding for invalid database name
     suspend fun getSubjectStream(
-        database: DatabaseName,
+        database: String,
         databaseRevision: DatabaseRevision,
         stream: StreamName,
         subject: StreamSubject,

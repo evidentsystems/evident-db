@@ -328,21 +328,24 @@ interface QueryService {
             .bind()
     }
 
-    // TODO: support fetching multiple events at once
     // TODO: ensure Event with id exists w/in database
     suspend fun getEvent(
         database: String,
-        eventId: EventId,
-    ) : Either<EventNotFoundError, CloudEvent> = either {
+        eventIds: List<EventId>,
+    ) : Either<DatabaseNotFoundError, Map<EventId, CloudEvent>> = either {
         val validName = DatabaseName.of(database)
-            .mapLeft { EventNotFoundError(database, eventId) }
+            .mapLeft { DatabaseNotFoundError(database) }
             .bind()
         databaseReadModel.exists(validName)
-            .rightIfNotNull { EventNotFoundError(database, eventId) }
+            .rightIfNotNull { DatabaseNotFoundError(database) }
             .bind()
-        eventReadModel.event(eventId)
-            .rightIfNotNull { EventNotFoundError(database, eventId) }
-            .bind()
+        val result = mutableMapOf<EventId, CloudEvent>()
+        eventIds.forEach { id ->
+            eventReadModel.event(id)?.let {event ->
+                result[id] = event
+            }
+        }
+        result
     }
 
     // TODO: monadic binding for invalid database name

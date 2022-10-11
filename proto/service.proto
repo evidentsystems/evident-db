@@ -28,7 +28,7 @@ service EvidentDb {
   rpc getDatabaseStreams(DatabaseStreamsRequest) returns (DatabaseStreamsReply) {}
   rpc getStream(StreamRequest) returns (StreamReply) {}
   rpc getSubjectStream(SubjectStreamRequest) returns (SubjectStreamReply) {}
-  rpc getEvent(EventRequest) returns (EventReply) {}
+  rpc getEvents(EventsRequest) returns (EventsReply) {}
 }
 
 message CreateDatabaseReply {
@@ -138,13 +138,18 @@ message SubjectStreamRequest {
 }
 message SubjectStreamReply {}
 
-message EventRequest {
+message EventsRequest {
   string database = 1;
-  string event_id = 2;
+  repeated string event_ids = 2;
 }
-message EventReply {
+
+message EventsMap {
+  map<string, io.cloudevents.v1.CloudEvent> events = 1;
+}
+
+message EventsReply {
   oneof result {
-    io.cloudevents.v1.CloudEvent event = 1;
-    EventNotFoundError event_not_found = 2;
+    EventsMap events_map = 1;
+    DatabaseNotFoundError database_not_found = 2;
   }
 }

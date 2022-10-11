@@ -189,17 +189,20 @@ class EvidentDbEndpoint(
     override suspend fun getSubjectStream(request: SubjectStreamRequest): SubjectStreamReply =
         TODO("Not Implemented Yet")
 
-    override suspend fun getEvent(request: EventRequest): EventReply {
-        LOGGER.debug("getEvent request received: $request")
-        val builder = EventReply.newBuilder()
-        val eventId = EventId.fromString(request.eventId)
-        when (val result = queryService.getEvent(request.database, eventId)
+    override suspend fun getEvents(request: EventsRequest): EventsReply {
+        LOGGER.debug("getEvents request received: $request")
+        val builder = EventsReply.newBuilder()
+        val eventIds = request.eventIdsList.map(EventId::fromString)
+        when (val result = queryService.getEvent(request.database, eventIds)
         ) {
-            is Either.Left -> {
-                builder.eventNotFoundBuilder.database = request.database
-                builder.eventNotFoundBuilder.eventId = request.eventId
-            }
-            is Either.Right -> builder.event = result.value.toProto()
+            is Either.Left ->
+                builder.databaseNotFoundBuilder.name = request.database
+            is Either.Right ->
+                builder.eventsMap.eventsMap.putAll(result.value
+                    .map { (id, event) ->
+                        Pair(id.toString(), event.toProto())
+                    }
+                )
         }
         return builder.build()
     }

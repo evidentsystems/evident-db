@@ -18,8 +18,14 @@ interface IConnection {
     // TODO: make transact async, or provide async alternative
     fun transact(events: List<EventProposal>): Batch
     fun db(): IDatabase
-    fun dbAsOf(revision: DatabaseRevision): IDatabase
-    fun log(): Iterable<Batch> // TODO: make lazy, fetching on demand
+    fun dbAsOf(revision: DatabaseRevision): IDatabase // TODO:
+
+    // TODO: make lazy, fetching on demand?
+    //  or make streaming iterator w/ cancellation
+    // TODO: Allow seeking into the log at a specific revision and
+    //  iterating from there
+    fun log(): Iterable<Batch>
+
     fun shutdown()
 }
 

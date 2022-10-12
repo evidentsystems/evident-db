@@ -22,8 +22,6 @@ import com.evidentdb.dto.v1.proto.DatabaseNameAlreadyExistsError as ProtoDatabas
 import com.evidentdb.dto.v1.proto.DatabaseNotFoundError as ProtoDatabaseNotFoundError
 import com.evidentdb.dto.v1.proto.DuplicateBatchError as ProtoDuplicateBatchError
 import com.evidentdb.dto.v1.proto.Event as ProtoEvent
-import com.evidentdb.dto.v1.proto.StreamSummary as ProtoStreamSummary
-import com.evidentdb.dto.v1.proto.Stream as ProtoStream
 import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InternalServerError as ProtoInternalServerError
 import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError as ProtoInvalidDatabaseNameError
@@ -154,20 +152,6 @@ fun CommandBody.toProto(): Message =
         is DatabaseDeletionInfo -> this.toProto()
         is ProposedBatch -> this.toProto()
     }
-
-fun StreamSummary.toProto(): ProtoStreamSummary =
-    ProtoStreamSummary.newBuilder()
-        .setDatabase(this.database.value)
-        .setName(this.name)
-        .addAllEventIds(this.eventIds.map(EventId::toString))
-        .build()
-
-fun Stream.toProto(): ProtoStream =
-    ProtoStream.newBuilder()
-        .setDatabase(this.database.value)
-        .setName(this.name)
-        .addAllEvents(this.events.map { it.toProto() })
-        .build()
 
 fun Event.toProto(): ProtoEvent {
     val builder = ProtoEvent.newBuilder()

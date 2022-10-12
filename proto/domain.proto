@@ -94,18 +94,6 @@ message BatchTransactionResult {
   Database database = 2;
 }
 
-message StreamSummary {
-  string database = 1;
-  string name = 2;
-  repeated string event_ids = 3;
-}
-
-message Stream {
-  string database = 1;
-  string name = 2;
-  repeated Event events = 3;
-}
-
 // Errors
 
 message InvalidDatabaseNameError {

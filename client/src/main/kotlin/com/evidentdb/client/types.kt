@@ -11,11 +11,6 @@ typealias DatabaseRevision = Long
 data class DatabaseSummary(
     val name: DatabaseName,
     val created: Instant,
-)
-
-data class Database(
-    val name: DatabaseName,
-    val created: Instant,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
     val revision: DatabaseRevision
@@ -26,14 +21,13 @@ data class Database(
 
 typealias EventId = UUID
 
-data class UnvalidatedProposedEvent(
+data class EventProposal(
     val event: CloudEvent,
     val stream: StreamName,
     val streamState: ProposedEventStreamState = StreamState.Any,
 )
 
 data class Event(
-    val database: DatabaseName,
     val event: CloudEvent,
     val stream: StreamName
 ) {

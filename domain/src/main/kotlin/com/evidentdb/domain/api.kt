@@ -6,6 +6,7 @@ import arrow.core.left
 import arrow.core.right
 import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
+import io.cloudevents.core.builder.CloudEventBuilder
 import java.time.Instant
 
 interface CommandService {
@@ -329,23 +330,20 @@ interface QueryService {
     }
 
     // TODO: ensure Event with id exists w/in database
-    suspend fun getEvent(
+    suspend fun getEvents(
         database: String,
-        eventIds: List<EventId>,
-    ) : Either<DatabaseNotFoundError, Map<EventId, CloudEvent>> = either {
+        eventId: EventId,
+    ) : Either<EventNotFoundError, Pair<EventId, CloudEvent>> = either {
+        val error = EventNotFoundError(database, eventId)
         val validName = DatabaseName.of(database)
-            .mapLeft { DatabaseNotFoundError(database) }
+            .mapLeft { error }
             .bind()
-        databaseReadModel.exists(validName)
-            .rightIfNotNull { DatabaseNotFoundError(database) }
-            .bind()
-        val result = mutableMapOf<EventId, CloudEvent>()
-        eventIds.forEach { id ->
-            eventReadModel.event(id)?.let {event ->
-                result[id] = event
-            }
-        }
-        result
+        if (databaseReadModel.exists(validName))
+            eventReadModel.event(eventId)?.let { event ->
+                Pair(eventId, event)
+            }.rightIfNotNull { error }.bind()
+        else
+            error.left().bind<Pair<EventId, CloudEvent>>()
     }
 
     // TODO: monadic binding for invalid database name

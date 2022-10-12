@@ -21,14 +21,12 @@ service EvidentDb {
   rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
 
   // Query
-  rpc getCatalog(CatalogRequest) returns (CatalogReply) {}
-  rpc getDatabase(DatabaseRequest) returns (DatabaseReply) {}
-  rpc getDatabaseLog(DatabaseLogRequest) returns (DatabaseLogReply) {}
-  rpc getBatch(BatchRequest) returns (BatchReply) {}
-  rpc getDatabaseStreams(DatabaseStreamsRequest) returns (DatabaseStreamsReply) {}
-  rpc getStream(StreamRequest) returns (StreamReply) {}
-  rpc getSubjectStream(SubjectStreamRequest) returns (SubjectStreamReply) {}
-  rpc getEvents(EventsRequest) returns (EventsReply) {}
+  rpc catalog(CatalogRequest) returns (CatalogReply) {}
+  rpc database(DatabaseRequest) returns (DatabaseReply) {}
+  rpc databaseLog(DatabaseLogRequest) returns (DatabaseLogReply) {}
+  rpc stream(StreamRequest) returns (stream StreamEventIdReply) {}
+  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEventIdReply) {}
+  rpc events(stream EventRequest) returns (stream EventReply) {}
 }
 
 message CreateDatabaseReply {
@@ -91,43 +89,10 @@ message DatabaseLogReply {
   }
 }
 
-message BatchRequest {
-  string database = 1;
-  string batchId = 2;
-}
-
-message BatchReply {
-  oneof result {
-    Batch batch = 1;
-    BatchNotFoundError batch_not_found = 2;
-  }
-}
-
-message DatabaseStreamsRequest {
-  string database = 1;
-  int64 revision = 2;
-}
-message StreamSummaries {
-  repeated StreamSummary streams = 1;
-}
-message DatabaseStreamsReply {
-  oneof result {
-    StreamSummaries streams = 1;
-    DatabaseNotFoundError database_not_found = 2;
-  }
-}
-
 message StreamRequest {
   string database = 1;
   int64 database_revision = 2;
   string stream = 3;
-}
-
-message StreamReply {
-  oneof result {
-    Stream stream = 1;
-    StreamNotFoundError stream_not_found = 2;
-  }
 }
 
 message SubjectStreamRequest {
@@ -136,20 +101,27 @@ message SubjectStreamRequest {
   string stream = 3;
   string subject = 4;
 }
-message SubjectStreamReply {}
 
-message EventsRequest {
-  string database = 1;
-  repeated string event_ids = 2;
-}
-
-message EventsMap {
-  map<string, io.cloudevents.v1.CloudEvent> events = 1;
-}
-
-message EventsReply {
+message StreamEventIdReply {
   oneof result {
-    EventsMap events_map = 1;
-    DatabaseNotFoundError database_not_found = 2;
+    string event_id = 1;
+    StreamNotFoundError stream_not_found = 2;
+  }
+}
+
+message EventRequest {
+  string database = 1;
+  string event_id = 2;
+}
+
+message EventMapEntry {
+  string event_id = 1;
+  io.cloudevents.v1.CloudEvent event = 2;
+}
+
+message EventReply {
+  oneof result {
+    EventMapEntry event_map_entry = 1;
+    EventNotFoundError event_not_found = 2;
   }
 }

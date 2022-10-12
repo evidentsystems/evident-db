@@ -14,8 +14,8 @@ dependencies {
     implementation 'org.clojure:clojure:1.11.1'
     implementation 'cider:cider-nrepl:0.28.6'
     implementation project(':client')
-    runtimeOnly libs.grpc.netty
-
+    implementation libs.grpc.netty
+    implementation libs.cloudevents.core
 
     testRuntimeOnly 'org.ajoberstar:jovial:0.3.0'
 

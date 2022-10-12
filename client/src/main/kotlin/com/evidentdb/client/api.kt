@@ -1,27 +1,34 @@
 package com.evidentdb.client
 
-interface IClient {
+import io.cloudevents.CloudEvent
+
+interface Client {
     fun createDatabase(name: DatabaseName): Boolean
-    fun connectDatabase(name: DatabaseName): IConnection
     fun deleteDatabase(name: DatabaseName): Boolean
     fun catalog(): Iterable<DatabaseSummary>
+    fun connectDatabase(
+        name: DatabaseName,
+        cacheSize: Long = 10_000,
+    ): IConnection
 }
 
 interface IConnection {
     val database: DatabaseName
 
-    fun transact(events: Iterable<UnvalidatedProposedEvent>)
+    // TODO: make transact async, or provide async alternative
+    fun transact(events: Iterable<EventProposal>): Batch
     fun db(): IDatabase
     fun dbAsOf(revision: DatabaseRevision): IDatabase
-    fun log(name: DatabaseName): Iterable<Batch>
+    fun log(): Iterable<Batch> // TODO: make lazy, fetching on demand
+    fun shutdown()
 }
 
 interface IDatabase {
     val revision: DatabaseRevision
     val streamRevisions: Map<StreamName, StreamRevision>
 
-    fun stream(streamName: StreamName): Iterable<Event>
-    fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<Event>
+    fun stream(streamName: StreamName): Iterable<CloudEvent>?
+    fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent>
 }
 
 // val client = Client.forAddress("localhost", 50030)

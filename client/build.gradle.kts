@@ -11,6 +11,7 @@ version = "0.1.0-SNAPSHOT"
 dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.kotlinx.coroutines)
+    implementation(libs.kotlinx.coroutines.jdk8)
     implementation(libs.arrow.core)
     compileOnly(libs.slf4j.api)
 
@@ -18,9 +19,12 @@ dependencies {
     implementation(libs.cloudevents.protobuf)
 
     implementation(libs.protobuf.java)
-    compileOnly(libs.grpc.stub)
-    implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
+    implementation(libs.grpc.stub)
+    implementation(libs.grpc.kotlin.stub)
+
+    // Cache
+    implementation(libs.caffeine)
 
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)

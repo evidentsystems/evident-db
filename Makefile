@@ -113,7 +113,6 @@ perf:
 	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) / 2 )) -n 1000 -d $(LOAD_TEST_TRANSACT_BATCH_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
 	-$(GHZ) --call com.evidentdb.EvidentDb/transactBatch -c $$(( $(LOAD_TEST_DB_COUNT) * 2 )) -n 9000 -d $(LOAD_TEST_LOG_REQUEST) $(LOAD_TEST_GRPC_ENDPOINT)
 	-$(GHZ) --call com.evidentdb.EvidentDb/deleteDatabase -n $(LOAD_TEST_DB_COUNT) -d '{"name": "load-test-{{.RequestNumber}}"}' $(LOAD_TEST_GRPC_ENDPOINT) &>/dev/null
-#	cd perf/ && $(CARGO) run
 
 # Clean up
 

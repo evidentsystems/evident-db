@@ -27,6 +27,8 @@ interface IDatabase {
     val revision: DatabaseRevision
     val streamRevisions: Map<StreamName, StreamRevision>
 
+    fun asOf(revision: DatabaseRevision): IDatabase = TODO()
+    fun since(revision: DatabaseRevision): IDatabase = TODO()
     fun stream(streamName: StreamName): Iterable<CloudEvent>?
     fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent>
 }

@@ -7,11 +7,8 @@ import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import com.github.benmanes.caffeine.cache.*
 import io.cloudevents.CloudEvent
-import io.cloudevents.CloudEventAttributes
-import io.cloudevents.CloudEventContext
 import io.cloudevents.CloudEventData
 import io.cloudevents.CloudEventExtension
-import io.cloudevents.core.CloudEventUtils
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.protobuf.toDomain
 import io.grpc.Channel
@@ -40,7 +37,7 @@ class EvidentDb(val channel: ManagedChannel) : Client {
             dataContentType: String? = null,
             dataSchema: URI? = null,
             subject: String? = null,
-            extensions: Iterable<CloudEventExtension>,
+            extensions: List<CloudEventExtension>,
         ): CloudEvent {
             val builder = CloudEventBuilder.v1()
                 .withId("1")
@@ -168,8 +165,9 @@ class Connection(
 
     private val grpcClient = EvidentDbGrpc.newBlockingStub(client.channel)
 
-    override fun transact(events: Iterable<EventProposal>): Batch {
-        // TODO: ensure events not empty
+    override fun transact(events: List<EventProposal>): Batch {
+        if (events.isEmpty()) throw IllegalArgumentException("No events provided in batch")
+
         val result = grpcClient.transactBatch(
             BatchProposal.newBuilder()
                 .setDatabase(database)

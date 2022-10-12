@@ -16,7 +16,7 @@ interface IConnection {
     val database: DatabaseName
 
     // TODO: make transact async, or provide async alternative
-    fun transact(events: Iterable<EventProposal>): Batch
+    fun transact(events: List<EventProposal>): Batch
     fun db(): IDatabase
     fun dbAsOf(revision: DatabaseRevision): IDatabase
     fun log(): Iterable<Batch> // TODO: make lazy, fetching on demand

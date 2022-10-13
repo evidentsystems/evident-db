@@ -4,26 +4,6 @@ import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
 import io.cloudevents.core.builder.CloudEventBuilder
-import java.net.URI
-
-const val BATCH_URI_PATH_PREFIX = "/batches/"
-
-fun buildBatchKey(databaseId: DatabaseId, batchId: BatchId): String =
-    URI(
-        "evdb",
-        databaseId.toString(),
-        "${BATCH_URI_PATH_PREFIX}${batchId}",
-        null
-    ).toString()
-
-
-fun parseBatchKey(batchKey: BatchKey) : Pair<DatabaseId, BatchId> {
-    val uri = URI(batchKey)
-    return Pair(
-        DatabaseId.fromString(uri.host),
-        BatchId.fromString(uri.path.substring(BATCH_URI_PATH_PREFIX.length))
-    )
-}
 
 // TODO: regex validation?
 fun validateEventType(eventType: EventType)
@@ -65,13 +45,12 @@ fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>
 }
 
 fun validateStreamState(
-    databaseId: DatabaseId,
+    databaseName: DatabaseName,
     currentStreamState: StreamState,
     event: ProposedEvent
 ): Validated<StreamStateConflict, Event> {
     val valid = Event(
-        event.id,
-        databaseId,
+        databaseName,
         event.event,
         event.stream
     ).valid()
@@ -105,14 +84,13 @@ fun validateStreamState(
 }
 
 suspend fun validateProposedEvent(
-    databaseId: DatabaseId,
-    streamReadModel: StreamReadModel,
+    database: Database,
     event: ProposedEvent
 ): Either<StreamStateConflict, Event> =
     either {
         val validEvent = validateStreamState(
-            databaseId,
-            streamReadModel.streamState(databaseId, event.stream),
+            database.name,
+            streamStateFromRevisions(database.streamRevisions, event.stream),
             event
         ).bind()
         // TODO: add to other index stream(s)
@@ -120,15 +98,35 @@ suspend fun validateProposedEvent(
     }
 
 suspend fun validateProposedBatch(
-    databaseId: DatabaseId,
-    streamReadModel: StreamReadModel,
+    database: Database,
+    batchSummaryReadModel: BatchSummaryReadModel,
     batch: ProposedBatch
 ): Either<BatchTransactionError, Batch> {
+    batchSummaryReadModel.batchSummary(database.name, batch.id)?.let {
+        return DuplicateBatchError(batch).left()
+    }
     val (errors, events) = batch.events.map{
-        validateProposedEvent(databaseId, streamReadModel, it)
+        validateProposedEvent(database, it)
     }.separateEither()
     return if (errors.isEmpty())
-            Batch(batch.id, databaseId, events).right()
+        Batch(
+            batch.id,
+            database.name,
+            events,
+            nextStreamRevisions(events, database.streamRevisions)
+        ).right()
     else
         StreamStateConflictsError(errors).left()
+}
+
+fun nextStreamRevisions(
+    events: List<Event>,
+    initialStreamRevisions: Map<StreamName, StreamRevision>,
+): Map<StreamName, StreamRevision> {
+    val ret = initialStreamRevisions.toMutableMap()
+    return events.fold(ret) { acc, event ->
+        val revision = acc[event.stream] ?: 0
+        acc[event.stream] = revision + 1
+        acc
+    }
 }

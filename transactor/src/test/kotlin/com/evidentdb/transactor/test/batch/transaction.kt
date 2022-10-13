@@ -3,32 +3,20 @@ package com.evidentdb.transactor.test.batch
 import com.evidentdb.domain.*
 import com.evidentdb.test.buildTestEvent
 import com.evidentdb.transactor.TransactorTopology
-import com.evidentdb.transactor.test.TopologyTestDriverService
+import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver
+import io.cloudevents.CloudEvent
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
 class TransactionTests {
     @Test
-    fun `fast reject transaction when database is not found`(): Unit =
+    fun `fast reject transaction with no events`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
-
-            val result = service.transactBatch(databaseName, listOf())
-            Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
-        }
-
-    @Test
-    fun `reject transaction with no events`(): Unit =
-        runBlocking {
-            val driver = driver()
-            val service = TopologyTestDriverService(driver)
-            val databaseName = "foo"
-            service.createDatabase(databaseName)
 
             val result = service.transactBatch(databaseName, listOf())
             Assertions.assertTrue(result.isLeft())
@@ -36,10 +24,24 @@ class TransactionTests {
         }
 
     @Test
+    fun `reject transaction when database is not found`(): Unit =
+        runBlocking {
+            val driver = driver()
+            val service = TopologyTestDriverCommandService(driver)
+            val databaseName = "foo"
+
+            val result = service.transactBatch(databaseName, listOf(
+                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), "foo"),
+            ))
+            Assertions.assertTrue(result.isLeft())
+            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
+        }
+
+    @Test
     fun `reject transaction due to invalid events`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
@@ -60,10 +62,8 @@ class TransactionTests {
     fun `reject transaction due to stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
@@ -110,19 +110,35 @@ class TransactionTests {
                 Assertions.assertEquals(err.conflicts[1].event.event.type, batch[1].event.type)
                 Assertions.assertEquals(err.conflicts[2].event.event.type, batch[2].event.type)
             }
-            TODO("assert no new batch, streams, or events are present in storage")
+
+
+            Assertions.assertNull(
+                streamStore.get(
+                    buildStreamKey(
+                        DatabaseName.build(databaseName),
+                        "a-new-stream")
+                )
+            )
+            Assertions.assertNull(
+                streamStore.get(
+                    buildStreamKey(
+                        DatabaseName.build(databaseName),
+                        "any-stream"
+                    )
+                )
+            )
         }
 
     @Test
     fun `accept transaction with various stream state constraints`(): Unit =
         runBlocking {
             val driver = driver()
-            val batchStore = driver.getKeyValueStore<BatchKey, Batch>(TransactorTopology.BATCH_STORE)
+            val batchStore = driver.getKeyValueStore<BatchId, DatabaseLogKey>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventId, Event>(TransactorTopology.EVENT_STORE)
-            val service = TopologyTestDriverService(driver)
-            val databaseName = "foo"
-            service.createDatabase(databaseName)
+            val eventStore = driver.getKeyValueStore<EventId, CloudEvent>(TransactorTopology.EVENT_STORE)
+            val service = TopologyTestDriverCommandService(driver)
+            val databaseName = DatabaseName.build("foo")
+            service.createDatabase(databaseName.value)
 
             val existingStreamName = "my-stream"
             val initBatch = listOf(
@@ -133,7 +149,7 @@ class TransactionTests {
                 )
             )
 
-            val initResult = service.transactBatch(databaseName, initBatch)
+            val initResult = service.transactBatch(databaseName.value, initBatch)
             Assertions.assertTrue(initResult.isRight())
 
             val batch = listOf(
@@ -157,11 +173,45 @@ class TransactionTests {
                     "any-stream"
                 ),
             )
-            val result = service.transactBatch(databaseName, batch)
+            val result = service.transactBatch(databaseName.value, batch)
             Assertions.assertTrue(result.isRight())
             result.map {
-                Assertions.assertEquals(it.data.events.size, 4)
+                Assertions.assertEquals(it.data.batch.events.size, 4)
+                Assertions.assertNotNull(
+                    batchStore.get(
+                        it.data.batch.id
+                    )
+                )
+                for (event in it.data.batch.events) {
+                    Assertions.assertEquals(
+                        event.event,
+                        eventStore.get(event.id)
+                    )
+                }
             }
-            TODO("assert new batch, events, and streams are present in storage")
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        "a-new-stream"
+                    )
+                )
+            )
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        "any-stream"
+                    )
+                )
+            )
+            Assertions.assertNotNull(
+                streamStore.get(
+                    buildStreamKey(
+                        databaseName,
+                        existingStreamName
+                    )
+                )
+            )
         }
 }

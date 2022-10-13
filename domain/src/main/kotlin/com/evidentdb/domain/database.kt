@@ -1,26 +1,47 @@
 package com.evidentdb.domain
 
 import arrow.core.*
+import org.apache.commons.codec.binary.Base32
 import java.net.URI
+import java.nio.ByteBuffer
 
-fun databaseUri(id: DatabaseId): URI =
-    URI("evidentdb", id.toString(), null)
+fun databaseUri(name: DatabaseName): URI =
+    URI(DB_URI_SCHEME, name.value, null)
 
-fun databaseIdFromUri(uri: URI): DatabaseId =
-    DatabaseId.fromString(uri.schemeSpecificPart)
+private fun longToByteArray(long: Long): ByteArray {
+    val buffer = ByteBuffer.allocate(Long.SIZE_BYTES)
+    buffer.putLong(long)
+    return buffer.array()
+}
 
-fun databaseIdFromUriString(uri: String): DatabaseId =
-    databaseIdFromUri(URI.create(uri))
+fun buildDatabaseLogKey(name: DatabaseName, revision: DatabaseRevision): DatabaseLogKey {
+    val revisionBase32hex = Base32(true)
+        .encodeToString(
+            longToByteArray(revision)
+        )
+    return "${name.value}$revisionBase32hex"
+}
 
-// TODO: regex check: #"^[a-zA-Z]\w+$"
-fun validateDatabaseName(proposedName: DatabaseName)
-        : Validated<InvalidDatabaseNameError, DatabaseName> =
-    if (proposedName.isNotEmpty())
-        proposedName.valid()
-    else
-        InvalidDatabaseNameError(proposedName).invalid()
+fun minDatabaseLogKey(name: DatabaseName): DatabaseLogKey =
+    buildDatabaseLogKey(name, 0)
 
-suspend fun validateDatabaseNameNotTaken(
+fun maxDatabaseLogKey(name: DatabaseName): DatabaseLogKey =
+    buildDatabaseLogKey(name, Long.MAX_VALUE)
+
+fun databaseNameFromUri(uri: URI): DatabaseName =
+    DatabaseName.build(uri.schemeSpecificPart)
+
+//fun databaseNameFromUriString(uri: String): Validated<InvalidDatabaseNameError, DatabaseName> =
+//    databaseNameFromUri(URI.create(uri))
+
+fun lookupDatabase(
+    databaseReadModel: DatabaseReadModel,
+    name: DatabaseName,
+) : Either<DatabaseNotFoundError, Database> =
+    databaseReadModel.database(name)?.right()
+        ?: DatabaseNotFoundError(name.value).left()
+
+fun validateDatabaseNameNotTaken(
     databaseReadModel: DatabaseReadModel,
     name: DatabaseName
 ) : Validated<DatabaseNameAlreadyExistsError, DatabaseName> =
@@ -29,9 +50,10 @@ suspend fun validateDatabaseNameNotTaken(
     else
         name.valid()
 
-suspend fun lookupDatabaseIdFromDatabaseName(
-    databaseReadModel: DatabaseReadModel,
-    name: DatabaseName
-) : Either<DatabaseNotFoundError, DatabaseId> =
-    databaseReadModel.database(name)?.id?.right()
-        ?: DatabaseNotFoundError(name).left()
+fun databaseAfterBatchTransacted(database: Database, batch: Batch): Database {
+    return Database(
+        database.name,
+        database.created,
+        batch.streamRevisions,
+    )
+}

@@ -1,6 +1,13 @@
 micronaut:
   application:
-    name: evident-db
+    name: evident-db-test
+endpoints:
+  all:
+    port: 8085
+  health:
+    enabled: true
+  metrics:
+    enabled: true
 evidentdb:
   transactor:
     state.dir: ./data/transactor
@@ -9,53 +16,22 @@ evidentdb:
 kafka:
   bootstrap:
     servers: localhost:9092
+  producer:
+    linger.ms: 5
+  streams:
+    producer.linger.ms: 0
   topics:
     internal-commands:
       name: evidentdb-internal-commands
-      partitions: 12
+      partitions: 4
       replication: 3
       min.insync.replicas: 2
-      compression.type: snappy
+#      compression.type: snappy
       retention.ms: -1
     internal-events:
       name: evidentdb-internal-events
-      partitions: 12
+      partitions: 4
       replication: 3
       min.insync.replicas: 2
-      compression.type: snappy
+#      compression.type: snappy
       retention.ms: -1
-    databases:
-      name: evidentdb-databases
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    database-names:
-      name: evidentdb-database-names
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    batches:
-      name: evidentdb-batches
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    streams:
-      name: evidentdb-streams
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact
-    events:
-      name: evidentdb-events
-      partitions: 12
-      replication: 3
-      min.insync.replicas: 2
-      compression.type: snappy
-      cleanup.policy: compact

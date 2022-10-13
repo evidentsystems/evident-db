@@ -1,11 +1,10 @@
 package com.evidentdb.transactor.test.database
 
-import com.evidentdb.domain.Database
-import com.evidentdb.domain.DatabaseId
+import com.evidentdb.domain.DatabaseSummary
 import com.evidentdb.domain.DatabaseName
 import com.evidentdb.domain.DatabaseNotFoundError
 import com.evidentdb.transactor.TransactorTopology
-import com.evidentdb.transactor.test.TopologyTestDriverService
+import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
@@ -16,7 +15,7 @@ class DeletionTests {
     fun `reject a database deletion proposal due to no database with name existing`(): Unit =
         runBlocking {
             val driver = driver()
-            val service = TopologyTestDriverService(driver)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
 
             val result = service.deleteDatabase(databaseName)
@@ -28,26 +27,18 @@ class DeletionTests {
     fun `topology deletes a database`(): Unit =
         runBlocking {
             val driver = driver()
-            val databaseStore = driver.getKeyValueStore<DatabaseId, Database>(TransactorTopology.DATABASE_STORE)
-            val databaseNameStore = driver.getKeyValueStore<DatabaseName, DatabaseId>(TransactorTopology.DATABASE_NAME_LOOKUP)
-            val service = TopologyTestDriverService(driver)
+            val databaseStore = driver.getKeyValueStore<DatabaseName, DatabaseSummary>(TransactorTopology.DATABASE_STORE)
+            val service = TopologyTestDriverCommandService(driver)
             val databaseName = "foo"
             service.createDatabase(databaseName)
 
             val event = service.deleteDatabase(databaseName)
 
             event.map {
-                Assertions.assertNull(databaseStore.get(it.databaseId))
-                Assertions.assertNull(databaseNameStore.get(databaseName))
+                Assertions.assertNull(databaseStore.get(it.database))
 
                 Assertions.assertTrue(
-                    driver.producedTopicNames().contains("databases")
-                )
-                Assertions.assertTrue(
                     driver.producedTopicNames().contains("internal-events")
-                )
-                Assertions.assertTrue(
-                    driver.producedTopicNames().contains("database-names")
                 )
             }
         }

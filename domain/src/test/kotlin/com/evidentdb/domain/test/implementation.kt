@@ -2,83 +2,71 @@ package com.evidentdb.domain.test
 
 import arrow.core.Either
 import com.evidentdb.domain.*
+import java.time.Instant
 
 class InMemoryDatabaseReadModel(
-    databases: Iterable<Database> = listOf()
+    databases: Iterable<DatabaseSummary> = listOf(),
+    streams: Iterable<StreamSummary> = listOf()
 ): DatabaseReadModel {
-    private val databases: Map<DatabaseId, Database> =
+    private val databases: Map<DatabaseName, Database> =
         databases.fold(mutableMapOf()) { acc, database ->
-        acc[database.id] = database
-        acc
-    }
-    private val databaseNames: Map<DatabaseName, DatabaseId> =
-        databases.fold(mutableMapOf()) { acc, database ->
-        acc[database.name] = database.id
+        acc[database.name] = Database(
+            database.name,
+            database.created,
+            streams.fold(mutableMapOf()) { acc1, stream ->
+                acc1[stream.name] = stream.eventIds.size.toLong()
+                acc1
+            }
+        )
         acc
     }
 
-    override fun database(databaseId: DatabaseId): Database? =
-        databases[databaseId]
+    override fun log(name: DatabaseName): List<BatchSummary>? {
+        TODO("Not yet implemented")
+    }
 
     override fun database(name: DatabaseName): Database? =
-        databases[databaseNames[name]]
+        databases[name]
 
-    override fun catalog(): Set<Database> =
-        databases.values.toSet()
+    override fun database(name: DatabaseName, revision: DatabaseRevision): Database? =
+        TODO("Not yet implemented")
+
+    override fun summary(name: DatabaseName): DatabaseSummary? =
+        databases[name]?.let { DatabaseSummary(it.name, it.created) }
+
+    override fun catalog(): Set<DatabaseSummary> =
+        databases.values.map { DatabaseSummary(it.name, it.created) }.toSet()
 }
 
-class InMemoryStreamReadModel(
-    streams: Iterable<Stream>
-): StreamReadModel {
-    private val streams: Map<StreamKey, List<EventId>> =
-        streams.fold(mutableMapOf()) { acc, stream ->
-            acc[buildStreamKey(stream.databaseId, stream.name)] = listOf()
+class InMemoryBatchSummaryReadModel(batches: List<BatchSummary>): BatchSummaryReadModel {
+    private val batches: Map<BatchId, BatchSummary> =
+        batches.fold(mutableMapOf()) { acc, batch ->
+            acc[batch.id] = batch
             acc
         }
 
-    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
-        val eventIds = streams[buildStreamKey(databaseId, name)] ?: return StreamState.NoStream
-        return StreamState.AtRevision(eventIds.size.toLong())
-    }
-
-    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
-        val eventIds = streams[buildStreamKey(databaseId, name)] ?: return null
-        return Stream.create(databaseId, name, eventIds.size.toLong())
-    }
-
-    override fun streamEventIds(streamKey: StreamKey): List<EventId>? =
-        streams[streamKey]
-
-    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> =
-        streams.map { (streamKey, eventIds) ->
-            val (dbId, name) = parseStreamKey(streamKey)
-            if (dbId == databaseId) {
-                Stream.create(dbId, name, eventIds.size.toLong())
-            } else {
-                null
-            }
-        }.filterNotNull().toSet()
+    override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
+        batches[id]
 }
 
 class InMemoryCommandHandler(
-    databases: List<Database>,
-    streams: List<Stream>,
+    databases: List<DatabaseSummary>,
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
 ): CommandHandler {
-    override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val streamReadModel = InMemoryStreamReadModel(streams)
+    override val databaseReadModel = InMemoryDatabaseReadModel(databases, streams)
+    override val batchSummaryReadModel = InMemoryBatchSummaryReadModel(batches)
 }
 
 class InMemoryCommandManager(
-    databases: List<Database>,
-    streams: List<Stream>,
+    databases: List<DatabaseSummary>,
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
 ): CommandManager {
-    private val commandHandler = InMemoryCommandHandler(databases, streams)
+    private val commandHandler = InMemoryCommandHandler(databases, streams, batches)
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> =
         commandHandler.handleCreateDatabase(command)
-
-    override suspend fun renameDatabase(command: RenameDatabase): Either<DatabaseRenameError, DatabaseRenamed> =
-        commandHandler.handleRenameDatabase(command)
 
     override suspend fun deleteDatabase(command: DeleteDatabase): Either<DatabaseDeletionError, DatabaseDeleted> =
         commandHandler.handleDeleteDatabase(command)
@@ -87,14 +75,20 @@ class InMemoryCommandManager(
         commandHandler.handleTransactBatch(command)
 }
 
-class InMemoryService(
-    databases: List<Database>,
-    streams: List<Stream>,
-): Service {
-    override val databaseReadModel = InMemoryDatabaseReadModel(databases)
-    override val commandManager = InMemoryCommandManager(databases, streams)
+class InMemoryCommandService(
+    databases: List<DatabaseSummary>,
+    streams: List<StreamSummary>,
+    batches: List<BatchSummary>,
+): CommandService {
+    override val commandManager = InMemoryCommandManager(databases, streams, batches)
 
     companion object {
-        fun empty(): InMemoryService = InMemoryService(listOf(), listOf())
+        fun empty(): InMemoryCommandService = InMemoryCommandService(listOf(), listOf(), listOf())
     }
 }
+
+fun buildTestDatabase(name: DatabaseName) =
+    DatabaseSummary(
+        name,
+        Instant.now(),
+    )

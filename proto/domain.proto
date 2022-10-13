@@ -3,6 +3,7 @@ syntax = "proto3";
 package com.evidentdb;
 
 import "spec.proto";
+import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";
@@ -16,22 +17,27 @@ message DatabaseCreationInfo {
   string name = 1;
 }
 
-message Database {
-  string id = 1;
-  string name = 2;
-}
-
-message DatabaseCreatedInfo {
+message DatabaseCreationResult {
   Database database = 1;
-}
-
-message DatabaseRenameInfo {
-  string oldName = 1;
-  string newName = 2;
 }
 
 message DatabaseDeletionInfo {
   string name = 1;
+}
+
+message DatabaseDeletionResult {
+  Database database = 1;
+}
+
+message Database {
+  string name = 1;
+  google.protobuf.Timestamp created = 2;
+  map<string, int64> stream_revisions = 3;
+}
+
+message DatabaseSummary {
+  string name = 1;
+  google.protobuf.Timestamp created = 2;
 }
 
 enum StreamState {
@@ -43,32 +49,61 @@ enum StreamState {
 
 message ProposedEvent {
   string stream = 1;
-  StreamState streamState = 2;
+  StreamState stream_state = 2;
   optional int64 at_revision = 3;
   io.cloudevents.v1.CloudEvent event = 4;
 }
 
 message BatchProposal {
-  string databaseName = 2;
-  repeated ProposedEvent events = 3;
+  string database = 1;
+  repeated ProposedEvent events = 2;
 }
 
 message ProposedBatch {
   string id = 1;
-  string databaseId = 2;
+  string database = 2;
   repeated ProposedEvent events = 3;
 }
 
 message Event {
-  string databaseId = 1;
   io.cloudevents.v1.CloudEvent event = 2;
   optional string stream = 3;
 }
 
 message Batch {
   string id = 1;
-  string databaseId = 2;
-  repeated io.cloudevents.v1.CloudEvent events = 3;
+  string database = 2;
+  repeated Event events = 3;
+  map<string, int64> stream_revisions = 4;
+}
+
+message BatchSummaryEvent {
+  string id = 2;
+  optional string stream = 3;
+}
+
+message BatchSummary {
+  string id = 1;
+  string database = 2;
+  repeated BatchSummaryEvent events = 3;
+  map<string, int64> stream_revisions = 4;
+}
+
+message BatchTransactionResult {
+  Batch batch = 1;
+  Database database = 2;
+}
+
+message StreamSummary {
+  string database = 1;
+  string name = 2;
+  repeated string event_ids = 3;
+}
+
+message Stream {
+  string database = 1;
+  string name = 2;
+  repeated Event events = 3;
 }
 
 // Errors
@@ -88,22 +123,22 @@ message DatabaseNotFoundError {
 message NoEventsProvidedError {}
 
 message InvalidStreamName {
-  string streamName = 1;
+  string stream_name = 1;
 }
 
 message InvalidEventType {
-  string eventType = 1;
+  string event_type = 1;
 }
 
 message InvalidEventAttribute {
-  string attributeKey = 1;
+  string attribute_key = 1;
 }
 
 message EventInvalidation {
   oneof invalidation {
-    InvalidStreamName invalidStreamName = 1;
-    InvalidEventType invalidEventType = 2;
-    InvalidEventAttribute invalidEventAttribute = 3;
+    InvalidStreamName invalid_stream_name = 1;
+    InvalidEventType invalid_event_type = 2;
+    InvalidEventAttribute invalid_event_attribute = 3;
   }
 }
 
@@ -113,12 +148,16 @@ message InvalidEvent {
 }
 
 message InvalidEventsError {
-  repeated InvalidEvent invalidEvents = 1;
+  repeated InvalidEvent invalid_events = 1;
+}
+
+message DuplicateBatchError {
+  ProposedBatch batch = 1;
 }
 
 message StreamStateConflict {
   ProposedEvent event = 1;
-  StreamState streamState = 2;
+  StreamState stream_state = 2;
   optional int64 at_revision = 3;
 }
 
@@ -128,4 +167,19 @@ message StreamStateConflictsError {
 
 message InternalServerError {
   string message = 1;
+}
+
+message BatchNotFoundError {
+  string database = 1;
+  string batch_id = 2;
+}
+
+message StreamNotFoundError {
+  string database = 1;
+  string stream = 2;
+}
+
+message EventNotFoundError {
+  string database = 1;
+  string event_id = 2;
 }

@@ -18,11 +18,14 @@ dependencies {
     implementation(project(":adapters"))
 
     implementation(libs.kafka.streams)
+    implementation(libs.cloudevents.protobuf)
 
     implementation(libs.protobuf.java)
     compileOnly(libs.grpc.stub)
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
+
+    implementation(libs.micrometer.core)
 
     testImplementation(libs.junit.api)
     testRuntimeOnly(libs.junit.engine)

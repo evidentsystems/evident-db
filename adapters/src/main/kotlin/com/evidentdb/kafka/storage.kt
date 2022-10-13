@@ -1,151 +1,282 @@
 package com.evidentdb.kafka
 
+import com.evidentdb.domain.*
+import io.cloudevents.CloudEvent
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
-import com.evidentdb.domain.*
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
+import java.util.NoSuchElementException
 
-typealias DatabaseKeyValueStore = KeyValueStore<DatabaseId, Database>
-typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseId, Database>
-typealias DatabaseNameStore = KeyValueStore<DatabaseName, DatabaseId>
-typealias DatabaseNameLookupStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseId>
-typealias BatchKeyValueStore = KeyValueStore<BatchKey, List<EventId>>
+typealias DatabaseKeyValueStore = KeyValueStore<DatabaseName, DatabaseSummary>
+typealias DatabaseReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseName, DatabaseSummary>
+typealias DatabaseLogKeyValueStore = KeyValueStore<DatabaseLogKey, BatchSummary>
+typealias DatabaseLogReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseLogKey, BatchSummary>
+typealias BatchIndexKeyValueStore = KeyValueStore<BatchId, DatabaseLogKey>
+typealias BatchIndexReadOnlyKeyValueStore = ReadOnlyKeyValueStore<BatchId, DatabaseLogKey>
 typealias StreamKeyValueStore = KeyValueStore<StreamKey, List<EventId>>
-typealias EventKeyValueStore = KeyValueStore<EventId, Event>
+typealias StreamReadOnlyKeyValueStore = ReadOnlyKeyValueStore<StreamKey, List<EventId>>
+typealias EventKeyValueStore = KeyValueStore<EventId, CloudEvent>
+typealias EventReadOnlyKeyValueStore = ReadOnlyKeyValueStore<EventId, CloudEvent>
+
+open class DatabaseLogReadModelStore(
+    private val logKeyValueStore: DatabaseLogReadOnlyKeyValueStore,
+) {
+    fun log(database: DatabaseName): List<BatchSummary> {
+        val ret = mutableListOf<BatchSummary>()
+        logKeyValueStore.range(minDatabaseLogKey(database), maxDatabaseLogKey(database)).use {
+            for(kv in it) {
+                ret.add(kv.value.copy())
+            }
+        }
+        return ret
+    }
+
+    fun entry(database: DatabaseName, revision: DatabaseRevision): BatchSummary? =
+        logKeyValueStore.get(buildDatabaseLogKey(database, revision))
+
+    fun latest(database: DatabaseName): BatchSummary? =
+        logKeyValueStore.reverseRange(minDatabaseLogKey(database), maxDatabaseLogKey(database)).use {
+            try {
+                it.next().value
+            } catch (_: NoSuchElementException) {
+                null
+            }
+        }
+}
+
+class DatabaseLogStore(
+    private val logKeyValueStore: DatabaseLogKeyValueStore,
+): DatabaseLogReadModelStore(logKeyValueStore) {
+    fun append(batch: BatchSummary) {
+        logKeyValueStore.put(
+            buildDatabaseLogKey(batch.database, batch.revision),
+            batch,
+        )
+    }
+}
 
 open class DatabaseReadModelStore(
-    private val databaseLookupStore: DatabaseReadOnlyKeyValueStore,
-    private val databaseNameLookupStore: DatabaseNameLookupStore,
-    ): DatabaseReadModel {
-    override fun database(databaseId: DatabaseId): Database? {
-        return databaseLookupStore.get(databaseId)
-    }
+    private val databaseStore: DatabaseReadOnlyKeyValueStore,
+    logKeyValueStore: DatabaseLogReadOnlyKeyValueStore
+): DatabaseReadModel {
+    private val logStore = DatabaseLogReadModelStore(logKeyValueStore)
 
-    override fun database(name: DatabaseName): Database? {
-        return databaseNameLookupStore.get(name)?.let { databaseLookupStore.get(it) }
-    }
+    override fun log(name: DatabaseName): List<BatchSummary>? =
+        if (this.exists(name))
+            logStore.log(name)
+        else
+            null
 
-    override fun catalog(): Set<Database> {
-        val ret = mutableSetOf<Database>()
-        databaseLookupStore.all().use { databaseIterator ->
+    override fun database(name: DatabaseName): Database? =
+        databaseStore.get(name)?.let {
+            logStore.latest(name)?.let {batchSummary ->
+                Database(
+                    name,
+                    it.created,
+                    batchSummary.streamRevisions
+                )
+            } ?: Database(name, it.created, mapOf())
+        }
+
+    // TODO: seek to revision key, rather than exact lookup, to
+    //  tolerate users speculating about revision? Still fail if
+    //  given revision exceeds available revision
+    override fun database(
+        name: DatabaseName,
+        revision: DatabaseRevision
+    ): Database? =
+        databaseStore.get(name)?.let { databaseSummary ->
+            logStore.entry(name, revision)?.let { batchSummary ->
+                Database(
+                    name,
+                    databaseSummary.created,
+                    batchSummary.streamRevisions
+                )
+            }
+        }
+
+    override fun summary(name: DatabaseName): DatabaseSummary? =
+        databaseStore.get(name)
+
+    override fun catalog(): Set<DatabaseSummary> {
+        val ret = mutableSetOf<DatabaseSummary>()
+        databaseStore.all().use { databaseIterator ->
             for (kv in databaseIterator)
-                ret.add(kv.value)
+                ret.add(kv.value.copy())
         }
         return ret
     }
 }
 
-class DatabaseStore(
+class DatabaseWriteModel(
     private val databaseStore: DatabaseKeyValueStore,
-    private val databaseNameStore: DatabaseNameStore
-): DatabaseReadModelStore(databaseStore, databaseNameStore) {
-    fun putDatabase(databaseId: DatabaseId, database: Database) {
-        databaseStore.put(databaseId, database)
+) {
+    fun putDatabaseSummary(databaseName: DatabaseName, databaseSummary: DatabaseSummary) {
+        databaseStore.put(databaseName, databaseSummary)
     }
 
-    fun putDatabaseName(databaseName: DatabaseName, databaseId: DatabaseId) {
-        databaseNameStore.put(databaseName, databaseId)
-    }
-
-    fun deleteDatabase(databaseId: DatabaseId) {
-        databaseStore.delete(databaseId)
-    }
-
-    fun deleteDatabaseName(databaseName: DatabaseName) {
-        databaseNameStore.delete(databaseName)
+    fun deleteDatabase(databaseName: DatabaseName) {
+        databaseStore.delete(databaseName)
     }
 }
 
-class BatchStore(
-    private val batchStore: BatchKeyValueStore
-): BatchReadModel {
-    override fun batch(databaseId: DatabaseId, id: BatchId): Batch? {
-        TODO("Not yet implemented")
-    }
+interface IBatchSummaryReadOnlyStore: BatchSummaryReadModel {
+    val batchKeyLookup: BatchIndexReadOnlyKeyValueStore
+    val databaseLogStore: DatabaseLogReadOnlyKeyValueStore
 
-    override fun batchEventIds(batchKey: BatchKey): List<EventId>? =
-        batchStore.get(batchKey)
+    override fun batchSummary(database: DatabaseName, id: BatchId): BatchSummary? =
+        batchKeyLookup.get(id)?.let {
+            databaseLogStore.get(it)
+        }
+}
 
-    // eventIds must be the full list, not just the new ones to append
-    fun putBatchEventIds(batchKey: BatchKey, eventIds: List<EventId>) {
-        batchStore.put(batchKey, eventIds)
+interface IBatchSummaryStore: IBatchSummaryReadOnlyStore {
+    override val batchKeyLookup: BatchIndexKeyValueStore
+
+    fun addKeyLookup(batch: BatchSummary) {
+        batchKeyLookup.put(batch.id, buildDatabaseLogKey(batch.database, batch.revision))
     }
 }
 
-interface IStreamStore: StreamReadModel {
-    val streamStore: StreamKeyValueStore
+class BatchSummaryReadOnlyStore(
+    override val batchKeyLookup: BatchIndexReadOnlyKeyValueStore,
+    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
+): IBatchSummaryReadOnlyStore
 
-    override fun streamState(databaseId: DatabaseId, name: StreamName): StreamState {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
+class BatchSummaryStore(
+    override val batchKeyLookup: BatchIndexKeyValueStore,
+    override val databaseLogStore: DatabaseLogKeyValueStore,
+    private val eventStore: EventKeyValueStore,
+): IBatchSummaryStore {
+    fun deleteDatabaseLog(database: DatabaseName) {
+        databaseLogStore.range(minDatabaseLogKey(database), maxDatabaseLogKey(database))
+            .use {
+                for (keyValue in it.asSequence()) {
+                    val batch = keyValue.value
+                    for (event in batch.events) {
+                        eventStore.delete(event.id)
+                    }
+                    batchKeyLookup.delete(batch.id)
+                    databaseLogStore.delete(keyValue.key)
+                }
+            }
+    }
+}
+
+class BatchReadOnlyStore(
+    override val batchKeyLookup: BatchIndexReadOnlyKeyValueStore,
+    override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
+    private val eventStore: EventReadOnlyKeyValueStore,
+): IBatchSummaryReadOnlyStore, BatchReadModel {
+    override fun batch(id: BatchId): Batch? =
+        batchKeyLookup.get(id)?.let { databaseLogKey ->
+            databaseLogStore.get(databaseLogKey)?.let { summary ->
+                Batch(
+                    summary.id,
+                    summary.database,
+                    summary.events.map { summaryEvent ->
+                        Event(
+                            summary.database,
+                            eventStore.get(summaryEvent.id)!!,
+                            summaryEvent.stream
+                        )
+                    },
+                    summary.streamRevisions
+                )
+            }
+        }
+}
+
+interface IStreamSummaryReadOnlyStore: StreamSummaryReadModel {
+    val streamStore: StreamReadOnlyKeyValueStore
+
+    override fun streamState(databaseName: DatabaseName, name: StreamName): StreamState {
+        val eventIds = streamStore.get(buildStreamKey(databaseName, name))
         return if (eventIds == null)
             StreamState.NoStream
         else
             StreamState.AtRevision(eventIds.count().toLong())
     }
 
-    override fun stream(databaseId: DatabaseId, name: StreamName): Stream? {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
-        return if (eventIds == null)
-            null
-        else
-            Stream.create(databaseId, name, eventIds.count().toLong())
-    }
-
-    override fun databaseStreams(databaseId: DatabaseId): Set<Stream> {
-        val ret = mutableSetOf<Stream>()
-        streamStore.prefixScan(databaseId, Serdes.UUID().serializer())
-            .use { streamIterator ->
-                for (kv in streamIterator) {
-                    val parsedKey = parseStreamKey(kv.key)
-                    ret.add(
-                        Stream.create(
-                            parsedKey.first,
-                            parsedKey.second,
-                            kv.value.count().toLong()
-                        )
+    override fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary> {
+        val ret = mutableSetOf<StreamSummary>()
+        streamStore.prefixScan(
+            buildStreamKeyPrefix(databaseName),
+            Serdes.String().serializer()
+        ).use { streamIterator ->
+            for (kv in streamIterator) {
+                ret.add(
+                    StreamSummary.create(
+                        kv.key,
+                        kv.value
                     )
-                }
+                )
             }
+        }
         return ret
     }
 
-    override fun streamEventIds(streamKey: StreamKey)
-            : List<EventId>? =
-        streamStore.get(streamKey)
+    override fun streamSummary(streamKey: StreamKey): StreamSummary? =
+        streamStore.get(streamKey)?.let { eventIds ->
+            StreamSummary.create(streamKey, eventIds)
+        }
+}
+
+interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
+    override val streamStore: StreamKeyValueStore
 
     // eventIds must be the full list, not just the new ones to append
     fun putStreamEventIds(streamKey: StreamKey, eventIds: List<EventId>) {
         streamStore.put(streamKey, eventIds)
     }
-}
 
-class StreamStore(override val streamStore: StreamKeyValueStore): IStreamStore
-
-class StreamWithEventsStore(
-    override val streamStore: StreamKeyValueStore,
-    private val eventStore: EventKeyValueStore
-): IStreamStore, StreamWithEventsReadModel {
-    override fun streamWithEvents(databaseId: DatabaseId, name: StreamName): StreamWithEvents? {
-        val eventIds = streamStore.get(buildStreamKey(databaseId, name))
-        return if (eventIds == null)
-            null
-        else
-            StreamWithEvents.create(
-                databaseId,
-                name,
-                eventIds.count().toLong(),
-                eventIds.map { eventStore.get(it)!! }
-            )
+    fun deleteStream(streamKey: StreamKey) {
+        streamStore.delete(streamKey)
     }
 }
 
-class EventStore(
-    private val eventStore: EventKeyValueStore
-): EventReadModel {
-    override fun event(id: EventId): Event? =
-        eventStore.get(id)
+class StreamSummaryStore(override val streamStore: StreamKeyValueStore): IStreamSummaryStore
 
-    fun putEvent(eventId: EventId, event: Event) {
+class StreamReadOnlyStore(
+    override val streamStore: StreamReadOnlyKeyValueStore,
+    private val eventStore: EventReadOnlyKeyValueStore
+): IStreamSummaryReadOnlyStore, StreamReadModel {
+    override fun stream(databaseName: DatabaseName, name: StreamName): Stream? {
+        val streamKey = buildStreamKey(databaseName, name)
+        return streamStore.get(streamKey)?.let { eventIds ->
+            Stream.create(
+                streamKey,
+                eventIds.map {
+                    Event(
+                        databaseName,
+                        eventStore.get(it)!!,
+                        name,
+                    )
+                }
+            )
+        }
+    }
+}
+
+interface IEventReadOnlyStore: EventReadModel {
+    val eventStore: EventReadOnlyKeyValueStore
+
+    override fun event(id: EventId): CloudEvent? =
+        eventStore.get(id)
+}
+
+interface IEventStore: IEventReadOnlyStore {
+    override val eventStore: EventKeyValueStore
+
+    fun putEvent(eventId: EventId, event: CloudEvent) {
         eventStore.put(eventId, event)
     }
 }
+
+class EventReadOnlyStore(
+    override val eventStore: EventReadOnlyKeyValueStore
+): IEventReadOnlyStore
+
+class EventStore(
+    override val eventStore: EventKeyValueStore
+): IEventStore

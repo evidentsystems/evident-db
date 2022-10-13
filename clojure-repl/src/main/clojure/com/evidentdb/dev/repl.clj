@@ -51,6 +51,8 @@
 
   (count (.stream db2 "my-stream"))
 
+  (count (.log conn))
+
   (.deleteDatabase client database-name)
 
   ;; end sample usage

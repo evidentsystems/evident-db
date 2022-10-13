@@ -230,7 +230,31 @@ class Connection(
         }
 
     override fun log(): Iterable<Batch> {
-        TODO("Not yet implemented")
+        val log = mutableListOf<Batch>()
+        for (batch in grpcClient.databaseLog(
+            DatabaseLogRequest
+                .newBuilder()
+                .setDatabase(database)
+                .build())) {
+            val batchSummary = batch.batch
+            val batchEvents = eventCache.getAll(
+                batchSummary.eventsList.map { EventId.fromString(it.id) }
+            ).get()
+            log.add(
+                Batch(
+                    BatchId.fromString(batchSummary.id),
+                    database,
+                    batchSummary.eventsList.map {
+                        Event(
+                            batchEvents[EventId.fromString(it.id)]!!,
+                            it.stream
+                        )
+                    },
+                    batchSummary.streamRevisionsMap
+                )
+            )
+        }
+        return log
     }
 
     override fun shutdown() {

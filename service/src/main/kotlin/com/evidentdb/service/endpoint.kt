@@ -132,14 +132,21 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override suspend fun databaseLog(request: DatabaseLogRequest): DatabaseLogReply {
+    override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
         LOGGER.debug("databaseLog request received: $request")
-        val builder = DatabaseLogReply.newBuilder()
         when (val result = queryService.getDatabaseLog(request.database)) {
-            is Either.Left -> builder.databaseNotFoundBuilder.name = result.value.name
-            is Either.Right -> builder.logBuilder.addAllBatches(result.value.map { it.toProto() })
+            is Either.Left -> {
+                val builder = DatabaseLogReply.newBuilder()
+                builder.databaseNotFoundBuilder.name = result.value.name
+                emit(builder.build())
+            }
+            is Either.Right ->
+                for (batch in result.value) {
+                    val builder = DatabaseLogReply.newBuilder()
+                    builder.batch = batch.toProto()
+                    emit(builder.build())
+                }
         }
-        return builder.build()
     }
 
     override fun stream(request: StreamRequest): Flow<StreamEventIdReply> = flow {
@@ -157,11 +164,12 @@ class EvidentDbEndpoint(
                     .setStream(result.value.stream)
                 emit(builder.build())
             }
-            is Either.Right -> for (eventId in result.value.eventIds) {
-                val builder = StreamEventIdReply.newBuilder()
-                    .setEventId(eventId.toString())
-                emit(builder.build())
-            }
+            is Either.Right ->
+                for (eventId in result.value.eventIds) {
+                    val builder = StreamEventIdReply.newBuilder()
+                        .setEventId(eventId.toString())
+                    emit(builder.build())
+                }
         }
     }
 

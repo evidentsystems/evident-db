@@ -27,8 +27,7 @@
 
   (def client (EvidentDb.
                (-> (ManagedChannelBuilder/forAddress "localhost" 50051)
-                   .usePlaintext
-                   .build)))
+                   .usePlaintext)))
   (def database-name "clojure-repl")
 
   (.catalog client)

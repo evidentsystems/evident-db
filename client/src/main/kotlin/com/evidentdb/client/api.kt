@@ -27,6 +27,7 @@ interface IConnection {
     fun log(): Iterable<Batch>
 
     fun shutdown()
+    fun shutdownNow()
 }
 
 interface IDatabase {
@@ -34,7 +35,7 @@ interface IDatabase {
     val streamRevisions: Map<StreamName, StreamRevision>
 
 //    fun asOf(revision: DatabaseRevision): IDatabase = TODO("Filter here, or fetch at connection?")
-//    fun since(revision: DatabaseRevision): IDatabase = TODO("Is this needed?")
+//    fun since(revision: DatabaseRevision): IDatabase = TODO("Is this needed/meaningful?")
     fun stream(streamName: StreamName): Iterable<CloudEvent>?
     fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent>
     fun event(eventId: EventId): CloudEvent?

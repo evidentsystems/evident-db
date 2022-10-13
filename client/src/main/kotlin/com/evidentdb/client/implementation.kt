@@ -30,7 +30,7 @@ import java.util.concurrent.Executor
 const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
 const val LATEST_DATABASE_REVISION_SIGIL = 0L
 
-class EvidentDb(val channelBuilder: ManagedChannelBuilder<*>) : Client {
+class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
 
     private val connections = ConcurrentHashMap<DatabaseName, IConnection>(10)
@@ -55,7 +55,6 @@ class EvidentDb(val channelBuilder: ManagedChannelBuilder<*>) : Client {
         }
     }
 
-    // TODO: remove connection from cache
     override fun deleteDatabase(name: DatabaseName): Boolean = runBlocking {
         val result = grpcClient.deleteDatabase(
             DatabaseDeletionInfo.newBuilder()
@@ -63,7 +62,10 @@ class EvidentDb(val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 .build()
         )
         when (result.resultCase) {
-            DeleteDatabaseReply.ResultCase.DATABASE_DELETION -> true
+            DeleteDatabaseReply.ResultCase.DATABASE_DELETION -> {
+                removeConnection(name)?.shutdown()
+                true
+            }
             DeleteDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
                 throw IllegalArgumentException("Invalid database name: $name")
             DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
@@ -144,16 +146,16 @@ class EvidentDb(val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
 class Connection(
     override val database: DatabaseName,
-    private val client: EvidentDb,
+    private val client: EvidentDB,
     eventCacheSize: Long,
 ) : IConnection {
     private val dbCacheChannel = client.channelBuilder.build()
     // TODO: don't make this a LoadingCache, but rather manually populate
     //  via streaming subscription and/or dbAsOf calls
-    private val dbCache: LoadingCache<DatabaseRevision, DatabaseSummary> =
+    private val dbCache: AsyncLoadingCache<DatabaseRevision, DatabaseSummary> =
         Caffeine.newBuilder()
             .maximumSize(eventCacheSize.div(EVENTS_TO_DATABASE_CACHE_SIZE_RATIO))
-            .build(DatabaseSummaryLoader(dbCacheChannel, database))
+            .buildAsync(DatabaseSummaryLoader(dbCacheChannel, database))
 
     private val streamCacheChannel = client.channelBuilder.build()
     private val streamCache: AsyncLoadingCache<StreamName, List<EventId>> =
@@ -172,54 +174,69 @@ class Connection(
     private val grpcClientChannel = client.channelBuilder.build()
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
 
-    override fun transact(events: List<EventProposal>): Batch = runBlocking {
-        if (events.isEmpty()) throw IllegalArgumentException("No events provided in batch")
+    override fun transact(events: List<EventProposal>): CompletableFuture<Batch> = runBlocking {
+        future {
+            if (events.isEmpty()) throw IllegalArgumentException("No events provided in batch")
 
-        val result = grpcClient.transactBatch(
-            BatchProposal.newBuilder()
-                .setDatabase(database)
-                .addAllEvents(events.map { it.toProto() })
-                .build()
-        )
-        when (result.resultCase) {
-            TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
-                val database = result.batchTransaction.database.toDomain()
-                dbCache.put(database.revision, database)
+            val result = grpcClient.transactBatch(
+                BatchProposal.newBuilder()
+                    .setDatabase(database)
+                    .addAllEvents(events.map { it.toProto() })
+                    .build()
+            )
+            when (result.resultCase) {
+                TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
+                    val database = result.batchTransaction.database.toDomain()
+                    dbCache.synchronous().put(database.revision, database)
 
-                val batch = result.batchTransaction.batch.toDomain()
-                eventCache.synchronous().putAll(
-                    batch.events.fold(mutableMapOf()) { acc, event ->
-                        acc[event.id] = event.event
-                        acc
-                    }
-                )
+                    val batch = result.batchTransaction.batch.toDomain()
+                    eventCache.synchronous().putAll(
+                        batch.events.fold(mutableMapOf()) { acc, event ->
+                            acc[event.id] = event.event
+                            acc
+                        }
+                    )
 
-                batch
+                    batch
+                }
+
+                TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
+                    throw IllegalArgumentException("Invalid database name: $database")
+
+                TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
+                    throw IllegalStateException("Database not found: $database")
+
+                TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
+                    throw IllegalArgumentException("No events provided in batch")
+
+                TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
+                    // TODO: format this error better
+                    throw IllegalArgumentException("Invalid events: ${result.invalidEventsError.invalidEventsList}")
+
+                TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
+                    // TODO: format this error better
+                    throw IllegalStateException("Stream state conflicts: ${result.streamStateConflictError.conflictsList}")
+
+                TransactBatchReply.ResultCase.INTERNAL_SERVER_ERROR ->
+                    throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
+
+                TransactBatchReply.ResultCase.DUPLICATE_BATCH_ERROR ->
+                    throw IllegalStateException("Internal server error: duplicate batch")
+
+                else -> throw IllegalStateException("Result not set")
             }
-            TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                throw IllegalArgumentException("Invalid database name: $database")
-            TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                throw IllegalStateException("Database not found: $database")
-            TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
-                throw IllegalArgumentException("No events provided in batch")
-            TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
-                // TODO: format this error better
-                throw IllegalArgumentException("Invalid events: ${result.invalidEventsError.invalidEventsList}")
-            TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
-                // TODO: format this error better
-                throw IllegalStateException("Stream state conflicts: ${result.streamStateConflictError.conflictsList}")
-            TransactBatchReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
-            TransactBatchReply.ResultCase.DUPLICATE_BATCH_ERROR ->
-                throw IllegalStateException("Internal server error: duplicate batch")
-            else -> throw IllegalStateException("Result not set")
         }
     }
 
-    // TODO: reimplement in terms of db subscription request that caches all and stores latest
     override fun db(): IDatabase =
-        loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL)!!.let { summary ->
-            dbCache.put(summary.revision, summary)
+        TODO("Reimplement in terms of db subscription request " +
+                "that caches all and stores latest")
+
+    // TODO: validate revision > 0, and ensure
+    //  all valid revisions return a valid database
+    //  event fuzzy (currently throws NPE if not an exact match?)
+    override fun db(revision: DatabaseRevision): CompletableFuture<IDatabase> =
+        dbCache[revision].thenApply { summary ->
             Database(
                 summary.name,
                 summary.created,
@@ -229,18 +246,20 @@ class Connection(
             )
         }
 
-    // TODO: validate revision > 0, and ensure
-    //  all valid revisions return a valid database (currently throws NPE?)
-    override fun dbAsOf(revision: DatabaseRevision): IDatabase =
-        dbCache[revision].let { summary ->
-            Database(
-                summary.name,
-                summary.created,
-                summary.streamRevisions,
-                streamCache,
-                eventCache
-            )
+    override fun sync(): CompletableFuture<IDatabase> = runBlocking {
+        future {
+            loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL)!!.let { summary ->
+                dbCache.synchronous().put(summary.revision, summary)
+                Database(
+                    summary.name,
+                    summary.created,
+                    summary.streamRevisions,
+                    streamCache,
+                    eventCache
+                )
+            }
         }
+    }
 
     override fun log(): Iterable<Batch> = runBlocking {
         grpcClient.databaseLog(
@@ -288,19 +307,19 @@ class Connection(
         ).forEach(block)
 
     private fun invalidateCaches() {
-        dbCache.invalidateAll()
+        dbCache.synchronous().invalidateAll()
         streamCache.synchronous().invalidateAll()
         eventCache.synchronous().invalidateAll()
     }
 
-    fun databaseCacheStats() = dbCache.stats()
+    fun databaseCacheStats() = dbCache.synchronous().stats()
     fun streamCacheStats() = streamCache.synchronous().stats()
     fun eventCacheStats() = eventCache.synchronous().stats()
 }
 
 data class Database(
-    val name: DatabaseName,
-    val created: Instant,
+    override val name: DatabaseName,
+    override val created: Instant,
     override val streamRevisions: Map<StreamName, StreamRevision>,
     val streamCache: AsyncLoadingCache<StreamName, List<EventId>>,
     val eventCache: AsyncLoadingCache<EventId, CloudEvent>,
@@ -312,42 +331,53 @@ data class Database(
             acc + v
         }
 
-    override fun stream(streamName: StreamName): Iterable<CloudEvent>? {
-        val eventCount = streamRevisions[streamName]
-            ?: throw java.lang.IllegalArgumentException(
-                "No stream $streamName found " +
-                        "for database $name"
-            )
-        return (streams[streamName] ?: streamCache[streamName].get())?.let { eventIds ->
-            val refreshedEventIds = (if (eventIds.size < eventCount)
-                streamCache.synchronous().refresh(streamName).get()
-            else
-                eventIds).take(eventCount.toInt())
-            streams[streamName] = refreshedEventIds
-            val events = eventCache.getAll(refreshedEventIds).get()
-            refreshedEventIds.map { events[it]!! }
-        }!!
-    }
+    override fun stream(streamName: StreamName): CompletableFuture<Iterable<CloudEvent>> =
+        runBlocking {
+            val eventCount = streamRevisions[streamName]
+                ?: throw java.lang.IllegalArgumentException(
+                    "No stream $streamName found " +
+                            "for database $name"
+                )
+            future { trimAndHydrateStream(streamName, eventCount.toInt()) }
+        }
 
-    override fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent> {
+    override fun subjectStream(
+        streamName: StreamName,
+        subjectName: StreamSubject
+    ): CompletableFuture<Iterable<CloudEvent>?> {
         TODO("Not yet implemented")
     }
 
-    override fun event(eventId: EventId): CloudEvent? =
-        eventCache[eventId].get()
+    private suspend fun trimAndHydrateStream(
+        streamName: StreamName,
+        eventCount: Int,
+    ): List<CloudEvent> {
+        val eventIds = streams[streamName] ?: streamCache[streamName].await()
+        val refreshedEventIds = if (eventIds.size < eventCount)
+            streamCache.synchronous().refresh(streamName).await()
+        else
+            eventIds
+        val trimmedEventIds = refreshedEventIds.take(eventCount)
+        streams[streamName] = trimmedEventIds
+        val events = eventCache.getAll(trimmedEventIds).await()
+        return trimmedEventIds.map { events[it]!! }
+    }
+
+    override fun event(eventId: EventId): CompletableFuture<CloudEvent?> =
+        eventCache[eventId]
 }
 
-fun loadDatabase(
+suspend fun loadDatabase(
     grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub,
     database: DatabaseName,
     revision: DatabaseRevision,
-): DatabaseSummary? = runBlocking {
+): DatabaseSummary? {
     val builder = DatabaseRequest.newBuilder()
         .setName(database)
     if (revision > LATEST_DATABASE_REVISION_SIGIL)
         builder.revision = revision
     val result = grpcClient.database(builder.build())
-    when (result.resultCase) {
+    return when (result.resultCase) {
         DatabaseReply.ResultCase.DATABASE -> DatabaseSummary(
             database,
             result.database.created.toInstant(),
@@ -362,11 +392,16 @@ fun loadDatabase(
 class DatabaseSummaryLoader(
     channel: Channel,
     private val database: DatabaseName
-) : CacheLoader<DatabaseRevision, DatabaseSummary> {
+) : AsyncCacheLoader<DatabaseRevision, DatabaseSummary> {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)
 
-    override fun load(revision: DatabaseRevision): DatabaseSummary? =
-        loadDatabase(grpcClient, database, revision)
+    override fun asyncLoad(
+        revision: DatabaseRevision?,
+        executor: Executor?
+    ): CompletableFuture<out DatabaseSummary?> =
+        runBlocking(executor!!.asCoroutineDispatcher()) {
+            future { loadDatabase(grpcClient, database, revision!!) }
+        }
 }
 
 class StreamLoader(

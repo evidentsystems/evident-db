@@ -1,6 +1,8 @@
 package com.evidentdb.client
 
 import io.cloudevents.CloudEvent
+import java.time.Instant
+import java.util.concurrent.CompletableFuture
 
 interface Client {
     fun createDatabase(name: DatabaseName): Boolean
@@ -16,14 +18,23 @@ interface IConnection {
     val database: DatabaseName
 
     // TODO: make transact async, or provide async alternative
-    fun transact(events: List<EventProposal>): Batch
-    fun db(): IDatabase
-    fun dbAsOf(revision: DatabaseRevision): IDatabase // TODO:
+    fun transact(events: List<EventProposal>): CompletableFuture<Batch>
 
-    // TODO: make lazy, fetching on demand?
-    //  or make streaming iterator w/ cancellation
-    // TODO: Allow seeking into the log at a specific revision and
-    //  iterating from there
+    /* Immediately returns the latest database revision available locally */
+    fun db(): IDatabase
+
+    /* Returns a completable future bearing the next database revision
+    * greater than or equal to the given `revision`. May block indefinitely
+    * if revision is greater than the latest available on server, so callers
+    * should use timeouts or similar. */
+    fun db(revision: DatabaseRevision): CompletableFuture<IDatabase>
+
+    /* Returns a completable future bearing the latest database available
+    * on the server. */
+    fun sync(): CompletableFuture<IDatabase>
+
+    // TODO: Allow range iteration from a start revision (fuzzy) and
+    //  iterating from there (possibly to a (fuzzy) end revision)
     fun log(): Iterable<Batch>
 
     fun shutdown()
@@ -31,24 +42,29 @@ interface IConnection {
 }
 
 interface IDatabase {
+    val name: DatabaseName
+    val created: Instant
     val revision: DatabaseRevision
     val streamRevisions: Map<StreamName, StreamRevision>
 
 //    fun asOf(revision: DatabaseRevision): IDatabase = TODO("Filter here, or fetch at connection?")
 //    fun since(revision: DatabaseRevision): IDatabase = TODO("Is this needed/meaningful?")
-    fun stream(streamName: StreamName): Iterable<CloudEvent>?
-    fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent>
-    fun event(eventId: EventId): CloudEvent?
+    fun stream(streamName: StreamName): CompletableFuture<Iterable<CloudEvent>>
+    fun subjectStream(
+        streamName: StreamName,
+        subjectName: StreamSubject
+    ): CompletableFuture<Iterable<CloudEvent>?>
+    fun event(eventId: EventId): CompletableFuture<CloudEvent?>
 }
 
-// val client = Client.forAddress("localhost", 50030)
+// val client = EvidentDB(ManagedChannelBuilder.forAddress("localhost", 50051).usePlaintext())
 // client.createDatabase("foo") // => true
 // val conn = client.connect("foo")
 // val db1 = conn.db()
 // db1.stream("my-stream") // => []
 // val batch = conn.transactBatch(
 //   listOf(EventProposal("my-stream", CloudEvent.newBuilder()....))
-// )
-// val db2 = conn.dbAsOf(batch.revision)
-// db1.stream("my-stream") // => []
-// db2.stream("my-stream") // => [CloudEvent()]
+// ).get()
+// val db2 = conn.db(batch.revision).get()
+// db1.stream("my-stream").get() // => []
+// db2.stream("my-stream").get() // => [CloudEvent()]

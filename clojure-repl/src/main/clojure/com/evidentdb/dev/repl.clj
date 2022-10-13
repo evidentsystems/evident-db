@@ -2,7 +2,7 @@
   (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDb EventProposal StreamState$Any]))
+           [com.evidentdb.client EvidentDB EventProposal StreamState$Any]))
 
 (defn cloudevent
   ([event-type]
@@ -21,11 +21,11 @@
     ^URI data-schema
     ^String subject
     extensions]
-   (EvidentDb/cloudevent event-type data data-content-type data-schema subject extensions)))
+   (EvidentDB/cloudevent event-type data data-content-type data-schema subject extensions)))
 
 (comment
 
-  (def client (EvidentDb.
+  (def client (EvidentDB.
                (-> (ManagedChannelBuilder/forAddress "localhost" 50051)
                    .usePlaintext)))
   (def database-name "clojure-repl")
@@ -38,21 +38,25 @@
 
   (def db1 (.db conn))
 
+  @db1
+
   (def batch [(EventProposal. (cloudevent "event.occurred") "my-stream" StreamState$Any/INSTANCE)])
 
-  (def batch-result (.transact conn batch))
+  (def batch-result @(.transact conn batch))
 
-  (def db2 (.dbAsOf conn (.getRevision batch-result)))
+  (def db2 @(.db conn (.getRevision batch-result)))
 
-  (def db3 (.db conn))
+  (def db3 @(.sync conn))
 
   (= db2 db3)
 
-  (count (.stream db2 "my-stream"))
+  (count @(.stream db2 "my-stream"))
 
   (count (.log conn))
 
   (.deleteDatabase client database-name)
+
+  (.shutdownNow client)
 
   ;; end sample usage
   )

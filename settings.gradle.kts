@@ -13,7 +13,7 @@ dependencyResolutionManagement {
             version("caffeine", "3.1.1")
             version("cloudevents", "2.3.0")
             version("protobuf-java", "3.21.2")
-            version("grpc", "1.47.0")
+            version("grpc", "1.46.0")
             version("grpckotlin", "1.3.0")
             version("micronaut", "3.5.3")
             version("micrometer", "1.9.3")

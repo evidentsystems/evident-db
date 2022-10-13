@@ -174,9 +174,13 @@ class Connection(
                 .addAllEvents(events.map { it.toProto() })
                 .build()
         )
-        val batch = when(result.resultCase) {
-            TransactBatchReply.ResultCase.BATCH_TRANSACTION ->
-                result.batchTransaction.batch.toDomain()
+        val batch: Batch
+        val database: DatabaseSummary
+        when(result.resultCase) {
+            TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
+                batch = result.batchTransaction.batch.toDomain()
+                database = result.batchTransaction.database.toDomain()
+            }
             TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
                 throw IllegalArgumentException("Invalid database name: $database")
             TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
@@ -195,6 +199,7 @@ class Connection(
                 throw IllegalStateException("Internal server error: duplicate batch")
             else -> throw IllegalStateException("Result not set")
         }
+        dbCache.put(batch.revision, database)
         eventCache.synchronous().putAll(
             batch.events.fold(mutableMapOf()) { acc, event ->
                 acc[event.id] = event.event

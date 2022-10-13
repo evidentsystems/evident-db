@@ -3,6 +3,7 @@ package com.evidentdb.client
 import com.evidentdb.dto.v1.proto.ProposedEvent
 import com.evidentdb.dto.v1.proto.Event as ProtoEvent
 import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
+import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.toDomain
 import io.cloudevents.protobuf.toProto
@@ -26,6 +27,13 @@ fun EventProposal.toProto(): ProposedEvent {
     builder.event = this.event.toProto()
     return builder.build()
 }
+
+fun ProtoDatabase.toDomain(): DatabaseSummary =
+    DatabaseSummary(
+        this.name,
+        this.created.toInstant(),
+        this.streamRevisionsMap
+    )
 
 fun ProtoBatch.toDomain(): Batch =
     Batch(

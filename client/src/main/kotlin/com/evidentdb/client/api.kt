@@ -33,10 +33,11 @@ interface IDatabase {
     val revision: DatabaseRevision
     val streamRevisions: Map<StreamName, StreamRevision>
 
-    fun asOf(revision: DatabaseRevision): IDatabase = TODO()
-    fun since(revision: DatabaseRevision): IDatabase = TODO()
+//    fun asOf(revision: DatabaseRevision): IDatabase = TODO("Filter here, or fetch at connection?")
+//    fun since(revision: DatabaseRevision): IDatabase = TODO("Is this needed?")
     fun stream(streamName: StreamName): Iterable<CloudEvent>?
     fun subjectStream(streamName: StreamName, subjectName: StreamSubject): Iterable<CloudEvent>
+    fun event(eventId: EventId): CloudEvent?
 }
 
 // val client = Client.forAddress("localhost", 50030)

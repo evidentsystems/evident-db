@@ -274,6 +274,8 @@ data class Database(
         TODO("Not yet implemented")
     }
 
+    override fun event(eventId: EventId): CloudEvent? =
+        eventCache[eventId].get()
 }
 
 fun loadDatabase(

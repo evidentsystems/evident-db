@@ -9,6 +9,8 @@ import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toProto
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.slf4j.Logger
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory
 class EvidentDbEndpoint(
     private val commandService: CommandService,
     private val queryService: QueryService,
+    private val databaseChannel: Channel<Database>,
 ) : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
@@ -116,6 +119,22 @@ class EvidentDbEndpoint(
         val builder = CatalogReply.newBuilder()
         builder.addAllDatabases(queryService.getCatalog().map { it.toProto() })
         return builder.build()
+    }
+
+    override fun connect(request: DatabaseRequest): Flow<DatabaseReply> = flow {
+        LOGGER.debug("connect request received: $request")
+        val builder = DatabaseReply.newBuilder()
+        when(val result = queryService.getDatabase(request.name)) {
+            is Either.Left -> builder.notFoundBuilder.name = result.value.name
+            is Either.Right -> builder.database = result.value.toProto()
+        }
+        emit(builder.build())
+
+        databaseChannel.consumeEach { database ->
+            val replyBuilder = DatabaseReply.newBuilder()
+            replyBuilder.database = database.toProto()
+            emit(replyBuilder.build())
+        }
     }
 
     override suspend fun database(request: DatabaseRequest): DatabaseReply {

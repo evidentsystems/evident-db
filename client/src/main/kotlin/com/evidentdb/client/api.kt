@@ -49,11 +49,11 @@ interface IDatabase {
 
 //    fun asOf(revision: DatabaseRevision): IDatabase = TODO("Filter here, or fetch at connection?")
 //    fun since(revision: DatabaseRevision): IDatabase = TODO("Is this needed/meaningful?")
-    fun stream(streamName: StreamName): CompletableFuture<Iterable<CloudEvent>>
+    fun stream(streamName: StreamName): CompletableFuture<List<CloudEvent>>
     fun subjectStream(
         streamName: StreamName,
         subjectName: StreamSubject
-    ): CompletableFuture<Iterable<CloudEvent>?>
+    ): CompletableFuture<List<CloudEvent>?>
     fun event(eventId: EventId): CompletableFuture<CloudEvent?>
 }
 

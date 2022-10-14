@@ -22,6 +22,7 @@ service EvidentDb {
 
   // Query
   rpc catalog(CatalogRequest) returns (CatalogReply) {}
+  rpc connect(DatabaseRequest) returns (stream DatabaseReply) {}
   rpc database(DatabaseRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
   rpc stream(StreamRequest) returns (stream StreamEventIdReply) {}

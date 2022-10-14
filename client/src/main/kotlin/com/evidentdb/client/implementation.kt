@@ -14,28 +14,30 @@ import io.cloudevents.protobuf.toDomain
 import io.grpc.Channel
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
-import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
-import kotlinx.coroutines.runBlocking
 import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicReference
 
 const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
 const val LATEST_DATABASE_REVISION_SIGIL = 0L
 
 class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
+    private val clientScope = MainScope()
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
 
     private val connections = ConcurrentHashMap<DatabaseName, IConnection>(10)
 
-    override fun createDatabase(name: DatabaseName): Boolean = runBlocking {
+    override fun createDatabase(name: DatabaseName): Boolean = runBlocking(clientScope.coroutineContext) {
         val result = grpcClient.createDatabase(
             DatabaseCreationInfo.newBuilder()
                 .setName(name)
@@ -55,7 +57,7 @@ class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
         }
     }
 
-    override fun deleteDatabase(name: DatabaseName): Boolean = runBlocking {
+    override fun deleteDatabase(name: DatabaseName): Boolean = runBlocking(clientScope.coroutineContext) {
         val result = grpcClient.deleteDatabase(
             DatabaseDeletionInfo.newBuilder()
                 .setName(name)
@@ -77,7 +79,7 @@ class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
         }
     }
 
-    override fun catalog(): Iterable<DatabaseSummary> = runBlocking {
+    override fun catalog(): Iterable<DatabaseSummary> = runBlocking(clientScope.coroutineContext) {
         val result = grpcClient.catalog(CatalogRequest.getDefaultInstance())
         result.databasesList.map { summary ->
             DatabaseSummary(
@@ -98,11 +100,13 @@ class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
             return it
         }
         val newConnection = Connection(name, this, cacheSize)
+        newConnection.start()
         connections[name] = newConnection
         return newConnection
     }
 
     fun shutdown() {
+        clientScope.cancel()
         connections.forEach { (name, connection) ->
             removeConnection(name)
             connection.shutdown()
@@ -110,6 +114,7 @@ class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
     }
 
     fun shutdownNow() {
+        clientScope.cancel()
         connections.forEach { (name, connection) ->
             removeConnection(name)
             connection.shutdownNow()
@@ -149,13 +154,14 @@ class Connection(
     private val client: EvidentDB,
     eventCacheSize: Long,
 ) : IConnection {
+    private val connectionScope = MainScope()
+    private val latestRevision: AtomicReference<DatabaseSummary> = AtomicReference()
+
     private val dbCacheChannel = client.channelBuilder.build()
-    // TODO: don't make this a LoadingCache, but rather manually populate
-    //  via streaming subscription and/or dbAsOf calls
-    private val dbCache: AsyncLoadingCache<DatabaseRevision, DatabaseSummary> =
+    private val dbCache: AsyncCache<DatabaseRevision, DatabaseSummary> =
         Caffeine.newBuilder()
             .maximumSize(eventCacheSize.div(EVENTS_TO_DATABASE_CACHE_SIZE_RATIO))
-            .buildAsync(DatabaseSummaryLoader(dbCacheChannel, database))
+            .buildAsync()
 
     private val streamCacheChannel = client.channelBuilder.build()
     private val streamCache: AsyncLoadingCache<StreamName, List<EventId>> =
@@ -174,8 +180,40 @@ class Connection(
     private val grpcClientChannel = client.channelBuilder.build()
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
 
-    override fun transact(events: List<EventProposal>): CompletableFuture<Batch> = runBlocking {
-        future {
+    fun start() {
+        connectionScope.launch {
+            grpcClient.connect(
+                DatabaseRequest.newBuilder()
+                    .setName(database)
+                    .build()
+            ).collect { reply ->
+                when(reply.resultCase) {
+                    DatabaseReply.ResultCase.DATABASE -> {
+                        val summary = reply.database.toDomain()
+                        setLatestRevision(summary)
+                        dbCache.get(summary.revision) { _ -> summary }
+                    }
+                    DatabaseReply.ResultCase.NOT_FOUND -> {
+                        shutdownNow()
+                        throw IllegalStateException("Database not found: $database")
+                    }
+                    else -> throw IllegalStateException("Result not set")
+                }
+            }
+        }
+    }
+
+    private fun setLatestRevision(database: DatabaseSummary) {
+        latestRevision.getAndUpdate { current ->
+            if (current == null || (database.revision > current.revision))
+                database
+            else
+                current
+        }
+    }
+
+    override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
+        connectionScope.future {
             if (events.isEmpty()) throw IllegalArgumentException("No events provided in batch")
 
             val result = grpcClient.transactBatch(
@@ -187,7 +225,8 @@ class Connection(
             when (result.resultCase) {
                 TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
                     val database = result.batchTransaction.database.toDomain()
-                    dbCache.synchronous().put(database.revision, database)
+                    setLatestRevision(database)
+                    dbCache.get(database.revision) { _ -> database }
 
                     val batch = result.batchTransaction.batch.toDomain()
                     eventCache.synchronous().putAll(
@@ -199,69 +238,69 @@ class Connection(
 
                     batch
                 }
-
                 TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
                     throw IllegalArgumentException("Invalid database name: $database")
-
                 TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
                     throw IllegalStateException("Database not found: $database")
-
                 TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
                     throw IllegalArgumentException("No events provided in batch")
-
                 TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
                     // TODO: format this error better
                     throw IllegalArgumentException("Invalid events: ${result.invalidEventsError.invalidEventsList}")
-
                 TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
                     // TODO: format this error better
                     throw IllegalStateException("Stream state conflicts: ${result.streamStateConflictError.conflictsList}")
-
                 TransactBatchReply.ResultCase.INTERNAL_SERVER_ERROR ->
                     throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
-
                 TransactBatchReply.ResultCase.DUPLICATE_BATCH_ERROR ->
                     throw IllegalStateException("Internal server error: duplicate batch")
-
                 else -> throw IllegalStateException("Result not set")
             }
         }
-    }
 
     override fun db(): IDatabase =
-        TODO("Reimplement in terms of db subscription request " +
-                "that caches all and stores latest")
+        latestRevision.get().let { summary ->
+            Database(
+                summary.name,
+                summary.created,
+                summary.streamRevisions,
+                this,
+            )
+        }
 
     // TODO: validate revision > 0, and ensure
     //  all valid revisions return a valid database
     //  event fuzzy (currently throws NPE if not an exact match?)
     override fun db(revision: DatabaseRevision): CompletableFuture<IDatabase> =
-        dbCache[revision].thenApply { summary ->
+        dbCache.get(revision) { _, executor ->
+            connectionScope.future(executor.asCoroutineDispatcher()) {
+                val summary = loadDatabase(grpcClient, database, revision)
+                setLatestRevision(summary)
+                summary
+            }
+        }.thenApply { summary ->
             Database(
                 summary.name,
                 summary.created,
                 summary.streamRevisions,
-                streamCache,
-                eventCache
+                this,
             )
         }
 
-    override fun sync(): CompletableFuture<IDatabase> = runBlocking {
-        future {
-            loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL)!!.let { summary ->
-                dbCache.synchronous().put(summary.revision, summary)
-                Database(
-                    summary.name,
-                    summary.created,
-                    summary.streamRevisions,
-                    streamCache,
-                    eventCache
-                )
-            }
+    override fun sync(): CompletableFuture<IDatabase> = connectionScope.future {
+        loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
+            setLatestRevision(summary)
+            dbCache.get(summary.revision) { _ -> summary }
+            Database(
+                summary.name,
+                summary.created,
+                summary.streamRevisions,
+                this@Connection,
+            )
         }
     }
 
-    override fun log(): Iterable<Batch> = runBlocking {
+    override fun log(): Iterable<Batch> = runBlocking(connectionScope.coroutineContext) {
         grpcClient.databaseLog(
             DatabaseLogRequest
                 .newBuilder()
@@ -286,13 +325,34 @@ class Connection(
         }.toList()
     }
 
+    fun trimAndHydrateStream(
+        streamName: StreamName,
+        eventCount: Int,
+        databaseCachedStreams: ConcurrentHashMap<StreamName, List<EventId>>,
+    ): CompletableFuture<List<CloudEvent>> = connectionScope.future {
+        val eventIds = databaseCachedStreams[streamName] ?: streamCache[streamName].await()
+        val refreshedEventIds = if (eventIds.size < eventCount)
+            streamCache.synchronous().refresh(streamName).await()
+        else
+            eventIds
+        val trimmedEventIds = refreshedEventIds.take(eventCount)
+        databaseCachedStreams[streamName] = trimmedEventIds
+        val events = eventCache.getAll(trimmedEventIds).await()
+        trimmedEventIds.map { events[it]!! }
+    }
+
+    fun getCachedEvent(eventId: EventId): CompletableFuture<CloudEvent?> =
+        eventCache[eventId]
+
     override fun shutdown() {
+        connectionScope.cancel()
         doToAllChannels { it.shutdown() }
         invalidateCaches()
         client.removeConnection(database)
     }
 
     override fun shutdownNow() {
+        connectionScope.cancel()
         doToAllChannels { it.shutdownNow() }
         invalidateCaches()
         client.removeConnection(database)
@@ -321,8 +381,7 @@ data class Database(
     override val name: DatabaseName,
     override val created: Instant,
     override val streamRevisions: Map<StreamName, StreamRevision>,
-    val streamCache: AsyncLoadingCache<StreamName, List<EventId>>,
-    val eventCache: AsyncLoadingCache<EventId, CloudEvent>,
+    val connection: Connection,
 ) : IDatabase {
     private val streams = ConcurrentHashMap<StreamName, List<EventId>>(streamRevisions.size)
 
@@ -331,47 +390,35 @@ data class Database(
             acc + v
         }
 
-    override fun stream(streamName: StreamName): CompletableFuture<Iterable<CloudEvent>> =
-        runBlocking {
-            val eventCount = streamRevisions[streamName]
-                ?: throw java.lang.IllegalArgumentException(
-                    "No stream $streamName found " +
-                            "for database $name"
-                )
-            future { trimAndHydrateStream(streamName, eventCount.toInt()) }
-        }
+    override fun stream(streamName: StreamName): CompletableFuture<List<CloudEvent>> {
+        val eventCount = streamRevisions[streamName]
+            ?: throw java.lang.IllegalArgumentException(
+                "No stream $streamName found " +
+                        "for database $name"
+            )
+        return connection.trimAndHydrateStream(
+            streamName,
+            eventCount.toInt(),
+            streams
+        )
+    }
 
     override fun subjectStream(
         streamName: StreamName,
         subjectName: StreamSubject
-    ): CompletableFuture<Iterable<CloudEvent>?> {
+    ): CompletableFuture<List<CloudEvent>?> {
         TODO("Not yet implemented")
     }
 
-    private suspend fun trimAndHydrateStream(
-        streamName: StreamName,
-        eventCount: Int,
-    ): List<CloudEvent> {
-        val eventIds = streams[streamName] ?: streamCache[streamName].await()
-        val refreshedEventIds = if (eventIds.size < eventCount)
-            streamCache.synchronous().refresh(streamName).await()
-        else
-            eventIds
-        val trimmedEventIds = refreshedEventIds.take(eventCount)
-        streams[streamName] = trimmedEventIds
-        val events = eventCache.getAll(trimmedEventIds).await()
-        return trimmedEventIds.map { events[it]!! }
-    }
-
     override fun event(eventId: EventId): CompletableFuture<CloudEvent?> =
-        eventCache[eventId]
+        connection.getCachedEvent(eventId)
 }
 
 suspend fun loadDatabase(
     grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub,
     database: DatabaseName,
     revision: DatabaseRevision,
-): DatabaseSummary? {
+): DatabaseSummary {
     val builder = DatabaseRequest.newBuilder()
         .setName(database)
     if (revision > LATEST_DATABASE_REVISION_SIGIL)
@@ -384,24 +431,10 @@ suspend fun loadDatabase(
             result.database.streamRevisionsMap,
         )
 
-        DatabaseReply.ResultCase.NOT_FOUND -> null
+        DatabaseReply.ResultCase.NOT_FOUND ->
+            throw IllegalStateException("Database not found: $database")
         else -> throw IllegalStateException("Result not set")
     }
-}
-
-class DatabaseSummaryLoader(
-    channel: Channel,
-    private val database: DatabaseName
-) : AsyncCacheLoader<DatabaseRevision, DatabaseSummary> {
-    private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)
-
-    override fun asyncLoad(
-        revision: DatabaseRevision?,
-        executor: Executor?
-    ): CompletableFuture<out DatabaseSummary?> =
-        runBlocking(executor!!.asCoroutineDispatcher()) {
-            future { loadDatabase(grpcClient, database, revision!!) }
-        }
 }
 
 class StreamLoader(

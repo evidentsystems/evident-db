@@ -3,10 +3,8 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
-import arrow.core.right
 import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
-import io.cloudevents.core.builder.CloudEventBuilder
 import java.time.Instant
 
 interface CommandService {
@@ -280,7 +278,7 @@ interface QueryService {
     val streamReadModel: StreamReadModel
     val eventReadModel: EventReadModel
 
-    private fun lookupDatabaseMaybeAtRevision(
+    fun lookupDatabaseMaybeAtRevision(
         name: DatabaseName,
         revision: DatabaseRevision,
     ): Database? =
@@ -294,7 +292,7 @@ interface QueryService {
 
     suspend fun getDatabase(
         name: String,
-        revision: DatabaseRevision,
+        revision: DatabaseRevision = NO_REVISION_SPECIFIED,
     ): Either<DatabaseNotFoundError, Database> = either {
         val validName = DatabaseName.of(name)
             .mapLeft { DatabaseNotFoundError(name) }

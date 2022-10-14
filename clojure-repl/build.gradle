@@ -15,6 +15,7 @@ dependencies {
     implementation 'cider:cider-nrepl:0.28.6'
     implementation project(':client')
     implementation libs.grpc.netty
+    compileOnly libs.grpc.kotlin.stub
     implementation libs.cloudevents.core
 
     testRuntimeOnly 'org.ajoberstar:jovial:0.3.0'

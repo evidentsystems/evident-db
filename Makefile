@@ -130,7 +130,7 @@ clean-topology-data:
 	rm -rf app/data/service/* app/data/transactor/*
 
 .PHONY: clean-all
-clean-all: clean clean-kafka-topics clean-topology-data clean-kafka clean-redpanda
+clean-all: clean start-$(CLUSTER_TYPE) clean-kafka-topics clean-topology-data clean-$(CLUSTER_TYPE)
 
 # Util
 

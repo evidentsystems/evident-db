@@ -57,3 +57,10 @@ fun databaseAfterBatchTransacted(database: Database, batch: Batch): Database {
         batch.streamRevisions,
     )
 }
+
+fun databaseRevisionFromEvent(event: EventEnvelope): Database? =
+    when(event) {
+        is BatchTransacted -> event.data.database
+        is DatabaseCreated -> event.data.database
+        else -> null
+    }

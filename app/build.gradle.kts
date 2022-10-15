@@ -10,6 +10,7 @@ group = "com.evidentdb"
 
 dependencies {
     implementation(libs.arrow.core)
+    implementation(libs.kotlinx.coroutines)
 
     implementation(project(":adapters"))
     implementation(project(":domain"))
@@ -28,6 +29,7 @@ dependencies {
     implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
     implementation("io.micronaut:micronaut-management")
     implementation("io.micronaut:micronaut-http-server-netty")
+    implementation("io.micronaut.kafka:micronaut-kafka")
 
     testImplementation("io.micronaut:micronaut-http-client")
 }

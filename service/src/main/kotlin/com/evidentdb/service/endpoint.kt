@@ -9,9 +9,8 @@ import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toProto
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.flow
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -19,7 +18,7 @@ import org.slf4j.LoggerFactory
 class EvidentDbEndpoint(
     private val commandService: CommandService,
     private val queryService: QueryService,
-    private val databaseChannel: Channel<Database>,
+    private val databaseFlow: SharedFlow<Database>,
 ) : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
@@ -123,17 +122,24 @@ class EvidentDbEndpoint(
 
     override fun connect(request: DatabaseRequest): Flow<DatabaseReply> = flow {
         LOGGER.debug("connect request received: $request")
-        val builder = DatabaseReply.newBuilder()
+        val initialReplyBuilder = DatabaseReply.newBuilder()
         when(val result = queryService.getDatabase(request.name)) {
-            is Either.Left -> builder.notFoundBuilder.name = result.value.name
-            is Either.Right -> builder.database = result.value.toProto()
-        }
-        emit(builder.build())
+            is Either.Left -> {
+                initialReplyBuilder.notFoundBuilder.name = result.value.name
+                emit(initialReplyBuilder.build())
+            }
+            is Either.Right -> {
+                initialReplyBuilder.database = result.value.toProto()
+                emit(initialReplyBuilder.build())
 
-        databaseChannel.consumeEach { database ->
-            val replyBuilder = DatabaseReply.newBuilder()
-            replyBuilder.database = database.toProto()
-            emit(replyBuilder.build())
+                databaseFlow.collect { database ->
+                    if (request.name == database.name.value) {
+                        val replyBuilder = DatabaseReply.newBuilder()
+                        replyBuilder.database = database.toProto()
+                        emit(replyBuilder.build())
+                    }
+                }
+            }
         }
     }
 

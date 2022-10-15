@@ -16,7 +16,6 @@ import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.future.await
@@ -32,7 +31,7 @@ const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
 const val LATEST_DATABASE_REVISION_SIGIL = 0L
 
 class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
-    private val clientScope = MainScope()
+    private val clientScope = CoroutineScope(Dispatchers.Default)
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
 
     private val connections = ConcurrentHashMap<DatabaseName, IConnection>(10)
@@ -90,8 +89,6 @@ class EvidentDB(val channelBuilder: ManagedChannelBuilder<*>) : Client {
         }
     }
 
-    // TODO: ensure database exists before making connection or
-    //  returning cached connection
     override fun connectDatabase(
         name: DatabaseName,
         cacheSize: Long,
@@ -154,7 +151,7 @@ class Connection(
     private val client: EvidentDB,
     eventCacheSize: Long,
 ) : IConnection {
-    private val connectionScope = MainScope()
+    private val connectionScope = CoroutineScope(Dispatchers.Default)
     private val latestRevision: AtomicReference<DatabaseSummary> = AtomicReference()
 
     private val dbCacheChannel = client.channelBuilder.build()

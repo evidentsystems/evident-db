@@ -34,11 +34,15 @@
 
   (.createDatabase client database-name)
 
+  (.shutdown client)
+
   (def conn (.connectDatabase client database-name 1000))
+
+  (.shutdown conn)
 
   (def db1 (.db conn))
 
-  @db1
+  db1
 
   (def batch [(EventProposal. (cloudevent "event.occurred") "my-stream" StreamState$Any/INSTANCE)])
 

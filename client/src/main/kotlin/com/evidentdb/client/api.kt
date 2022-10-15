@@ -11,27 +11,27 @@ interface Client {
     fun connectDatabase(
         name: DatabaseName,
         cacheSize: Long = 10_000,
-    ): IConnection
+    ): Connection
 }
 
-interface IConnection {
+interface Connection {
     val database: DatabaseName
 
     // TODO: make transact async, or provide async alternative
     fun transact(events: List<EventProposal>): CompletableFuture<Batch>
 
     /* Immediately returns the latest database revision available locally */
-    fun db(): IDatabase
+    fun db(): Database
 
     /* Returns a completable future bearing the next database revision
     * greater than or equal to the given `revision`. May block indefinitely
     * if revision is greater than the latest available on server, so callers
     * should use timeouts or similar. */
-    fun db(revision: DatabaseRevision): CompletableFuture<IDatabase>
+    fun db(revision: DatabaseRevision): CompletableFuture<Database>
 
     /* Returns a completable future bearing the latest database available
     * on the server. */
-    fun sync(): CompletableFuture<IDatabase>
+    fun sync(): CompletableFuture<Database>
 
     // TODO: Allow range iteration from a start revision (fuzzy) and
     //  iterating from there (possibly to a (fuzzy) end revision)
@@ -41,7 +41,7 @@ interface IConnection {
     fun shutdownNow()
 }
 
-interface IDatabase {
+interface Database {
     val name: DatabaseName
     val created: Instant
     val revision: DatabaseRevision

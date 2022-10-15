@@ -29,6 +29,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
+const val AVERAGE_EVENTS_PER_STREAM = 100
+const val AVERAGE_EVENT_WEIGHT = 1000
+const val EMPTY_EVENT_WEIGHT = 10
 const val LATEST_DATABASE_REVISION_SIGIL = 0L
 
 class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
@@ -138,15 +141,15 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         private val streamCacheChannel = channelBuilder.build()
         private val streamCache: AsyncLoadingCache<StreamName, List<EventId>> =
             Caffeine.newBuilder()
-                .maximumSize(eventCacheSize)
+                .maximumWeight(eventCacheSize / AVERAGE_EVENTS_PER_STREAM)
+                .weigher<StreamName, List<EventId>> { _, value -> value.size }
                 .buildAsync(StreamLoader(streamCacheChannel, database))
 
         private val eventCacheChannel = channelBuilder.build()
-
-        // TODO: implement event weighting via event data size in bytes
         private val eventCache: AsyncLoadingCache<EventId, CloudEvent> =
             Caffeine.newBuilder()
-                .maximumSize(eventCacheSize)
+                .maximumWeight(eventCacheSize * AVERAGE_EVENT_WEIGHT)
+                .weigher<EventId, CloudEvent> { _, event -> event.data?.toBytes()?.size ?: EMPTY_EVENT_WEIGHT }
                 .buildAsync(EventLoader(eventCacheChannel, database))
 
         private val grpcClientChannel = channelBuilder.build()

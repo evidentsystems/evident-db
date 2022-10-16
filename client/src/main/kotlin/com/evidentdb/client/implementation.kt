@@ -6,6 +6,7 @@ import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import com.github.benmanes.caffeine.cache.*
+import com.github.benmanes.caffeine.cache.stats.CacheStats
 import io.cloudevents.CloudEvent
 import io.cloudevents.CloudEventData
 import io.cloudevents.CloudEventExtension
@@ -26,8 +27,11 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import javax.annotation.concurrent.ThreadSafe
 
+const val DEFAULT_CACHE_SIZE: Long = 10_000 // TODO: Make configurable
 const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
 const val AVERAGE_EVENTS_PER_STREAM = 100
 const val AVERAGE_EVENT_WEIGHT = 1000
@@ -38,6 +42,11 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
     private val clientScope = CoroutineScope(Dispatchers.Default)
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
     private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
+    private val cacheSizeReference = AtomicLong(DEFAULT_CACHE_SIZE)
+
+    var cacheSize: Long
+        get() = cacheSizeReference.get()
+        set(value) { cacheSizeReference.set(value) }
 
     override fun createDatabase(name: DatabaseName): Boolean =
         if (!clientScope.isActive)
@@ -103,10 +112,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
 
-    override fun connectDatabase(
-        name: DatabaseName,
-        cacheSize: Long,
-    ): Connection =
+    override fun connectDatabase(name: DatabaseName): Connection =
         if (!clientScope.isActive)
             throw IllegalStateException("This client is closed: $this")
         else {
@@ -328,9 +334,9 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     }.toList()
                 }
 
-        fun databaseCacheStats() = dbCache.synchronous().stats()
-        fun streamCacheStats() = streamCache.synchronous().stats()
-        fun eventCacheStats() = eventCache.synchronous().stats()
+        fun databaseCacheStats(): CacheStats = dbCache.synchronous().stats()
+        fun streamCacheStats(): CacheStats = streamCache.synchronous().stats()
+        fun eventCacheStats(): CacheStats = eventCache.synchronous().stats()
 
         override fun shutdown() {
             connectionScope.cancel()

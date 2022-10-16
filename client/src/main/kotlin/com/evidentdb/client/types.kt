@@ -49,6 +49,12 @@ data class Batch(
         }
 }
 
+data class ProposedBatch(
+    val id: BatchId,
+    val database: DatabaseName,
+    val events: List<EventProposal>
+)
+
 data class BatchSummaryEvent(val id: EventId, val stream: StreamName)
 
 data class BatchSummary(
@@ -78,3 +84,59 @@ sealed interface StreamState {
     data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
     // TODO: data class SubjectStreamAtRevision(val revision: StreamRevision): ProposedEventStreamState
 }
+
+// Errors
+
+sealed interface DatabaseCreationError
+sealed interface DatabaseDeletionError
+sealed interface BatchTransactionError
+sealed interface NotFoundError
+
+data class InvalidDatabaseNameError(val name: String):
+    DatabaseCreationError, DatabaseDeletionError, BatchTransactionError,
+    IllegalArgumentException("Invalid database name: $name")
+data class DatabaseNameAlreadyExistsError(val name: DatabaseName):
+    DatabaseCreationError,
+    IllegalStateException("Database already exists: $name")
+data class DatabaseNotFoundError(val name: String):
+    DatabaseDeletionError, BatchTransactionError, NotFoundError,
+    IllegalStateException("Database not found: $name")
+data class BatchNotFoundError(val database: String, val batchId: BatchId):
+    NotFoundError,
+    IllegalStateException("Batch $batchId not found in database $database")
+data class StreamNotFoundError(val database: String, val stream: StreamName):
+    NotFoundError,
+    IllegalStateException("Stream $stream not found in database $database")
+data class EventNotFoundError(val database: String, val eventId: EventId):
+    NotFoundError,
+    IllegalStateException("Event $eventId not found in database $database")
+
+sealed interface InvalidBatchError: BatchTransactionError
+
+object NoEventsProvidedError:
+    InvalidBatchError,
+    IllegalArgumentException("Cannot transact an empty batch")
+
+sealed interface EventInvalidation
+
+data class InvalidStreamName(val streamName: String):
+    EventInvalidation
+data class InvalidEventType(val eventType: String):
+    EventInvalidation
+
+data class InvalidEvent(
+    val event: EventProposal,
+    val errors: List<EventInvalidation>
+)
+data class InvalidEventsError(val invalidEvents: List<InvalidEvent>):
+    InvalidBatchError,
+    IllegalArgumentException("Invalid events: $invalidEvents")
+
+data class StreamStateConflict(val event: EventProposal, val streamState: StreamState)
+data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>):
+    BatchTransactionError,
+    IllegalStateException("Stream state conflicts: $conflicts")
+
+data class InternalServerError(val error: String):
+    DatabaseCreationError, DatabaseDeletionError, BatchTransactionError,
+    RuntimeException("Internal server error: $error")

@@ -36,7 +36,7 @@
 
   (.shutdown client)
 
-  (def conn (.connectDatabase client database-name 1000))
+  (def conn (.connectDatabase client database-name))
 
   (.shutdown conn)
 

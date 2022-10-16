@@ -1,6 +1,9 @@
 package com.evidentdb.client
 
 import arrow.core.foldLeft
+import com.evidentdb.client.dto.protobuf.toDomain
+import com.evidentdb.client.dto.protobuf.toInstant
+import com.evidentdb.client.dto.protobuf.toProto
 import com.evidentdb.dto.v1.proto.BatchProposal
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
@@ -38,6 +41,25 @@ const val AVERAGE_EVENT_WEIGHT = 1000
 const val EMPTY_EVENT_WEIGHT = 10
 const val LATEST_DATABASE_REVISION_SIGIL = 0L
 
+/**
+ * This is the top-level entry point for the EvidentDB client. Use
+ * instances of this client to create and delete databases, show
+ * the catalog of all available databases, and get connections to
+ * a specific database.
+ *
+ * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
+ * When a program is finished communicating with an EvidentDB server (e.g.
+ * at program termination), the client can be cleanly [shutdown] (shutting down
+ * and removing all cached [Connection]s after awaiting in-flight requests to complete),
+ * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
+ * but not awaiting in-flight requests to complete).
+ *
+ * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
+ * used to connect to the EvidentDB server.
+ * @property cacheSize Configurable size for new connections created by this client
+ * @constructor Main entry point for creating EvidentDB clients
+ */
+@ThreadSafe
 class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
     private val clientScope = CoroutineScope(Dispatchers.Default)
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
@@ -50,7 +72,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
     override fun createDatabase(name: DatabaseName): Boolean =
         if (!clientScope.isActive)
-            throw IllegalStateException("This client is closed: $this")
+            throw ClientClosedException(this)
         else
             runBlocking(clientScope.coroutineContext) {
                 val result = grpcClient.createDatabase(
@@ -62,19 +84,19 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     CreateDatabaseReply.ResultCase.DATABASE_CREATION ->
                         true
                     CreateDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                        throw IllegalArgumentException("Invalid database name: $name")
+                        throw InvalidDatabaseNameError(name)
                     CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
-                        throw IllegalArgumentException("Database name already exists: $name")
+                        throw DatabaseNameAlreadyExistsError(name)
                     CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                        throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
+                        throw InternalServerError(result.internalServerError.message)
                     else ->
-                        throw IllegalStateException("Result not set")
+                        throw SerializationError("Result not set")
                 }
             }
 
     override fun deleteDatabase(name: DatabaseName): Boolean =
         if (!clientScope.isActive)
-            throw IllegalStateException("This client is closed: $this")
+            throw ClientClosedException(this)
         else
             runBlocking(clientScope.coroutineContext) {
                 val result = grpcClient.deleteDatabase(
@@ -88,19 +110,19 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         true
                     }
                     DeleteDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                        throw IllegalArgumentException("Invalid database name: $name")
+                        throw InvalidDatabaseNameError(name)
                     DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                        throw IllegalStateException("Database not found: $name")
+                        throw DatabaseNotFoundError(name)
                     DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                        throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
+                        throw InternalServerError(result.internalServerError.message)
                     else ->
-                        throw IllegalStateException("Result not set")
+                        throw SerializationError("Result not set")
                 }
             }
 
     override fun catalog(): Iterable<DatabaseSummary> =
         if (!clientScope.isActive)
-            throw IllegalStateException("This client is closed: $this")
+            throw ClientClosedException(this)
         else runBlocking(clientScope.coroutineContext) {
             val result = grpcClient.catalog(CatalogRequest.getDefaultInstance())
             result.databasesList.map { summary ->
@@ -114,7 +136,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
     override fun connectDatabase(name: DatabaseName): Connection =
         if (!clientScope.isActive)
-            throw IllegalStateException("This client is closed: $this")
+            throw ClientClosedException(this)
         else {
             connections[name]?.let {
                 return it
@@ -190,10 +212,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                         DatabaseReply.ResultCase.NOT_FOUND -> {
                             shutdownNow()
-                            throw IllegalStateException("Database not found: $database")
+                            throw DatabaseNotFoundError(database)
                         }
 
-                        else -> throw IllegalStateException("Result not set")
+                        else -> throw SerializationError("Result not set")
                     }
                 }
             }
@@ -201,10 +223,11 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
         override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
             if (!connectionScope.isActive)
-                throw IllegalStateException("This connection is closed: $this")
+                throw ConnectionClosedException(this)
             else
                 connectionScope.future {
-                    if (events.isEmpty()) throw IllegalArgumentException("No events provided in batch")
+                    if (events.isEmpty())
+                        throw NoEventsProvidedError
 
                     val result = grpcClient.transactBatch(
                         BatchProposal.newBuilder()
@@ -228,37 +251,31 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                             batch
                         }
-
                         TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                            throw IllegalArgumentException("Invalid database name: $database")
-
-                        TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                            throw IllegalStateException("Database not found: $database")
-
+                            throw InvalidDatabaseNameError(result.invalidDatabaseNameError.name)
                         TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
-                            throw IllegalArgumentException("No events provided in batch")
-
+                            throw NoEventsProvidedError
                         TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
-                            // TODO: format this error better
-                            throw IllegalArgumentException("Invalid events: ${result.invalidEventsError.invalidEventsList}")
-
+                            throw InvalidEventsError(
+                                result.invalidEventsError.invalidEventsList.map { invalidEvent ->
+                                    invalidEvent.toDomain()
+                                }
+                            )
+                        TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
+                            throw DatabaseNotFoundError(result.databaseNotFoundError.name)
                         TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
-                            // TODO: format this error better
-                            throw IllegalStateException("Stream state conflicts: ${result.streamStateConflictError.conflictsList}")
-
-                        TransactBatchReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                            throw IllegalStateException("Internal server error: ${result.internalServerError.message}")
-
-                        TransactBatchReply.ResultCase.DUPLICATE_BATCH_ERROR ->
-                            throw IllegalStateException("Internal server error: duplicate batch")
-
-                        else -> throw IllegalStateException("Result not set")
+                            throw StreamStateConflictsError(
+                                result.streamStateConflictError.conflictsList.map {
+                                    it.toDomain()
+                                }
+                            )
+                        else -> throw InternalServerError(result.internalServerError.message)
                     }
                 }
 
         override fun db(): Database =
             if (!connectionScope.isActive)
-                throw IllegalStateException("This connection is closed: $this")
+                throw ConnectionClosedException(this)
             else
                 latestRevision.get().let { summary ->
                     DatabaseImpl(
@@ -273,7 +290,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         //  event fuzzy (currently throws NPE if not an exact match?)
         override fun db(revision: DatabaseRevision): CompletableFuture<Database> =
             if (!connectionScope.isActive)
-                throw IllegalStateException("This connection is closed: $this")
+                throw ConnectionClosedException(this)
             else
                 dbCache.get(revision) { _, executor ->
                     connectionScope.future(executor.asCoroutineDispatcher()) {
@@ -291,7 +308,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
         override fun sync(): CompletableFuture<Database> =
             if (!connectionScope.isActive)
-                throw IllegalStateException("This connection is closed: $this")
+                throw ConnectionClosedException(this)
             else
                 connectionScope.future {
                     loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
@@ -307,7 +324,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
         override fun log(): Iterable<Batch> =
             if (!connectionScope.isActive)
-                throw IllegalStateException("This connection is closed: $this")
+                throw ConnectionClosedException(this)
             else
                 runBlocking(connectionScope.coroutineContext) {
                     grpcClient.databaseLog(
@@ -316,21 +333,29 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                             .setDatabase(database)
                             .build()
                     ).map { batch ->
-                        val batchSummary = batch.batch
-                        val batchEvents = eventCache.getAll(
-                            batchSummary.eventsList.map { EventId.fromString(it.id) }
-                        ).await()
-                        Batch(
-                            BatchId.fromString(batchSummary.id),
-                            database,
-                            batchSummary.eventsList.map {
-                                Event(
-                                    batchEvents[EventId.fromString(it.id)]!!,
-                                    it.stream
+                        when(batch.resultCase) {
+                            DatabaseLogReply.ResultCase.BATCH -> {
+                                val batchSummary = batch.batch
+                                val batchEvents = eventCache.getAll(
+                                    batchSummary.eventsList.map { EventId.fromString(it.id) }
+                                ).await()
+                                Batch(
+                                    BatchId.fromString(batchSummary.id),
+                                    database,
+                                    batchSummary.eventsList.map {
+                                        Event(
+                                            batchEvents[EventId.fromString(it.id)]!!,
+                                            it.stream
+                                        )
+                                    },
+                                    batchSummary.streamRevisionsMap
                                 )
-                            },
-                            batchSummary.streamRevisionsMap
-                        )
+                            }
+                            DatabaseLogReply.ResultCase.DATABASE_NOT_FOUND ->
+                                throw DatabaseNotFoundError(batch.databaseNotFound.name)
+                            else ->
+                                throw SerializationError("Result not set")
+                        }
                     }.toList()
                 }
 
@@ -412,13 +437,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
             override fun stream(streamName: StreamName): CompletableFuture<List<CloudEvent>> =
                 if (!connectionScope.isActive)
-                    throw IllegalStateException("The connection to this database is closed: $this")
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     val eventCount = streamRevisions[streamName]
-                        ?: throw java.lang.IllegalArgumentException(
-                            "No stream $streamName found " +
-                                    "for database $name"
-                        )
+                        ?: throw StreamNotFoundError(database, streamName)
                     trimAndHydrateStream(
                         streamName,
                         eventCount.toInt(),
@@ -431,14 +453,14 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 subjectName: StreamSubject
             ): CompletableFuture<List<CloudEvent>?> =
                 if (!connectionScope.isActive)
-                    throw IllegalStateException("The connection to this database is closed: $this")
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     TODO("Not yet implemented")
                 }
 
             override fun event(eventId: EventId): CompletableFuture<CloudEvent?> =
                 if (!connectionScope.isActive)
-                    throw IllegalStateException("The connection to this database is closed: $this")
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else
                     getCachedEvent(eventId)
 
@@ -517,8 +539,9 @@ internal suspend fun loadDatabase(
         )
 
         DatabaseReply.ResultCase.NOT_FOUND ->
-            throw IllegalStateException("Database not found: $database")
-        else -> throw IllegalStateException("Result not set")
+            throw DatabaseNotFoundError(result.notFound.name)
+        else ->
+            throw SerializationError("Result not set")
     }
 }
 
@@ -548,12 +571,12 @@ internal class StreamLoader(
                     EventId.fromString(reply.eventId)
 
                 StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
-                    throw IllegalStateException(
-                        "Stream \"${reply.streamNotFound.stream}\" " +
-                                "for database \"${reply.streamNotFound.database}\""
+                    throw StreamNotFoundError(
+                        reply.streamNotFound.database,
+                        reply.streamNotFound.stream,
                     )
 
-                else -> throw IllegalStateException("Result not set")
+                else -> throw SerializationError("Result not set")
             }
         }.toList()
     }
@@ -601,12 +624,12 @@ internal class EventLoader(
                 }
 
                 EventReply.ResultCase.EVENT_NOT_FOUND ->
-                    throw IllegalStateException(
-                        "Event ${reply.eventNotFound.eventId} " +
-                                "not found for Database ${reply.eventNotFound.database}"
+                    throw EventNotFoundError(
+                        reply.eventNotFound.database,
+                        EventId.fromString(reply.eventNotFound.eventId),
                     )
-
-                else -> throw IllegalStateException("Result not set")
+                
+                else -> throw SerializationError("Result not set")
             }
         }
         return eventMap

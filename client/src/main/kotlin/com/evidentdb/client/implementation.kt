@@ -496,19 +496,31 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
     }
 
     companion object {
-        // Cloud Event Helper
         @JvmStatic
-        fun cloudevent(
+        fun eventProposal(
+            event: CloudEvent,
+            streamName: StreamName,
+            streamState: ProposedEventStreamState = StreamState.Any,
+        ) = EventProposal(
+            event,
+            streamName,
+            streamState,
+        )
+
+        @JvmStatic
+        fun eventProposal(
             eventType: String,
+            streamName: StreamName,
+            streamState: ProposedEventStreamState = StreamState.Any,
             data: CloudEventData? = null,
             dataContentType: String? = null,
             dataSchema: URI? = null,
             subject: String? = null,
-            extensions: List<CloudEventExtension>,
-        ): CloudEvent {
+            extensions: List<CloudEventExtension> = listOf(),
+        ): EventProposal {
             val builder = CloudEventBuilder.v1()
                 .withId("1")
-                .withSource(URI("edb:source"))
+                .withSource(URI("edb:client"))
                 .withType(eventType)
                 .withData(data)
                 .withDataContentType(dataContentType)
@@ -516,7 +528,11 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 .withSubject(subject)
             for (extension in extensions)
                 builder.withExtension(extension)
-            return builder.build()
+            return EventProposal(
+                builder.build(),
+                streamName,
+                streamState,
+            )
         }
     }
 }

@@ -2,26 +2,30 @@
   (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDB EventProposal StreamState$Any]))
+           [com.evidentdb.client EvidentDB StreamState StreamState$Any]))
 
-(defn cloudevent
-  ([event-type]
-   (cloudevent event-type nil))
-  ([event-type data]
-   (cloudevent event-type data nil))
-  ([event-type data data-content-type]
-   (cloudevent event-type data data-content-type nil))
-  ([event-type data data-content-type data-schema]
-   (cloudevent event-type data data-content-type data-schema nil))
-  ([event-type data data-content-type data-schema subject]
-   (cloudevent event-type data data-content-type data-schema subject []))
+(defn event-proposal
+  ([event-type stream-name]
+   (event-proposal event-type stream-name StreamState$Any/INSTANCE))
+  ([event-type stream-name stream-state]
+   (event-proposal event-type stream-name stream-state nil))
+  ([event-type stream-name stream-state data]
+   (event-proposal event-type stream-name stream-state data nil))
+  ([event-type stream-name stream-state data data-content-type]
+   (event-proposal event-type stream-name stream-state data data-content-type nil))
+  ([event-type data stream-name stream-state data-content-type data-schema]
+   (event-proposal event-type stream-name stream-state data data-content-type data-schema nil))
+  ([event-type data stream-name stream-state data-content-type data-schema subject]
+   (event-proposal event-type stream-name stream-state data data-content-type data-schema subject []))
   ([^String event-type
+    ^String stream-name
+    ^StreamState stream-state
     ^CloudEventData data
     ^String data-content-type
     ^URI data-schema
     ^String subject
     extensions]
-   (EvidentDB/cloudevent event-type data data-content-type data-schema subject extensions)))
+   (EvidentDB/eventProposal event-type stream-name stream-state data data-content-type data-schema subject extensions)))
 
 (comment
 
@@ -44,7 +48,7 @@
 
   db1
 
-  (def batch [(EventProposal. (cloudevent "event.occurred") "my-stream" StreamState$Any/INSTANCE)])
+  (def batch [(event-proposal "event.occurred" "my-stream")])
 
   (def batch-result @(.transact conn batch))
 

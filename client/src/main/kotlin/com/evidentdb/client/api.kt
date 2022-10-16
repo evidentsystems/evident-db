@@ -66,6 +66,9 @@ interface Client {
  * or urgently [shutdownNow] (cancelling in-flight requests). After shutdown,
  * all subsequent API method calls will throw [ConnectionClosedException].
  *
+ * Connections cache database revisions, stream state (event ids), and events,
+ * so that database values can often serve queries from local state.
+ *
  * @property database The connected database.
  */
 interface Connection {
@@ -154,6 +157,19 @@ interface Connection {
     fun shutdownNow()
 }
 
+/**
+ * Databases represent a revision of the database identified by [name], i.e. a
+ * point-in-time queryable basis for querying streams of events. Databases have value
+ * semantics, can be compared for equality, etc.
+ *
+ * Databases have 2 notions of clock state: [streamRevisions] which is the full clock
+ * of the revision of each stream, and [revision] which summarizes the stream clock into
+ * a monotonically increasing long.
+ *
+ * Databases cache their stream state (eventIds) and draw on their connection's event cache.
+ * After their parent client or connection is closed, all subsequent API method calls will
+ * throw [ConnectionClosedException].
+ */
 interface Database {
     val name: DatabaseName
     val created: Instant
@@ -188,15 +204,3 @@ interface Database {
      */
     fun event(eventId: EventId): CompletableFuture<CloudEvent?>
 }
-
-// val client = EvidentDB(ManagedChannelBuilder.forAddress("localhost", 50051).usePlaintext())
-// client.createDatabase("foo") // => true
-// val conn = client.connect("foo")
-// val db1 = conn.db()
-// db1.stream("my-stream") // => []
-// val batch = conn.transactBatch(
-//   listOf(EventProposal("my-stream", CloudEvent.newBuilder()....))
-// ).get()
-// val db2 = conn.db(batch.revision).get()
-// db1.stream("my-stream").get() // => []
-// db2.stream("my-stream").get() // => [CloudEvent()]

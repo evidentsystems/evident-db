@@ -52,7 +52,8 @@ const val LATEST_DATABASE_REVISION_SIGIL = 0L
  * at program termination), the client can be cleanly [shutdown] (shutting down
  * and removing all cached [Connection]s after awaiting in-flight requests to complete),
  * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
- * but not awaiting in-flight requests to complete).
+ * but not awaiting in-flight requests to complete). Subsequent API method calls will
+ * throw [ClientClosedException].
  *
  * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
  * used to connect to the EvidentDB server.

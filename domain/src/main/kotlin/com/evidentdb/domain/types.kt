@@ -329,12 +329,14 @@ data class BatchTransacted(
 
 // Errors
 
+sealed interface NotFoundError
+
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
-data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError
-data class BatchNotFoundError(val database: String, val batchId: BatchId)
-data class StreamNotFoundError(val database: String, val stream: StreamName)
-data class EventNotFoundError(val database: String, val eventId: EventId)
+data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
+data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
+data class StreamNotFoundError(val database: String, val stream: StreamName): NotFoundError
+data class EventNotFoundError(val database: String, val eventId: EventId): NotFoundError
 
 sealed interface InvalidBatchError: BatchTransactionError
 

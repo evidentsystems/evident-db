@@ -148,7 +148,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     DatabaseSummary(
                         reply.database.name,
                         reply.database.created.toInstant(),
-                        mapOf() // TODO
+                        reply.database.streamRevisionsMap
                     )
                 }
 

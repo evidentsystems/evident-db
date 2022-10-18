@@ -98,11 +98,23 @@ open class DatabaseReadModelStore(
     override fun summary(name: DatabaseName): DatabaseSummary? =
         databaseStore.get(name)
 
-    override fun catalog(): Set<DatabaseSummary> {
-        val ret = mutableSetOf<DatabaseSummary>()
+    override fun catalog(): Set<Database> {
+        val ret = mutableSetOf<Database>()
         databaseStore.all().use { databaseIterator ->
-            for (kv in databaseIterator)
-                ret.add(kv.value.copy())
+            for (kv in databaseIterator) {
+                val databaseSummary = kv.value
+                logStore.latest(databaseSummary.name)?.let { batchSummary ->
+                    Database(
+                        databaseSummary.name,
+                        databaseSummary.created,
+                        batchSummary.streamRevisions
+                    )
+                } ?: Database(
+                    databaseSummary.name,
+                    databaseSummary.created,
+                    mapOf()
+                )
+            }
         }
         return ret
     }

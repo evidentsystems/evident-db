@@ -34,8 +34,8 @@ class InMemoryDatabaseReadModel(
     override fun summary(name: DatabaseName): DatabaseSummary? =
         databases[name]?.let { DatabaseSummary(it.name, it.created) }
 
-    override fun catalog(): Set<DatabaseSummary> =
-        databases.values.map { DatabaseSummary(it.name, it.created) }.toSet()
+    override fun catalog(): Set<Database> =
+        databases.values.map { Database(it.name, it.created, mapOf()) }.toSet()
 }
 
 class InMemoryBatchSummaryReadModel(batches: List<BatchSummary>): BatchSummaryReadModel {

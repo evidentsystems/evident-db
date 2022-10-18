@@ -140,7 +140,7 @@ interface DatabaseReadModel {
     fun database(name: DatabaseName): Database?
     fun database(name: DatabaseName, revision: DatabaseRevision): Database?
     fun summary(name: DatabaseName): DatabaseSummary?
-    fun catalog(): Set<DatabaseSummary>
+    fun catalog(): Set<Database>
 }
 
 interface BatchSummaryReadModel {
@@ -287,7 +287,7 @@ interface QueryService {
         else
             databaseReadModel.database(name, revision)
 
-    suspend fun getCatalog(): Set<DatabaseSummary> =
+    suspend fun getCatalog(): Set<Database> =
         databaseReadModel.catalog()
 
     suspend fun getDatabase(

@@ -100,6 +100,7 @@ class Configuration {
 		return mutableSharedFlow.asSharedFlow()
 	}
 
+	@Bean(preDestroy = "close")
 	@Singleton
 	fun commandResponseChannel(listener: InternalEventListener): Channel<EventEnvelope> {
 		val channel = Channel<EventEnvelope>(BUFFER_SIZE)

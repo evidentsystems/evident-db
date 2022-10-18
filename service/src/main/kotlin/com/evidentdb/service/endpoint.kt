@@ -113,12 +113,15 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override suspend fun catalog(request: CatalogRequest): CatalogReply {
+    override fun catalog(request: CatalogRequest): Flow<CatalogReply> = flow {
         LOGGER.debug("catalog request received: $request")
-        val builder = CatalogReply.newBuilder()
-        builder.addAllDatabases(queryService.getCatalog().map { it.toProto() })
-        return builder.build()
+        queryService.getCatalog().forEach {
+            val builder = CatalogReply.newBuilder()
+                .setDatabase(it.toProto())
+            emit(builder.build())
+        }
     }
+
 
     override fun connect(request: DatabaseRequest): Flow<DatabaseReply> = flow {
         LOGGER.debug("connect request received: $request")

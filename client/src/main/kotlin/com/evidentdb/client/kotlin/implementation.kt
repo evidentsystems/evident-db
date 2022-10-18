@@ -1,6 +1,7 @@
-package com.evidentdb.client
+package com.evidentdb.client.kotlin
 
 import arrow.core.foldLeft
+import com.evidentdb.client.common.*
 import com.evidentdb.client.dto.protobuf.toDomain
 import com.evidentdb.client.dto.protobuf.toInstant
 import com.evidentdb.client.dto.protobuf.toProto
@@ -8,7 +9,10 @@ import com.evidentdb.dto.v1.proto.BatchProposal
 import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
-import com.github.benmanes.caffeine.cache.*
+import com.github.benmanes.caffeine.cache.AsyncCache
+import com.github.benmanes.caffeine.cache.AsyncCacheLoader
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache
+import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.stats.CacheStats
 import io.cloudevents.CloudEvent
 import io.cloudevents.CloudEventData
@@ -19,9 +23,10 @@ import io.grpc.Channel
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
 import java.net.URI
@@ -30,19 +35,20 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.annotation.concurrent.ThreadSafe
 
-const val DEFAULT_CACHE_SIZE: Long = 10_000 // TODO: Make configurable
-const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
-const val AVERAGE_EVENTS_PER_STREAM = 100
-const val AVERAGE_EVENT_WEIGHT = 1000
-const val EMPTY_EVENT_WEIGHT = 10
-const val LATEST_DATABASE_REVISION_SIGIL = 0L
+internal const val DEFAULT_CACHE_SIZE: Long = 10_000 // TODO: Make configurable
+internal const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
+internal const val AVERAGE_EVENT_WEIGHT = 1000
+internal const val EMPTY_EVENT_WEIGHT = 10
+internal const val LATEST_DATABASE_REVISION_SIGIL = 0L
+internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
 
 /**
- * This is the top-level entry point for the EvidentDB client. Use
+ * This is the top-level entry point for the EvidentDB Kotlin client. Use
  * instances of this client to create and delete databases, show
  * the catalog of all available databases, and get connections to
  * a specific database.
@@ -62,81 +68,92 @@ const val LATEST_DATABASE_REVISION_SIGIL = 0L
  */
 @ThreadSafe
 class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
-    private val clientScope = CoroutineScope(Dispatchers.Default)
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
     private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
     private val cacheSizeReference = AtomicLong(DEFAULT_CACHE_SIZE)
+    private val active = AtomicBoolean(true)
+
+    private val isActive: Boolean
+        get() = active.get()
 
     var cacheSize: Long
         get() = cacheSizeReference.get()
-        set(value) { cacheSizeReference.set(value) }
+        set(value) {
+            cacheSizeReference.set(value)
+        }
 
-    override fun createDatabase(name: DatabaseName): Boolean =
-        if (!clientScope.isActive)
+    override suspend fun createDatabase(name: DatabaseName): Boolean =
+        if (!isActive)
             throw ClientClosedException(this)
-        else
-            runBlocking(clientScope.coroutineContext) {
-                val result = grpcClient.createDatabase(
-                    DatabaseCreationInfo.newBuilder()
-                        .setName(name)
-                        .build()
-                )
-                when (result.resultCase) {
-                    CreateDatabaseReply.ResultCase.DATABASE_CREATION ->
-                        true
-                    CreateDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                        throw InvalidDatabaseNameError(name)
-                    CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
-                        throw DatabaseNameAlreadyExistsError(name)
-                    CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                        throw InternalServerError(result.internalServerError.message)
-                    else ->
-                        throw SerializationError("Result not set")
-                }
-            }
+        else {
+            val result = grpcClient.createDatabase(
+                DatabaseCreationInfo.newBuilder()
+                    .setName(name)
+                    .build()
+            )
+            when (result.resultCase) {
+                CreateDatabaseReply.ResultCase.DATABASE_CREATION ->
+                    true
 
-    override fun deleteDatabase(name: DatabaseName): Boolean =
-        if (!clientScope.isActive)
-            throw ClientClosedException(this)
-        else
-            runBlocking(clientScope.coroutineContext) {
-                val result = grpcClient.deleteDatabase(
-                    DatabaseDeletionInfo.newBuilder()
-                        .setName(name)
-                        .build()
-                )
-                when (result.resultCase) {
-                    DeleteDatabaseReply.ResultCase.DATABASE_DELETION -> {
-                        removeConnection(name)?.shutdown()
-                        true
-                    }
-                    DeleteDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                        throw InvalidDatabaseNameError(name)
-                    DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                        throw DatabaseNotFoundError(name)
-                    DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                        throw InternalServerError(result.internalServerError.message)
-                    else ->
-                        throw SerializationError("Result not set")
-                }
-            }
+                CreateDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
+                    throw InvalidDatabaseNameError(name)
 
-    override fun catalog(): Iterable<DatabaseSummary> =
-        if (!clientScope.isActive)
-            throw ClientClosedException(this)
-        else runBlocking(clientScope.coroutineContext) {
-            val result = grpcClient.catalog(CatalogRequest.getDefaultInstance())
-            result.databasesList.map { summary ->
-                DatabaseSummary(
-                    summary.name,
-                    summary.created.toInstant(),
-                    mapOf() // TODO: include streamRevisions in DatabaseSummary reply
-                )
+                CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
+                    throw DatabaseNameAlreadyExistsError(name)
+
+                CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
+                    throw InternalServerError(result.internalServerError.message)
+
+                else ->
+                    throw SerializationError("Result not set")
             }
         }
 
+    override suspend fun deleteDatabase(name: DatabaseName): Boolean =
+        if (!isActive)
+            throw ClientClosedException(this)
+        else {
+            val result = grpcClient.deleteDatabase(
+                DatabaseDeletionInfo.newBuilder()
+                    .setName(name)
+                    .build()
+            )
+            when (result.resultCase) {
+                DeleteDatabaseReply.ResultCase.DATABASE_DELETION -> {
+                    removeConnection(name)?.shutdown()
+                    true
+                }
+
+                DeleteDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
+                    throw InvalidDatabaseNameError(name)
+
+                DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
+                    throw DatabaseNotFoundError(name)
+
+                DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
+                    throw InternalServerError(result.internalServerError.message)
+
+                else ->
+                    throw SerializationError("Result not set")
+            }
+        }
+
+    override fun catalog(): Flow<DatabaseSummary> =
+        if (!isActive)
+            throw ClientClosedException(this)
+        else
+            grpcClient
+                .catalog(CatalogRequest.getDefaultInstance())
+                .map { reply ->
+                    DatabaseSummary(
+                        reply.database.name,
+                        reply.database.created.toInstant(),
+                        mapOf() // TODO
+                    )
+                }
+
     override fun connectDatabase(name: DatabaseName): Connection =
-        if (!clientScope.isActive)
+        if (!isActive)
             throw ClientClosedException(this)
         else {
             connections[name]?.let {
@@ -148,16 +165,16 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             newConnection
         }
 
-    fun shutdown() {
-        clientScope.cancel()
+    override fun shutdown() {
+        active.set(false)
         connections.forEach { (name, connection) ->
             removeConnection(name)
             connection.shutdown()
         }
     }
 
-    fun shutdownNow() {
-        clientScope.cancel()
+    override fun shutdownNow() {
+        active.set(false)
         connections.forEach { (name, connection) ->
             removeConnection(name)
             connection.shutdownNow()
@@ -179,13 +196,6 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             Caffeine.newBuilder()
                 .maximumSize(eventCacheSize.div(EVENTS_TO_DATABASE_CACHE_SIZE_RATIO))
                 .buildAsync()
-
-        private val streamCacheChannel = channelBuilder.build()
-        private val streamCache: AsyncLoadingCache<StreamName, List<EventId>> =
-            Caffeine.newBuilder()
-                .maximumWeight(eventCacheSize / AVERAGE_EVENTS_PER_STREAM)
-                .weigher<StreamName, List<EventId>> { _, value -> value.size }
-                .buildAsync(StreamLoader(streamCacheChannel, database))
 
         private val eventCacheChannel = channelBuilder.build()
         private val eventCache: AsyncLoadingCache<EventId, CloudEvent> =
@@ -222,57 +232,62 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
 
-        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
+        override suspend fun transact(events: List<EventProposal>): Batch =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
-            else
-                connectionScope.future {
-                    if (events.isEmpty())
+            else {
+                if (events.isEmpty())
+                    throw NoEventsProvidedError
+
+                val result = grpcClient.transactBatch(
+                    BatchProposal.newBuilder()
+                        .setDatabase(database)
+                        .addAllEvents(events.map { it.toProto() })
+                        .build()
+                )
+                when (result.resultCase) {
+                    TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
+                        val database = result.batchTransaction.database.toDomain()
+                        setLatestRevision(database)
+                        dbCache.get(database.revision) { _ -> database }
+
+                        val batch = result.batchTransaction.batch.toDomain()
+                        eventCache.synchronous().putAll(
+                            batch.events.fold(mutableMapOf()) { acc, event ->
+                                acc[event.id] = event.event
+                                acc
+                            }
+                        )
+
+                        batch
+                    }
+
+                    TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
+                        throw InvalidDatabaseNameError(result.invalidDatabaseNameError.name)
+
+                    TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
                         throw NoEventsProvidedError
 
-                    val result = grpcClient.transactBatch(
-                        BatchProposal.newBuilder()
-                            .setDatabase(database)
-                            .addAllEvents(events.map { it.toProto() })
-                            .build()
-                    )
-                    when (result.resultCase) {
-                        TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
-                            val database = result.batchTransaction.database.toDomain()
-                            setLatestRevision(database)
-                            dbCache.get(database.revision) { _ -> database }
+                    TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
+                        throw InvalidEventsError(
+                            result.invalidEventsError.invalidEventsList.map { invalidEvent ->
+                                invalidEvent.toDomain()
+                            }
+                        )
 
-                            val batch = result.batchTransaction.batch.toDomain()
-                            eventCache.synchronous().putAll(
-                                batch.events.fold(mutableMapOf()) { acc, event ->
-                                    acc[event.id] = event.event
-                                    acc
-                                }
-                            )
+                    TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
+                        throw DatabaseNotFoundError(result.databaseNotFoundError.name)
 
-                            batch
-                        }
-                        TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                            throw InvalidDatabaseNameError(result.invalidDatabaseNameError.name)
-                        TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
-                            throw NoEventsProvidedError
-                        TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
-                            throw InvalidEventsError(
-                                result.invalidEventsError.invalidEventsList.map { invalidEvent ->
-                                    invalidEvent.toDomain()
-                                }
-                            )
-                        TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                            throw DatabaseNotFoundError(result.databaseNotFoundError.name)
-                        TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
-                            throw StreamStateConflictsError(
-                                result.streamStateConflictError.conflictsList.map {
-                                    it.toDomain()
-                                }
-                            )
-                        else -> throw InternalServerError(result.internalServerError.message)
-                    }
+                    TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
+                        throw StreamStateConflictsError(
+                            result.streamStateConflictError.conflictsList.map {
+                                it.toDomain()
+                            }
+                        )
+
+                    else -> throw InternalServerError(result.internalServerError.message)
                 }
+            }
 
         override fun db(): Database =
             if (!connectionScope.isActive)
@@ -289,30 +304,29 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         // TODO: validate revision > 0, and ensure
         //  all valid revisions return a valid database
         //  event fuzzy (currently throws NPE if not an exact match?)
-        override fun db(revision: DatabaseRevision): CompletableFuture<Database> =
+        override suspend fun db(revision: DatabaseRevision): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
-            else
-                dbCache.get(revision) { _, executor ->
+            else {
+                val summary = dbCache.get(revision) { _, executor ->
                     connectionScope.future(executor.asCoroutineDispatcher()) {
                         val summary = loadDatabase(grpcClient, database, revision)
                         setLatestRevision(summary)
                         summary
                     }
-                }.thenApply { summary ->
-                    DatabaseImpl(
-                        summary.name,
-                        summary.created,
-                        summary.streamRevisions,
-                    )
-                }
+                }.await()
+                DatabaseImpl(
+                    summary.name,
+                    summary.created,
+                    summary.streamRevisions,
+                )
+            }
 
-        override fun sync(): CompletableFuture<Database> =
+        override suspend fun sync(): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
-                connectionScope.future {
-                    loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
+                loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
                         setLatestRevision(summary)
                         dbCache.get(summary.revision) { _ -> summary }
                         DatabaseImpl(
@@ -321,53 +335,52 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                             summary.streamRevisions,
                         )
                     }
-                }
 
-        override fun log(): Iterable<Batch> =
+        override fun log(): Flow<Batch> =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
-                runBlocking(connectionScope.coroutineContext) {
-                    grpcClient.databaseLog(
-                        DatabaseLogRequest
-                            .newBuilder()
-                            .setDatabase(database)
-                            .build()
-                    ).map { batch ->
-                        when(batch.resultCase) {
-                            DatabaseLogReply.ResultCase.BATCH -> {
-                                val batchSummary = batch.batch
-                                val batchEvents = eventCache.getAll(
-                                    batchSummary.eventsList.map { EventId.fromString(it.id) }
-                                ).await()
-                                Batch(
-                                    BatchId.fromString(batchSummary.id),
-                                    database,
-                                    batchSummary.eventsList.map {
-                                        Event(
-                                            batchEvents[EventId.fromString(it.id)]!!,
-                                            it.stream
-                                        )
-                                    },
-                                    batchSummary.streamRevisionsMap
-                                )
-                            }
-                            DatabaseLogReply.ResultCase.DATABASE_NOT_FOUND ->
-                                throw DatabaseNotFoundError(batch.databaseNotFound.name)
-                            else ->
-                                throw SerializationError("Result not set")
+                grpcClient.databaseLog(
+                    DatabaseLogRequest
+                        .newBuilder()
+                        .setDatabase(database)
+                        .build()
+                ).map { batch ->
+                    when (batch.resultCase) {
+                        DatabaseLogReply.ResultCase.BATCH -> {
+                            val batchSummary = batch.batch
+                            val batchEvents = eventCache.getAll(
+                                batchSummary.eventsList.map { EventId.fromString(it.id) }
+                            ).await()
+                            Batch(
+                                BatchId.fromString(batchSummary.id),
+                                database,
+                                batchSummary.eventsList.map {
+                                    Event(
+                                        batchEvents[EventId.fromString(it.id)]!!,
+                                        it.stream
+                                    )
+                                },
+                                batchSummary.streamRevisionsMap
+                            )
                         }
-                    }.toList()
+
+                        DatabaseLogReply.ResultCase.DATABASE_NOT_FOUND ->
+                            throw DatabaseNotFoundError(batch.databaseNotFound.name)
+
+                        else ->
+                            throw SerializationError("Result not set")
+                    }
                 }
 
+
         fun databaseCacheStats(): CacheStats = dbCache.synchronous().stats()
-        fun streamCacheStats(): CacheStats = streamCache.synchronous().stats()
         fun eventCacheStats(): CacheStats = eventCache.synchronous().stats()
 
         override fun shutdown() {
             connectionScope.cancel()
             doToAllChannels {
-                it.shutdown().awaitTermination(30, TimeUnit.SECONDS)
+                it.shutdown().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
             }
             invalidateCaches()
             removeConnection(database)
@@ -376,7 +389,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         override fun shutdownNow() {
             connectionScope.cancel()
             doToAllChannels {
-                it.shutdownNow().awaitTermination(30, TimeUnit.SECONDS)
+                it.shutdownNow().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
             }
             invalidateCaches()
             removeConnection(database)
@@ -394,35 +407,17 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         private fun doToAllChannels(block: (ManagedChannel) -> Unit) =
             listOf(
                 dbCacheChannel,
-                streamCacheChannel,
                 eventCacheChannel,
                 grpcClientChannel
             ).forEach(block)
 
         private fun invalidateCaches() {
             dbCache.synchronous().invalidateAll()
-            streamCache.synchronous().invalidateAll()
             eventCache.synchronous().invalidateAll()
         }
 
-        private fun trimAndHydrateStream(
-            streamName: StreamName,
-            eventCount: Int,
-            databaseCachedStreams: ConcurrentHashMap<StreamName, List<EventId>>,
-        ): CompletableFuture<List<CloudEvent>> = connectionScope.future {
-            val eventIds = databaseCachedStreams[streamName] ?: streamCache[streamName].await()
-            val refreshedEventIds = if (eventIds.size < eventCount)
-                streamCache.synchronous().refresh(streamName).await()
-            else
-                eventIds
-            val trimmedEventIds = refreshedEventIds.take(eventCount)
-            databaseCachedStreams[streamName] = trimmedEventIds
-            val events = eventCache.getAll(trimmedEventIds).await()
-            trimmedEventIds.map { events[it]!! }
-        }
-
-        private fun getCachedEvent(eventId: EventId): CompletableFuture<CloudEvent?> =
-            eventCache[eventId]
+        private suspend fun getCachedEvent(eventId: EventId): CloudEvent? =
+            eventCache[eventId].await()
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
@@ -436,30 +431,43 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     acc + v
                 }
 
-            override fun stream(streamName: StreamName): CompletableFuture<List<CloudEvent>> =
+            override fun stream(streamName: StreamName): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     val eventCount = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
-                    trimAndHydrateStream(
-                        streamName,
-                        eventCount.toInt(),
-                        streams
+                    val result = grpcClient.stream(
+                        StreamRequest.newBuilder()
+                            .setDatabase(database)
+                            .setStream(streamName)
+                            .build()
                     )
+                    result.map { reply ->
+                        when (reply.resultCase) {
+                            StreamEventIdReply.ResultCase.EVENT_ID ->
+                                eventCache[EventId.fromString(reply.eventId)].await()
+                            StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
+                                throw StreamNotFoundError(
+                                    reply.streamNotFound.database,
+                                    reply.streamNotFound.stream,
+                                )
+                            else -> throw SerializationError("Result not set")
+                        }
+                    }.take(eventCount.toInt())
                 }
 
             override fun subjectStream(
                 streamName: StreamName,
                 subjectName: StreamSubject
-            ): CompletableFuture<List<CloudEvent>?> =
+            ): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     TODO("Not yet implemented")
                 }
 
-            override fun event(eventId: EventId): CompletableFuture<CloudEvent?> =
+            override suspend fun event(eventId: EventId): CloudEvent? =
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else
@@ -557,6 +565,7 @@ internal suspend fun loadDatabase(
 
         DatabaseReply.ResultCase.NOT_FOUND ->
             throw DatabaseNotFoundError(result.notFound.name)
+
         else ->
             throw SerializationError("Result not set")
     }
@@ -565,17 +574,17 @@ internal suspend fun loadDatabase(
 internal class StreamLoader(
     channel: Channel,
     private val database: DatabaseName,
-) : AsyncCacheLoader<StreamName, List<EventId>> {
+) : AsyncCacheLoader<StreamName, Flow<EventId>> {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)
 
     override fun asyncLoad(
         key: StreamName?,
         executor: Executor?
-    ): CompletableFuture<out List<EventId>> = runBlocking(executor!!.asCoroutineDispatcher()) {
+    ): CompletableFuture<out Flow<EventId>> = runBlocking(executor!!.asCoroutineDispatcher()) {
         future { fetchStreamEventIds(key!!) }
     }
 
-    private suspend fun fetchStreamEventIds(stream: StreamName): List<EventId> {
+    private fun fetchStreamEventIds(stream: StreamName): Flow<EventId> {
         val result = grpcClient.stream(
             StreamRequest.newBuilder()
                 .setDatabase(database)
@@ -595,7 +604,7 @@ internal class StreamLoader(
 
                 else -> throw SerializationError("Result not set")
             }
-        }.toList()
+        }
     }
 }
 
@@ -645,7 +654,7 @@ internal class EventLoader(
                         reply.eventNotFound.database,
                         EventId.fromString(reply.eventNotFound.eventId),
                     )
-                
+
                 else -> throw SerializationError("Result not set")
             }
         }

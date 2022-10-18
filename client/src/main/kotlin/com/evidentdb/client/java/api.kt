@@ -1,12 +1,13 @@
-package com.evidentdb.client
+package com.evidentdb.client.java
 
+import com.evidentdb.client.common.*
 import io.cloudevents.CloudEvent
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
-interface Client {
+interface Client: GrpcLifecycle {
     /**
-     * Creates a database, which serves as the unit of total
+     * Synchronously creates a database, which serves as the unit of total
      * event ordering in an event-sourcing system.
      *
      * @param name The name of the database to create, must match
@@ -19,8 +20,8 @@ interface Client {
      */
     fun createDatabase(name: DatabaseName): Boolean
 
-    /**
-     * Deletes a database.
+        /**
+     * Synchronously deletes a database.
      *
      * @param name The name of the database to delete.
      * @return `true` if database was deleted, `false` otherwise.
@@ -32,11 +33,15 @@ interface Client {
     fun deleteDatabase(name: DatabaseName): Boolean
 
     /**
-     * Returns the catalog of all available databases.
+     * Returns the catalog of all available databases as an iterator.
      *
-     * @returns [Iterable] of [DatabaseSummary]
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not.
+     *
+     * @returns a [CloseableIterator] of [DatabaseSummary].
      */
-    fun catalog(): Iterable<DatabaseSummary>
+    fun catalog(): CloseableIterator<DatabaseSummary>
 
     /**
      * Returns a connection to a specific database. This method caches,
@@ -71,7 +76,7 @@ interface Client {
  *
  * @property database The connected database.
  */
-interface Connection {
+interface Connection: GrpcLifecycle {
     val database: DatabaseName
 
     /**
@@ -129,32 +134,21 @@ interface Connection {
     fun sync(): CompletableFuture<Database>
 
     /**
-     * Returns the transaction log of this database as an [Iterable]
+     * Returns the transaction log of this database as a [CloseableIterator]
      * of [Batch]es.
      *
-     * @return an [Iterable] of [Batch]es in transaction order.
+     * Callers must [CloseableIterator.close] after using the returned iterator, whether
+     * the iterator is consumed to completion or not.
+     *
+     * @return a [CloseableIterator] of [Batch]es in transaction order.
      * @throws DatabaseNotFoundError when this connection's database
      *  is no longer present on the server
      *  (callers should [shutdown] the connection in this case)
      * @throws SerializationError in rare cases of client-server serialization issues
      */
-    fun log(): Iterable<Batch>
+    fun log(): CloseableIterator<Batch>
     // TODO: Allow range iteration from a start revision (fuzzy) and
     //  iterating from there (possibly to a (fuzzy) end revision)
-
-    /**
-     * Shuts down this connection while awaiting any in-flight requests to
-     * complete. Invalidates all local caches. Removes this connection from
-     * the parent client's connection cache.
-     */
-    fun shutdown()
-
-    /**
-     * Shuts down this connection immediately, not awaiting in-flight requests to
-     * complete. Invalidates all local caches. Removes this connection from
-     * the parent client's connection cache.
-     */
-    fun shutdownNow()
 }
 
 /**
@@ -177,25 +171,33 @@ interface Database {
     val streamRevisions: Map<StreamName, StreamRevision>
 
     /**
-     * Returns a future bearing the [List] of [CloudEvent]s comprising
+     * Returns a [CloseableIterator] of [CloudEvent]s comprising
      * this stream as of this [Database]'s revision.
      *
-     * @return [List] of [CloudEvent]s comprising this stream, in transaction order.
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not.
+     *
+     * @return [CloseableIterator] of [CloudEvent]s comprising this stream, in transaction order.
      * @throws StreamNotFoundError if stream is not found within database.
      */
-    fun stream(streamName: StreamName): CompletableFuture<List<CloudEvent>>
+    fun stream(streamName: StreamName): CloseableIterator<CloudEvent>
 
     /**
-     * Returns a future bearing the [List] of [CloudEvent]s comprising
-     * this subject stream as of this [Database]'s revision, if both stream and
-     * events for the given subject on that stream exist.
+     * Returns a [CloseableIterator] of [CloudEvent]s comprising this subject stream as
+     * of this [Database]'s revision, if both stream and events for the given subject
+     * on that stream exist.
      *
-     * @return [List] of [CloudEvent]s comprising this stream, in transaction order, if any.
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not.
+     *
+     * @return [CloseableIterator] of [CloudEvent]s comprising this stream, in transaction order, if any.
      */
     fun subjectStream(
         streamName: StreamName,
         subjectName: StreamSubject
-    ): CompletableFuture<List<CloudEvent>?>
+    ): CloseableIterator<CloudEvent>
 
     /**
      * Returns a future bearing the [CloudEvent] having the given ID, if it exists.
@@ -204,3 +206,5 @@ interface Database {
      */
     fun event(eventId: EventId): CompletableFuture<CloudEvent?>
 }
+
+interface CloseableIterator<T>: Iterator<T>, AutoCloseable

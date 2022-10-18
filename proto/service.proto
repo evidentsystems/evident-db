@@ -21,10 +21,11 @@ service EvidentDb {
   rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
 
   // Query
-  rpc catalog(CatalogRequest) returns (CatalogReply) {}
+  rpc catalog(CatalogRequest) returns (stream CatalogReply) {}
   rpc connect(DatabaseRequest) returns (stream DatabaseReply) {}
   rpc database(DatabaseRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
+  rpc batch(BatchRequest) returns (BatchReply) {}
   rpc stream(StreamRequest) returns (stream StreamEventIdReply) {}
   rpc subjectStream(SubjectStreamRequest) returns (stream StreamEventIdReply) {}
   rpc events(stream EventRequest) returns (stream EventReply) {}
@@ -63,7 +64,7 @@ message TransactBatchReply {
 
 message CatalogRequest {}
 message CatalogReply {
-  repeated DatabaseSummary databases = 1;
+  Database database = 1;
 }
 
 message DatabaseRequest {
@@ -84,6 +85,17 @@ message DatabaseLogReply {
   oneof result {
     BatchSummary batch = 1;
     DatabaseNotFoundError database_not_found = 2;
+  }
+}
+
+message BatchRequest {
+  string database = 1;
+  string batch_id = 2;
+}
+message BatchReply {
+  oneof result {
+    Batch batch = 1;
+    BatchNotFoundError batch_not_found = 2;
   }
 }
 

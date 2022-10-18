@@ -1,7 +1,8 @@
 package com.evidentdb.client.dto.protobuf
 
-import com.evidentdb.client.*
+import com.evidentdb.client.common.*
 import com.evidentdb.dto.v1.proto.EventInvalidation
+import com.evidentdb.dto.v1.proto.StreamState
 import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
 import com.evidentdb.dto.v1.proto.StreamStateConflict as ProtoStreamStateConflict
 import com.evidentdb.dto.v1.proto.ProposedEvent as ProtoProposedEvent
@@ -21,13 +22,13 @@ fun EventProposal.toProto(): ProtoProposedEvent {
     val builder = ProtoProposedEvent.newBuilder()
     builder.stream = this.stream
     builder.streamState = when(this.streamState) {
-        StreamState.Any -> com.evidentdb.dto.v1.proto.StreamState.Any
-        is StreamState.AtRevision -> {
+        com.evidentdb.client.common.StreamState.Any -> com.evidentdb.dto.v1.proto.StreamState.Any
+        is com.evidentdb.client.common.StreamState.AtRevision -> {
             builder.atRevision = this.streamState.revision
             com.evidentdb.dto.v1.proto.StreamState.AtRevision
         }
-        StreamState.NoStream -> com.evidentdb.dto.v1.proto.StreamState.NoStream
-        StreamState.StreamExists -> com.evidentdb.dto.v1.proto.StreamState.StreamExists
+        com.evidentdb.client.common.StreamState.NoStream -> com.evidentdb.dto.v1.proto.StreamState.NoStream
+        com.evidentdb.client.common.StreamState.StreamExists -> com.evidentdb.dto.v1.proto.StreamState.StreamExists
     }
     builder.event = this.event.toProto()
     return builder.build()
@@ -41,10 +42,10 @@ fun ProtoProposedEvent.toDomain(): EventProposal {
         event,
         this.stream,
         when(this.streamState) {
-            ProtoStreamState.Any -> StreamState.Any
-            ProtoStreamState.StreamExists -> StreamState.StreamExists
-            ProtoStreamState.NoStream -> StreamState.NoStream
-            ProtoStreamState.AtRevision -> StreamState.AtRevision(this.atRevision)
+            ProtoStreamState.Any -> com.evidentdb.client.common.StreamState.Any
+            ProtoStreamState.StreamExists -> com.evidentdb.client.common.StreamState.StreamExists
+            ProtoStreamState.NoStream -> com.evidentdb.client.common.StreamState.NoStream
+            ProtoStreamState.AtRevision -> com.evidentdb.client.common.StreamState.AtRevision(this.atRevision)
             else -> throw IllegalArgumentException("Error parsing proposed event stream state from protobuf")
         }
     )
@@ -92,10 +93,10 @@ fun ProtoStreamStateConflict.toDomain(): StreamStateConflict =
     StreamStateConflict(
         this.event.toDomain(),
         when(this.streamState) {
-            com.evidentdb.dto.v1.proto.StreamState.NoStream ->
-                StreamState.NoStream
-            com.evidentdb.dto.v1.proto.StreamState.AtRevision ->
-                StreamState.AtRevision(this.atRevision)
+            StreamState.NoStream ->
+                com.evidentdb.client.common.StreamState.NoStream
+            StreamState.AtRevision ->
+                com.evidentdb.client.common.StreamState.AtRevision(this.atRevision)
             else -> throw IllegalStateException("Invalid stream state in StreamStateConflict")
         }
     )

@@ -1,4 +1,4 @@
-package com.evidentdb.client
+package com.evidentdb.client.common
 
 import arrow.core.foldLeft
 import io.cloudevents.CloudEvent
@@ -140,10 +140,10 @@ data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>):
 data class InternalServerError(val error: String):
     DatabaseCreationError, DatabaseDeletionError, BatchTransactionError,
     RuntimeException("Internal server error: $error")
-
-data class ClientClosedException(val client: Client):
-    RuntimeException("This client is closed: $client")
-data class ConnectionClosedException(val connection: Connection):
-    RuntimeException("This connection is closed: $connection")
 data class SerializationError(val error: String):
     RuntimeException("Serialization error: $error")
+
+data class ClientClosedException(val client: GrpcLifecycle):
+    RuntimeException("This client is closed: $client")
+data class ConnectionClosedException(val connection: GrpcLifecycle):
+    RuntimeException("This connection is closed: $connection")

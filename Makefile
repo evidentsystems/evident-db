@@ -134,6 +134,10 @@ clean-all: clean start-$(CLUSTER_TYPE) clean-kafka-topics clean-topology-data cl
 
 # Util
 
+.PHONY: repl
+repl:
+	cd clojure-repl/ && ../$(GRADLE) clojureRepl
+
 .PHONY: loc
 loc:
 	tokei adapters app domain perf proto service transactor

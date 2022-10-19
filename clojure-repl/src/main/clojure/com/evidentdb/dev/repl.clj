@@ -1,10 +1,11 @@
 (ns com.evidentdb.dev.repl
-  (:import [java.net URI]
+  #_(:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDB StreamState StreamState$Any]))
+           [com.evidentdb.client.common StreamState StreamState$Any]
+           [com.evidentdb.client.java EvidentDB]))
 
-(defn event-proposal
+#_(defn event-proposal
   ([event-type stream-name]
    (event-proposal event-type stream-name StreamState$Any/INSTANCE))
   ([event-type stream-name stream-state]

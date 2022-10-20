@@ -2,7 +2,7 @@
   (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDB StreamState StreamState$Any]))
+           [com.evidentdb.client EvidentDB StreamState StreamState$Any CloseableIterator]))
 
 (defn event-proposal
   ([event-type stream-name]
@@ -34,16 +34,9 @@
                    .usePlaintext)))
   (def database-name "clojure-repl")
 
-  (def database-iterator (.catalog client))
-
-  (.hasNext database-iterator)
-  (.next database-iterator)
-
-  (.close database-iterator)
-
-  (with-open [databases ]
-    (doseq [database databases]
-      ))
+  (def catalog
+    (with-open [catalog-iter (.catalog client)]
+      (into [] (iterator-seq catalog-iter))))
 
   (.createDatabase client database-name)
 

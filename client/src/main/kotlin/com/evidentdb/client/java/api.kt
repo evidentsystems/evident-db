@@ -206,5 +206,3 @@ interface Database {
      */
     fun event(eventId: EventId): CompletableFuture<CloudEvent?>
 }
-
-interface CloseableIterator<T>: Iterator<T>, AutoCloseable

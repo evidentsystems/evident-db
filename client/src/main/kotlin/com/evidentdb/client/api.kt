@@ -75,3 +75,5 @@ interface GrpcLifecycle {
      * */
     fun shutdownNow()
 }
+
+interface CloseableIterator<T>: Iterator<T>, AutoCloseable

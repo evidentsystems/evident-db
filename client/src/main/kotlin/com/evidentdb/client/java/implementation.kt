@@ -1,5 +1,6 @@
 package com.evidentdb.client.java
 
+import arrow.core.*
 import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
 import com.evidentdb.client.kotlin.EvidentDB as EvidentDBKt
@@ -9,9 +10,10 @@ import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.future.future
+import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.*
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -137,33 +139,40 @@ internal class FlowIterator<T>(
     private val flow: Flow<T>
 ): CloseableIterator<T> {
     private val asyncScope = CoroutineScope(Dispatchers.Default)
-    private val queue = SynchronousQueue<T>()
-    private val closed = AtomicBoolean(false)
+    private val queue = LinkedBlockingQueue<Option<T>>(2)
+    private val nextItem: AtomicReference<Option<T>>
 
     init {
         asyncScope.launch {
-            try {
-                flow.collect {
-                    transfer(it)
-                }
-            } finally {
-                closed.set(true)
+            flow.collect {
+                transfer(it.some())
             }
+            transfer(None)
         }
+        nextItem = AtomicReference(queue.take())
     }
 
     override fun hasNext(): Boolean =
-        !closed.get()
+        nextItem.get() != None
 
     override fun next(): T =
-        queue.take()
+        if (hasNext()) {
+            val currentItem = nextItem.get()
+            nextItem.set(queue.take())
+            when(currentItem) {
+                None -> throw IllegalStateException("Iterator bounds exceeded")
+                is Some -> currentItem.value
+            }
+        }
+        else
+            throw IllegalStateException("Iterator bounds exceeded")
 
     override fun close() {
-        closed.set(true)
+        nextItem.set(None)
         asyncScope.cancel()
     }
 
-    private suspend inline fun transfer(item: T) = withContext(Dispatchers.IO) {
+    private suspend inline fun transfer(item: Option<T>) = withContext(Dispatchers.IO) {
         suspendCoroutine { continuation ->
             try {
                 queue.put(item)

@@ -111,7 +111,7 @@ interface Connection: GrpcLifecycle {
      *  (callers should [shutdown] the connection in this case)
      * @throws SerializationError in rare cases of client-server serialization issues
      * */
-    suspend fun db(revision: DatabaseRevision): Database
+    suspend fun sync(revision: DatabaseRevision): Database
 
     /**
      * Returns the latest database available on the server as of this request's arrival.

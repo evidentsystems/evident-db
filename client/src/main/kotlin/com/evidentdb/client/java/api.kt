@@ -118,7 +118,7 @@ interface Connection: GrpcLifecycle {
      * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
      *  of client-server serialization issues
      * */
-    fun db(revision: DatabaseRevision): CompletableFuture<Database>
+    fun sync(revision: DatabaseRevision): CompletableFuture<Database>
 
     /**
      * Returns a completable future bearing the latest database available on the

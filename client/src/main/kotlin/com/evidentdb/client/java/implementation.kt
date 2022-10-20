@@ -55,9 +55,9 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
 
         override fun db(): Database = DatabaseImpl(kotlinConnection.db())
 
-        override fun db(revision: DatabaseRevision): CompletableFuture<Database> =
+        override fun sync(revision: DatabaseRevision): CompletableFuture<Database> =
             connectionScope.future {
-                DatabaseImpl(kotlinConnection.db(revision))
+                DatabaseImpl(kotlinConnection.sync(revision))
             }
 
         override fun sync(): CompletableFuture<Database> =

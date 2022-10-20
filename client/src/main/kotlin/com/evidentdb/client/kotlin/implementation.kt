@@ -294,7 +294,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         // TODO: validate revision > 0, and ensure
         //  all valid revisions return a valid database
         //  event fuzzy (currently throws NPE if not an exact match?)
-        override suspend fun db(revision: DatabaseRevision): Database =
+        override suspend fun sync(revision: DatabaseRevision): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {

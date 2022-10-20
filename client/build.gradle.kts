@@ -13,6 +13,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
     implementation(libs.kotlinx.coroutines.jdk8)
     implementation(libs.arrow.core)
+    implementation(libs.commons.codec)
     compileOnly(libs.slf4j.api)
 
     implementation(libs.cloudevents.core)

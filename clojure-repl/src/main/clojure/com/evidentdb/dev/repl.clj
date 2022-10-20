@@ -1,11 +1,10 @@
 (ns com.evidentdb.dev.repl
-  #_(:import [java.net URI]
+  (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client.common StreamState StreamState$Any]
-           [com.evidentdb.client.java EvidentDB]))
+           [com.evidentdb.client EvidentDB StreamState StreamState$Any]))
 
-#_(defn event-proposal
+(defn event-proposal
   ([event-type stream-name]
    (event-proposal event-type stream-name StreamState$Any/INSTANCE))
   ([event-type stream-name stream-state]
@@ -14,9 +13,9 @@
    (event-proposal event-type stream-name stream-state data nil))
   ([event-type stream-name stream-state data data-content-type]
    (event-proposal event-type stream-name stream-state data data-content-type nil))
-  ([event-type data stream-name stream-state data-content-type data-schema]
+  ([event-type stream-name stream-state data data-content-type data-schema]
    (event-proposal event-type stream-name stream-state data data-content-type data-schema nil))
-  ([event-type data stream-name stream-state data-content-type data-schema subject]
+  ([event-type stream-name stream-state data data-content-type data-schema subject]
    (event-proposal event-type stream-name stream-state data data-content-type data-schema subject []))
   ([^String event-type
     ^String stream-name
@@ -30,12 +29,21 @@
 
 (comment
 
-  (def client (EvidentDB.
+  (def client (EvidentDB/javaClient
                (-> (ManagedChannelBuilder/forAddress "localhost" 50051)
                    .usePlaintext)))
   (def database-name "clojure-repl")
 
-  (.catalog client)
+  (def database-iterator (.catalog client))
+
+  (.hasNext database-iterator)
+  (.next database-iterator)
+
+  (.close database-iterator)
+
+  (with-open [databases ]
+    (doseq [database databases]
+      ))
 
   (.createDatabase client database-name)
 
@@ -62,6 +70,11 @@
   (count @(.stream db2 "my-stream"))
 
   (count (.log conn))
+
+  (def iter *1)
+
+  (.hasNext iter)
+  (.next iter)
 
   (.deleteDatabase client database-name)
 

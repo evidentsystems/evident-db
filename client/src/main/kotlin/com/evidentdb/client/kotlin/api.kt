@@ -1,6 +1,6 @@
 package com.evidentdb.client.kotlin
 
-import com.evidentdb.client.common.*
+import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant

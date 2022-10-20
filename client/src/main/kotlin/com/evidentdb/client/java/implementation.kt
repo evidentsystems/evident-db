@@ -1,6 +1,6 @@
 package com.evidentdb.client.java
 
-import com.evidentdb.client.common.*
+import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
 import com.evidentdb.client.kotlin.EvidentDB as EvidentDBKt
 import com.evidentdb.client.kotlin.Connection as ConnectionKt
@@ -44,31 +44,34 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
     ) : Connection {
         override val database: DatabaseName
             get() = kotlinConnection.database
+        private val connectionScope = CoroutineScope(Dispatchers.Default)
 
-        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> {
-            TODO("Not yet implemented")
-        }
+        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
+            connectionScope.future {
+                kotlinConnection.transact(events)
+            }
 
         override fun db(): Database = DatabaseImpl(kotlinConnection.db())
 
-        override fun db(revision: DatabaseRevision): CompletableFuture<Database> {
-            TODO("Not yet implemented")
-        }
+        override fun db(revision: DatabaseRevision): CompletableFuture<Database> =
+            connectionScope.future {
+                DatabaseImpl(kotlinConnection.db(revision))
+            }
 
-        override fun sync(): CompletableFuture<Database> {
-            TODO("Not yet implemented")
-        }
+        override fun sync(): CompletableFuture<Database> =
+            connectionScope.future {
+                DatabaseImpl(kotlinConnection.sync())
+            }
 
-        override fun log(): CloseableIterator<Batch> {
-            TODO("Not yet implemented")
-        }
+        override fun log(): CloseableIterator<Batch> =
+            kotlinConnection.log().asIterator()
 
         override fun shutdown() {
-            TODO("Not yet implemented")
+            kotlinConnection.shutdown()
         }
 
         override fun shutdownNow() {
-            TODO("Not yet implemented")
+            kotlinConnection.shutdownNow()
         }
     }
 
@@ -150,7 +153,7 @@ internal class FlowIterator<T>(
     }
 
     override fun hasNext(): Boolean =
-        closed.get()
+        !closed.get()
 
     override fun next(): T =
         queue.take()

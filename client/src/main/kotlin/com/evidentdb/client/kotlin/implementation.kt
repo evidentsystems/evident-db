@@ -1,7 +1,7 @@
 package com.evidentdb.client.kotlin
 
 import arrow.core.foldLeft
-import com.evidentdb.client.common.*
+import com.evidentdb.client.*
 import com.evidentdb.client.dto.protobuf.toDomain
 import com.evidentdb.client.dto.protobuf.toInstant
 import com.evidentdb.client.dto.protobuf.toProto
@@ -15,9 +15,6 @@ import com.github.benmanes.caffeine.cache.AsyncLoadingCache
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.stats.CacheStats
 import io.cloudevents.CloudEvent
-import io.cloudevents.CloudEventData
-import io.cloudevents.CloudEventExtension
-import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.protobuf.toDomain
 import io.grpc.Channel
 import io.grpc.ManagedChannel
@@ -29,7 +26,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
-import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -144,13 +140,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         else
             grpcClient
                 .catalog(CatalogRequest.getDefaultInstance())
-                .map { reply ->
-                    DatabaseSummary(
-                        reply.database.name,
-                        reply.database.created.toInstant(),
-                        reply.database.streamRevisionsMap
-                    )
-                }
+                .map { reply -> reply.database.toDomain() }
 
     override fun connectDatabase(name: DatabaseName): Connection =
         if (!isActive)
@@ -350,18 +340,19 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         DatabaseLogReply.ResultCase.BATCH -> {
                             val batchSummary = batch.batch
                             val batchEvents = eventCache.getAll(
-                                batchSummary.eventsList.map { EventId.fromString(it.id) }
+                                batchSummary.eventsList.map { it.id }
                             ).await()
                             Batch(
                                 BatchId.fromString(batchSummary.id),
                                 database,
                                 batchSummary.eventsList.map {
                                     Event(
-                                        batchEvents[EventId.fromString(it.id)]!!,
+                                        batchEvents[it.id]!!,
                                         it.stream
                                     )
                                 },
-                                batchSummary.streamRevisionsMap
+                                batchSummary.streamRevisionsMap,
+                                batchSummary.timestamp.toInstant(),
                             )
                         }
 
@@ -446,7 +437,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     result.map { reply ->
                         when (reply.resultCase) {
                             StreamEventIdReply.ResultCase.EVENT_ID ->
-                                eventCache[EventId.fromString(reply.eventId)].await()
+                                eventCache[reply.eventId].await()
                             StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
                                 throw StreamNotFoundError(
                                     reply.streamNotFound.database,
@@ -503,47 +494,6 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
     }
-
-    companion object {
-        @JvmStatic
-        fun eventProposal(
-            event: CloudEvent,
-            streamName: StreamName,
-            streamState: ProposedEventStreamState = StreamState.Any,
-        ) = EventProposal(
-            event,
-            streamName,
-            streamState,
-        )
-
-        @JvmStatic
-        fun eventProposal(
-            eventType: String,
-            streamName: StreamName,
-            streamState: ProposedEventStreamState = StreamState.Any,
-            data: CloudEventData? = null,
-            dataContentType: String? = null,
-            dataSchema: URI? = null,
-            subject: String? = null,
-            extensions: List<CloudEventExtension> = listOf(),
-        ): EventProposal {
-            val builder = CloudEventBuilder.v1()
-                .withId("1")
-                .withSource(URI("edb:client"))
-                .withType(eventType)
-                .withData(data)
-                .withDataContentType(dataContentType)
-                .withDataSchema(dataSchema)
-                .withSubject(subject)
-            for (extension in extensions)
-                builder.withExtension(extension)
-            return EventProposal(
-                builder.build(),
-                streamName,
-                streamState,
-            )
-        }
-    }
 }
 
 internal suspend fun loadDatabase(
@@ -557,54 +507,13 @@ internal suspend fun loadDatabase(
         builder.revision = revision
     val result = grpcClient.database(builder.build())
     return when (result.resultCase) {
-        DatabaseReply.ResultCase.DATABASE -> DatabaseSummary(
-            database,
-            result.database.created.toInstant(),
-            result.database.streamRevisionsMap,
-        )
+        DatabaseReply.ResultCase.DATABASE -> result.database.toDomain()
 
         DatabaseReply.ResultCase.NOT_FOUND ->
             throw DatabaseNotFoundError(result.notFound.name)
 
         else ->
             throw SerializationError("Result not set")
-    }
-}
-
-internal class StreamLoader(
-    channel: Channel,
-    private val database: DatabaseName,
-) : AsyncCacheLoader<StreamName, Flow<EventId>> {
-    private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)
-
-    override fun asyncLoad(
-        key: StreamName?,
-        executor: Executor?
-    ): CompletableFuture<out Flow<EventId>> = runBlocking(executor!!.asCoroutineDispatcher()) {
-        future { fetchStreamEventIds(key!!) }
-    }
-
-    private fun fetchStreamEventIds(stream: StreamName): Flow<EventId> {
-        val result = grpcClient.stream(
-            StreamRequest.newBuilder()
-                .setDatabase(database)
-                .setStream(stream)
-                .build()
-        )
-        return result.map { reply ->
-            when (reply.resultCase) {
-                StreamEventIdReply.ResultCase.EVENT_ID ->
-                    EventId.fromString(reply.eventId)
-
-                StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
-                    throw StreamNotFoundError(
-                        reply.streamNotFound.database,
-                        reply.streamNotFound.stream,
-                    )
-
-                else -> throw SerializationError("Result not set")
-            }
-        }
     }
 }
 
@@ -636,7 +545,7 @@ internal class EventLoader(
             eventIds.map {
                 EventRequest.newBuilder()
                     .setDatabase(database)
-                    .setEventId(it.toString())
+                    .setEventId(it)
                     .build()
             }.asFlow()
         )
@@ -645,14 +554,14 @@ internal class EventLoader(
             when (reply.resultCase) {
                 EventReply.ResultCase.EVENT_MAP_ENTRY -> {
                     val entry = reply.eventMapEntry
-                    val id = EventId.fromString(entry.eventId)
+                    val id = entry.eventId
                     eventMap[id] = entry.event.toDomain()
                 }
 
                 EventReply.ResultCase.EVENT_NOT_FOUND ->
                     throw EventNotFoundError(
                         reply.eventNotFound.database,
-                        EventId.fromString(reply.eventNotFound.eventId),
+                        reply.eventNotFound.eventId,
                     )
 
                 else -> throw SerializationError("Result not set")

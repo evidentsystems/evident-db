@@ -12,6 +12,7 @@ import io.cloudevents.protobuf.toProto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -113,15 +114,14 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override fun catalog(request: CatalogRequest): Flow<CatalogReply> = flow {
+    override fun catalog(request: CatalogRequest): Flow<CatalogReply> {
         LOGGER.debug("catalog request received: $request")
-        queryService.getCatalog().forEach {
+        return queryService.getCatalog().map {
             val builder = CatalogReply.newBuilder()
                 .setDatabase(it.toProto())
-            emit(builder.build())
+            builder.build()
         }
     }
-
 
     override fun connect(request: DatabaseRequest): Flow<DatabaseReply> = flow {
         LOGGER.debug("connect request received: $request")
@@ -169,7 +169,7 @@ class EvidentDbEndpoint(
                 emit(builder.build())
             }
             is Either.Right ->
-                for (batch in result.value) {
+                result.value.collect { batch ->
                     val builder = DatabaseLogReply.newBuilder()
                     builder.batch = batch.toProto()
                     emit(builder.build())
@@ -193,9 +193,9 @@ class EvidentDbEndpoint(
                 emit(builder.build())
             }
             is Either.Right ->
-                for (eventId in result.value.eventIds) {
+                result.value.collect { eventId ->
                     val builder = StreamEventIdReply.newBuilder()
-                        .setEventId(eventId.toString())
+                        .setEventId(eventId)
                     emit(builder.build())
                 }
         }
@@ -208,17 +208,17 @@ class EvidentDbEndpoint(
     override fun events(requests: Flow<EventRequest>): Flow<EventReply> = flow {
         requests.collect { request ->
             LOGGER.debug("event request received: $request")
-            val eventId = EventId.fromString(request.eventId)
+            val eventId = request.eventId.toLong()
             val replyBuilder = EventReply.newBuilder()
-            when (val result = queryService.getEvents(request.database, eventId)) {
+            when (val result = queryService.getEvent(request.database, eventId)) {
                 is Either.Left -> {
                     replyBuilder.eventNotFoundBuilder
                         .setDatabase(result.value.database)
-                        .setEventId(result.value.eventId.toString())
+                        .setEventId(result.value.eventId)
                 }
 
                 is Either.Right -> {
-                    replyBuilder.eventMapEntryBuilder.eventId = result.value.first.toString()
+                    replyBuilder.eventMapEntryBuilder.eventId = result.value.first
                     replyBuilder.eventMapEntryBuilder.event = result.value.second.toProto()
                 }
             }

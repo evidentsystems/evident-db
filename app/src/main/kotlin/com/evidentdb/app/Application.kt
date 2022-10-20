@@ -31,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -66,8 +67,8 @@ class Configuration {
 	@Inject
 	lateinit var transactorHealthIndicator: TransactorHealthIndicator
 
-	@Bean(preDestroy = "close")
 	@Singleton
+	@Bean(preDestroy = "close")
 	fun commandService(
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
@@ -75,7 +76,7 @@ class Configuration {
 		internalCommandsTopic: String,
 		@Value("\${kafka.producers.default.linger.ms}")
 		producerLingerMs: Int,
-		commandResponseChannel: Channel<EventEnvelope>,
+		commandResponseChannel: ReceiveChannel<EventEnvelope>,
 		meterRegistry: MeterRegistry,
 	): KafkaCommandService {
 		val service = KafkaCommandService(
@@ -100,8 +101,8 @@ class Configuration {
 		return mutableSharedFlow.asSharedFlow()
 	}
 
-	@Bean(preDestroy = "close")
 	@Singleton
+//	@Bean(preDestroy = "close") // TODO: micronaut bug prevents this from closing cf. https://github.com/micronaut-projects/micronaut-core/issues/1272#ref-commit-69e574c
 	fun commandResponseChannel(listener: InternalEventListener): Channel<EventEnvelope> {
 		val channel = Channel<EventEnvelope>(BUFFER_SIZE)
 		listener.registerListener("command-responses") { event ->

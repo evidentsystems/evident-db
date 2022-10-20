@@ -103,7 +103,7 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(BATCH_STORE),
-                Serdes.UUID(), // BatchId
+                Serdes.UUID(),   // BatchId
                 Serdes.String(), // DatabaseLogKey
             ),
             COMMAND_PROCESSOR,
@@ -113,7 +113,7 @@ object TransactorTopology {
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
                 Serdes.String(), // StreamKey
-                listSerde(Serdes.UUID()), // List<EventId>
+                Serdes.Long(),   // EventId
             ),
             COMMAND_PROCESSOR,
             STREAM_INDEXER,
@@ -126,7 +126,7 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(EVENT_STORE),
-                Serdes.UUID(), // EventId
+                Serdes.String(), // EventKey
                 eventStoreSerde, // CloudEvent
             ),
             BATCH_INDEXER,
@@ -153,10 +153,10 @@ object TransactorTopology {
     }
 
     private class CommandProcessor(val meterRegistry: MeterRegistry):
-        ContextualProcessor<CommandId, CommandEnvelope, EventId, EventEnvelope>() {
+        ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
         private var transactor = KafkaStreamsCommandHandler()
 
-        override fun init(context: ProcessorContext<EventId, EventEnvelope>?) {
+        override fun init(context: ProcessorContext<EnvelopeId, EventEnvelope>?) {
             super.init(context)
             transactor.init(
                 context().getStateStore(DATABASE_STORE),
@@ -170,7 +170,7 @@ object TransactorTopology {
             this.transactor = KafkaStreamsCommandHandler()
         }
 
-        override fun process(record: Record<CommandId, CommandEnvelope>?): Unit = runBlocking {
+        override fun process(record: Record<EnvelopeId, CommandEnvelope>?): Unit = runBlocking {
             val sample = Timer.start()
 
             val command = record?.value() ?: throw IllegalStateException()
@@ -182,7 +182,7 @@ object TransactorTopology {
                 is TransactBatch  -> transactor.handleTransactBatch(command)
             }.getOrHandle { error ->
                 ErrorEnvelope(
-                    EventId.randomUUID(),
+                    EnvelopeId.randomUUID(),
                     command.id,
                     command.database,
                     error
@@ -209,7 +209,7 @@ object TransactorTopology {
     }
 
     private class DatabaseIndexer:
-        ContextualProcessor<EventId, EventEnvelope, DatabaseName, DatabaseSummary>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, DatabaseName, DatabaseSummary>() {
         lateinit var databaseWriteModel: DatabaseWriteModel
 
         override fun init(context: ProcessorContext<DatabaseName, DatabaseSummary>?) {
@@ -217,7 +217,7 @@ object TransactorTopology {
             this.databaseWriteModel = DatabaseWriteModel(context().getStateStore(DATABASE_STORE))
         }
 
-        override fun process(record: Record<EventId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
             val (databaseName, result) = EventHandler.databaseUpdate(event)
             when(result) {
@@ -235,7 +235,7 @@ object TransactorTopology {
     }
 
     private class BatchIndexer:
-        ContextualProcessor<EventId, EventEnvelope, BatchKey, BatchSummary>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, BatchKey, BatchSummary>() {
         lateinit var batchSummaryStore: BatchSummaryStore
         lateinit var databaseLogStore: DatabaseLogStore
 
@@ -250,7 +250,7 @@ object TransactorTopology {
             this.databaseLogStore = DatabaseLogStore(databaseLogKeyValueStore)
         }
 
-        override fun process(record: Record<EventId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
             when(val result = EventHandler.batchUpdate(event)) {
                 is BatchOperation.StoreBatch -> {
@@ -271,27 +271,25 @@ object TransactorTopology {
     }
 
     private class StreamIndexer:
-        ContextualProcessor<EventId, EventEnvelope, StreamKey, List<EventId>>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, EventId>() {
         lateinit var streamStore: StreamSummaryStore
 
-        override fun init(context: ProcessorContext<StreamKey, List<EventId>>?) {
+        override fun init(context: ProcessorContext<StreamKey, EventId>?) {
             super.init(context)
             this.streamStore = StreamSummaryStore(
                 context().getStateStore(STREAM_STORE)
             )
         }
 
-        override fun process(record: Record<EventId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val event = record?.value() ?: throw IllegalStateException()
-            when(val result = EventHandler.streamUpdate(streamStore, event)) {
+            when(val result = EventHandler.streamUpdate(event)) {
                 is StreamOperation.StoreStreams ->
-                    for ((streamKey, eventIds) in result.updates) {
-                        streamStore.putStreamEventIds(streamKey, eventIds)
+                    for ((streamKey, eventId) in result.updates) {
+                        streamStore.putStreamEventId(streamKey, eventId)
                     }
                 is StreamOperation.DeleteStreams ->
-                    for (streamKey in result.streams) {
-                        streamStore.deleteStream(streamKey)
-                    }
+                    streamStore.deleteStreams(result.database)
                 StreamOperation.DoNothing -> Unit
             }
         }
@@ -304,7 +302,7 @@ object TransactorTopology {
     }
 
     private class EventIndexer:
-        ContextualProcessor<EventId, EventEnvelope, StreamKey, CloudEvent>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, CloudEvent>() {
         lateinit var eventStore: EventStore
 
         override fun init(context: ProcessorContext<StreamKey, CloudEvent>?) {
@@ -314,19 +312,23 @@ object TransactorTopology {
             )
         }
 
-        override fun process(record: Record<EventId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val internalEvent = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.eventsToIndex(internalEvent)
             if (result != null) {
                 for ((eventId, event) in result) {
                     context().forward(
                         Record(
-                            buildStreamKey(event.database, event.stream),
+                            "${buildStreamKeyPrefix(event.database)}${event.stream}",
                             event.event,
                             context().currentStreamTimeMs()
                         )
                     )
-                    eventStore.putEvent(eventId, event.event)
+                    eventStore.putEvent(
+                        event.database,
+                        eventId,
+                        event.event
+                    )
                 }
             }
         }

@@ -10,7 +10,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.consumeEach
 import org.apache.kafka.clients.producer.*
 import org.apache.kafka.common.Cluster
@@ -61,12 +61,12 @@ class KafkaProducerCommandManager(
     private val internalCommandsTopic: String,
     producerLingerMs: Int,
     private val meterRegistry: MeterRegistry,
-    private val eventChannel: Channel<EventEnvelope>
+    private val eventChannel: ReceiveChannel<EventEnvelope>
 ) : CommandManager, AutoCloseable {
     private val scope = CoroutineScope(Dispatchers.Default)
-    private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
-    private val samples = ConcurrentHashMap<CommandId, Timer.Sample>()
-    private val producer: Producer<CommandId, CommandEnvelope>
+    private val inFlight = ConcurrentHashMap<EnvelopeId, CompletableDeferred<EventEnvelope>>()
+    private val samples = ConcurrentHashMap<EnvelopeId, Timer.Sample>()
+    private val producer: Producer<EnvelopeId, CommandEnvelope>
     private val producerMetrics: KafkaClientMetrics
 
     companion object {
@@ -177,7 +177,7 @@ class KafkaCommandService(
     kafkaBootstrapServers: String,
     internalCommandsTopic: String,
     producerLingerMs: Int,
-    eventChannel: Channel<EventEnvelope>,
+    eventChannel: ReceiveChannel<EventEnvelope>,
     meterRegistry: MeterRegistry,
 ): CommandService, AutoCloseable {
     override val commandManager = KafkaProducerCommandManager(
@@ -252,8 +252,7 @@ class KafkaQueryService(
                     streamStoreName,
                     QueryableStoreTypes.keyValueStore()
                 )
-            ),
-            eventKeyValueStore
+            )
         )
 
         eventReadModel = EventReadOnlyStore(eventKeyValueStore)

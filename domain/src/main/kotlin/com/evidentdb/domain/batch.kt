@@ -3,7 +3,16 @@ package com.evidentdb.domain
 import arrow.core.*
 import arrow.core.computations.either
 import arrow.typeclasses.Semigroup
+import com.evidentdb.cloudevents.EventSequenceExtension
 import io.cloudevents.core.builder.CloudEventBuilder
+import java.time.Instant
+
+fun validateStreamName(name: String)
+        : ValidatedNel<InvalidStreamName, StreamName> =
+    when (val streamName = StreamName.of(name)) {
+        is Validated.Valid -> streamName.value.validNel()
+        is Validated.Invalid -> InvalidStreamName(name).invalidNel()
+    }
 
 // TODO: regex validation?
 fun validateEventType(eventType: EventType)
@@ -13,30 +22,34 @@ fun validateEventType(eventType: EventType)
     else
         InvalidEventType(eventType).invalidNel()
 
-fun validateUnvalidatedProposedEvent(event: UnvalidatedProposedEvent)
-        : Validated<InvalidEvent, ProposedEvent> =
+fun validateUnvalidatedProposedEvent(
+    databaseName: DatabaseName,
+    event: UnvalidatedProposedEvent
+): Validated<InvalidEvent, ProposedEvent> =
     validateStreamName(event.stream).zip(
         Semigroup.nonEmptyList(),
         validateEventType(event.event.type)
-    ) { _, _ ->
-        val id = EventId.randomUUID()
+    ) { streamName, _ ->
         val newEvent = CloudEventBuilder.from(event.event)
-            .withId(id.toString())
+            .withSource(eventSource(databaseName, event))
             .build()
         ProposedEvent(
-            id,
             newEvent,
-            event.stream,
+            streamName,
             event.streamState,
         )
     }.mapLeft { InvalidEvent(event, it) }
 
-fun validateUnvalidatedProposedEvents(events: Iterable<UnvalidatedProposedEvent>)
-        : Validated<InvalidBatchError, List<ProposedEvent>> {
+fun validateUnvalidatedProposedEvents(
+    databaseName: DatabaseName,
+    events: Iterable<UnvalidatedProposedEvent>
+) : Validated<InvalidBatchError, List<ProposedEvent>> {
     if (events.toList().isEmpty())
         return NoEventsProvidedError.invalid()
     val (errors, validatedEvents) = events
-        .map(::validateUnvalidatedProposedEvent)
+        .map { event ->
+            validateUnvalidatedProposedEvent(databaseName, event)
+        }
         .separateValidated()
     return if (errors.isEmpty())
         validatedEvents.valid()
@@ -85,7 +98,8 @@ fun validateStreamState(
 
 suspend fun validateProposedEvent(
     database: Database,
-    event: ProposedEvent
+    event: ProposedEvent,
+    index: Int
 ): Either<StreamStateConflict, Event> =
     either {
         val validEvent = validateStreamState(
@@ -93,8 +107,15 @@ suspend fun validateProposedEvent(
             streamStateFromRevisions(database.streamRevisions, event.stream),
             event
         ).bind()
-        // TODO: add to other index stream(s)
-        validEvent
+        validEvent.copy(event =
+            CloudEventBuilder.from(validEvent.event)
+                .withExtension(
+                    EventSequenceExtension(
+                        database.revision + index + 1
+                    )
+                )
+                .build()
+        )
     }
 
 suspend fun validateProposedBatch(
@@ -105,15 +126,16 @@ suspend fun validateProposedBatch(
     batchSummaryReadModel.batchSummary(database.name, batch.id)?.let {
         return DuplicateBatchError(batch).left()
     }
-    val (errors, events) = batch.events.map{
-        validateProposedEvent(database, it)
+    val (errors, events) = batch.events.mapIndexed { index, proposedEvent ->
+        validateProposedEvent(database, proposedEvent, index)
     }.separateEither()
     return if (errors.isEmpty())
         Batch(
             batch.id,
             database.name,
             events,
-            nextStreamRevisions(events, database.streamRevisions)
+            nextStreamRevisions(events, database.streamRevisions),
+            Instant.now(),
         ).right()
     else
         StreamStateConflictsError(errors).left()

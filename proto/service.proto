@@ -114,18 +114,18 @@ message SubjectStreamRequest {
 
 message StreamEventIdReply {
   oneof result {
-    string event_id = 1;
+    int64 event_id = 1;
     StreamNotFoundError stream_not_found = 2;
   }
 }
 
 message EventRequest {
   string database = 1;
-  string event_id = 2;
+  int64 event_id = 2;
 }
 
 message EventMapEntry {
-  string event_id = 1;
+  int64 event_id = 1;
   io.cloudevents.v1.CloudEvent event = 2;
 }
 

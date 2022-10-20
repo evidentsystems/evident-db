@@ -75,10 +75,11 @@ message Batch {
   string database = 2;
   repeated Event events = 3;
   map<string, int64> stream_revisions = 4;
+  google.protobuf.Timestamp timestamp = 5;
 }
 
 message BatchSummaryEvent {
-  string id = 2;
+  int64 id = 2;
   optional string stream = 3;
 }
 
@@ -87,6 +88,7 @@ message BatchSummary {
   string database = 2;
   repeated BatchSummaryEvent events = 3;
   map<string, int64> stream_revisions = 4;
+  google.protobuf.Timestamp timestamp = 5;
 }
 
 message BatchTransactionResult {
@@ -164,5 +166,5 @@ message StreamNotFoundError {
 
 message EventNotFoundError {
   string database = 1;
-  string event_id = 2;
+  int64 event_id = 2;
 }

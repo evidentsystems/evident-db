@@ -17,16 +17,6 @@ import org.apache.kafka.common.header.internals.RecordHeader
 import org.apache.kafka.common.header.internals.RecordHeaders
 import org.apache.kafka.common.serialization.*
 
-class ListSerde<Inner> : Serdes.WrapperSerde<List<Inner>> {
-    constructor() : super(ListSerializer<Inner>(), ListDeserializer<Inner>())
-    constructor(serializer: ListSerializer<Inner>, deserializer: ListDeserializer<Inner>) : super(serializer, deserializer)
-}
-
-fun <Inner> listSerde(serde: Serde<Inner>) = ListSerde(
-    ListSerializer(serde.serializer()),
-    ListDeserializer(ArrayList<Inner>().javaClass, serde.deserializer())
-)
-
 abstract class EvidentDbSerializer<T>: Serializer<T> {
     private val serializer = CloudEventSerializer()
 
@@ -88,7 +78,7 @@ class CommandEnvelopeSerde:
     class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope>() {
         override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
             val dataBytes = cloudEvent.data!!.toBytes()
-            val commandId = CommandId.fromString(cloudEvent.id)
+            val commandId = EnvelopeId.fromString(cloudEvent.id)
             val databaseId = databaseNameFromUri(cloudEvent.source)
             return when (cloudEvent.type.split('.').last()) {
                 "CreateDatabase" -> CreateDatabase(
@@ -129,10 +119,10 @@ class EventEnvelopeSerde:
     class EventEnvelopeDeserializer: EvidentDbDeserializer<EventEnvelope>() {
         override fun fromCloudEvent(cloudEvent: CloudEvent): EventEnvelope {
             val dataBytes = cloudEvent.data!!.toBytes()
-            val eventId = EventId.fromString(cloudEvent.id)
+            val eventId = EnvelopeId.fromString(cloudEvent.id)
             val databaseId = databaseNameFromUri(cloudEvent.source)
-            val commandId: CommandId = when(val commandIdString = cloudEvent.getExtension(CommandIdExtension.COMMAND_ID)) {
-                is String -> CommandId.fromString(commandIdString)
+            val commandId: EnvelopeId = when(val commandIdString = cloudEvent.getExtension(CommandIdExtension.COMMAND_ID)) {
+                is String -> EnvelopeId.fromString(commandIdString)
                 else -> throw IllegalStateException("Invalid commandid: $commandIdString parsed from cloud event: $cloudEvent")
             }
             return when (cloudEvent.type.split('.').last()) {

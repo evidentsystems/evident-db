@@ -6,6 +6,7 @@ import arrow.typeclasses.Semigroup
 import com.evidentdb.cloudevents.EventSequenceExtension
 import io.cloudevents.core.builder.CloudEventBuilder
 import java.time.Instant
+import java.time.ZoneOffset
 
 fun validateStreamName(name: String)
         : ValidatedNel<InvalidStreamName, StreamName> =
@@ -99,7 +100,8 @@ fun validateStreamState(
 suspend fun validateProposedEvent(
     database: Database,
     event: ProposedEvent,
-    index: Int
+    index: Int,
+    timestamp: Instant
 ): Either<StreamStateConflict, Event> =
     either {
         val validEvent = validateStreamState(
@@ -108,12 +110,13 @@ suspend fun validateProposedEvent(
             event
         ).bind()
         validEvent.copy(event =
-            CloudEventBuilder.from(validEvent.event)
+            CloudEventBuilder.v1(validEvent.event)
                 .withExtension(
                     EventSequenceExtension(
                         database.revision + index + 1
                     )
                 )
+                .withTime(timestamp.atOffset(ZoneOffset.UTC))
                 .build()
         )
     }
@@ -126,8 +129,9 @@ suspend fun validateProposedBatch(
     batchSummaryReadModel.batchSummary(database.name, batch.id)?.let {
         return DuplicateBatchError(batch).left()
     }
+    val timestamp = Instant.now()
     val (errors, events) = batch.events.mapIndexed { index, proposedEvent ->
-        validateProposedEvent(database, proposedEvent, index)
+        validateProposedEvent(database, proposedEvent, index, timestamp)
     }.separateEither()
     return if (errors.isEmpty())
         Batch(
@@ -135,7 +139,7 @@ suspend fun validateProposedBatch(
             database.name,
             events,
             nextStreamRevisions(events, database.streamRevisions),
-            Instant.now(),
+            timestamp,
         ).right()
     else
         StreamStateConflictsError(errors).left()

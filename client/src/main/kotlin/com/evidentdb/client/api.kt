@@ -11,6 +11,7 @@ import io.cloudevents.CloudEventExtension
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.grpc.ManagedChannelBuilder
 import java.net.URI
+import java.util.*
 
 
 object EvidentDB {
@@ -38,6 +39,7 @@ object EvidentDB {
         eventType: String,
         streamName: StreamName,
         streamState: ProposedEventStreamState = StreamState.Any,
+        eventId: String? = null,
         data: CloudEventData? = null,
         dataContentType: String? = null,
         dataSchema: URI? = null,
@@ -45,7 +47,7 @@ object EvidentDB {
         extensions: List<CloudEventExtension> = listOf(),
     ): EventProposal {
         val builder = CloudEventBuilder.v1()
-            .withId("1")
+            .withId(eventId ?: UUID.randomUUID().toString())
             .withSource(URI("edb:client"))
             .withType(eventType)
             .withData(data)

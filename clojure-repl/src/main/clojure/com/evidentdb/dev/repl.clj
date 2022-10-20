@@ -9,23 +9,31 @@
    (event-proposal event-type stream-name StreamState$Any/INSTANCE))
   ([event-type stream-name stream-state]
    (event-proposal event-type stream-name stream-state nil))
-  ([event-type stream-name stream-state data]
-   (event-proposal event-type stream-name stream-state data nil))
-  ([event-type stream-name stream-state data data-content-type]
-   (event-proposal event-type stream-name stream-state data data-content-type nil))
-  ([event-type stream-name stream-state data data-content-type data-schema]
-   (event-proposal event-type stream-name stream-state data data-content-type data-schema nil))
-  ([event-type stream-name stream-state data data-content-type data-schema subject]
-   (event-proposal event-type stream-name stream-state data data-content-type data-schema subject []))
+  ([event-type stream-name stream-state event-id]
+   (event-proposal event-type stream-name stream-state event-id nil))
+  ([event-type stream-name stream-state event-id data]
+   (event-proposal event-type stream-name stream-state event-id data nil))
+  ([event-type stream-name stream-state event-id data data-content-type]
+   (event-proposal event-type stream-name stream-state event-id data data-content-type nil))
+  ([event-type stream-name stream-state event-id data data-content-type data-schema]
+   (event-proposal event-type stream-name stream-state event-id data data-content-type data-schema nil))
+  ([event-type stream-name stream-state event-id data data-content-type data-schema subject]
+   (event-proposal event-type stream-name stream-state event-id data data-content-type data-schema subject []))
   ([^String event-type
     ^String stream-name
     ^StreamState stream-state
+    ^String event-id
     ^CloudEventData data
     ^String data-content-type
     ^URI data-schema
     ^String subject
     extensions]
-   (EvidentDB/eventProposal event-type stream-name stream-state data data-content-type data-schema subject extensions)))
+   (EvidentDB/eventProposal event-type stream-name stream-state event-id data data-content-type data-schema subject extensions)))
+
+(defn eagerize
+  [^CloseableIterator iter]
+  (with-open [i iter]
+    (into [] (iterator-seq i))))
 
 (comment
 
@@ -60,14 +68,9 @@
 
   (= db2 db3)
 
-  (count @(.stream db2 "my-stream"))
+  (eagerize (.stream db2 "my-stream"))
 
-  (count (.log conn))
-
-  (def iter *1)
-
-  (.hasNext iter)
-  (.next iter)
+  (count (eagerize (.log conn)))
 
   (.deleteDatabase client database-name)
 

@@ -14,9 +14,12 @@ import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
+import javax.annotation.concurrent.ThreadSafe
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+
+const val ITERATOR_READ_AHEAD_CACHE_SIZE = 100
 
 class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
     private val kotlinClient = EvidentDBKt(channelBuilder)
@@ -135,11 +138,12 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
 private fun <T> Flow<T>.asIterator() =
     FlowIterator(this)
 
+@ThreadSafe
 internal class FlowIterator<T>(
     private val flow: Flow<T>
 ): CloseableIterator<T> {
     private val asyncScope = CoroutineScope(Dispatchers.Default)
-    private val queue = LinkedBlockingQueue<Option<T>>(2)
+    private val queue = LinkedBlockingQueue<Option<T>>(ITERATOR_READ_AHEAD_CACHE_SIZE)
     private val nextItem: AtomicReference<Option<T>>
 
     init {

@@ -8,46 +8,43 @@ import org.valiktor.validate
 import java.time.Instant
 import java.util.*
 
-const val NAME_PATTERN = """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$"""
+const val NAME_PATTERN = """^[a-zA-Z][a-zA-Z0-9\-_.]{0,127}$"""
 const val DB_URI_SCHEME = "evidentdb"
 
 // Internal Command & Event wrappers
 
-typealias CommandId = UUID
-typealias CommandType = String
+typealias EnvelopeId = UUID
+typealias EnvelopeType = String
 
 sealed interface CommandBody
 
 sealed interface CommandEnvelope {
-    val id: CommandId
-    val type: CommandType
+    val id: EnvelopeId
+    val type: EnvelopeType
         get() = "com.evidentdb.command.${this.javaClass.simpleName}"
     val database: DatabaseName
     val data: CommandBody
 }
 
-typealias EventId = UUID
-typealias EventType = String
-
 sealed interface EventBody
 sealed interface ErrorBody: EventBody
 
 sealed interface EventEnvelope {
-    val id: EventId
-    val type: EventType
+    val id: EnvelopeId
+    val type: EnvelopeType
         get() = "com.evidentdb.event.${this.javaClass.simpleName}"
-    val commandId: CommandId
+    val commandId: EnvelopeId
     val database: DatabaseName
     val data: EventBody
 }
 
 data class ErrorEnvelope(
-    override val id: EventId,
-    override val commandId: CommandId,
+    override val id: EnvelopeId,
+    override val commandId: EnvelopeId,
     override val database: DatabaseName,
     override val data: ErrorBody
 ): EventEnvelope {
-    override val type: EventType
+    override val type: EnvelopeType
         get() = "com.evidentdb.error.${data.javaClass.simpleName}"
 }
 
@@ -72,6 +69,21 @@ value class DatabaseName private constructor(val value: String) {
     }
 }
 
+@JvmInline
+value class StreamName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): StreamName =
+            validate(StreamName(value)) {
+                validate(StreamName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidStreamName, StreamName> =
+            valikate {
+                build(value)
+            }.mapLeft { InvalidStreamName(value) }
+    }
+}
+
 data class DatabaseSummary(
     val name: DatabaseName,
     val created: Instant,
@@ -91,7 +103,7 @@ data class Database(
 data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
 
 data class CreateDatabase(
-    override val id: CommandId,
+    override val id: EnvelopeId,
     override val database: DatabaseName,
     override val data: DatabaseCreationInfo
 ): CommandEnvelope
@@ -101,15 +113,15 @@ sealed interface DatabaseCreationError: ErrorBody
 data class DatabaseCreationResult(val database: Database): EventBody
 
 data class DatabaseCreated(
-    override val id: EventId,
-    override val commandId: CommandId,
+    override val id: EnvelopeId,
+    override val commandId: EnvelopeId,
     override val database: DatabaseName,
     override val data: DatabaseCreationResult,
 ): EventEnvelope
 
 data class DatabaseDeletionInfo(val name: DatabaseName): CommandBody
 data class DeleteDatabase(
-    override val id: CommandId,
+    override val id: EnvelopeId,
     override val database: DatabaseName,
     override val data: DatabaseDeletionInfo,
 ): CommandEnvelope
@@ -119,15 +131,14 @@ sealed interface DatabaseDeletionError: ErrorBody
 data class DatabaseDeletionResult(val database: Database): EventBody
 
 data class DatabaseDeleted(
-    override val id: EventId,
-    override val commandId: CommandId,
+    override val id: EnvelopeId,
+    override val commandId: EnvelopeId,
     override val database: DatabaseName,
     override val data: DatabaseDeletionResult
 ): EventEnvelope
 
 // Streams & Indexes
 
-typealias StreamName = String
 typealias StreamKey = String
 typealias StreamRevision = Long
 typealias StreamSubject = String
@@ -144,118 +155,19 @@ sealed interface StreamState {
     // TODO: data class SubjectStreamAtRevision(val revision: StreamRevision): ProposedEventStreamState
 }
 
-sealed interface StreamSummary {
-    val database: DatabaseName
-    val name: StreamName
-    val eventIds: List<EventId>
-    val revision: StreamRevision
-        get() = eventIds.size.toLong()
-
-    companion object {
-        fun create(streamKey: StreamKey, eventIds: List<EventId> = listOf()): StreamSummary {
-            // TODO: support parsing subject (nullable) from stream key and passing to `create()`
-            val (database, stream) = parseStreamKey(streamKey)
-            return create(database, stream, eventIds = eventIds)
-        }
-
-        fun create(
-            database: DatabaseName,
-            stream: StreamName,
-            subject: StreamSubject? = null,
-            eventIds: List<EventId> = listOf()
-        ): StreamSummary =
-            if (subject != null) {
-                SubjectStreamSummary(
-                    database,
-                    stream,
-                    subject,
-                    eventIds,
-                )
-            } else {
-                BaseStreamSummary(
-                    database,
-                    stream,
-                    eventIds
-                )
-            }
-    }
-}
-
-sealed interface Stream: StreamSummary {
-    val events: List<Event>
-
-    companion object {
-        fun create(streamKey: StreamKey, events: List<Event> = listOf()): Stream {
-            // TODO: support parsing subject (nullable) from stream key and passing to `create()`
-            val (database, stream) = parseStreamKey(streamKey)
-            return create(database, stream, events = events)
-        }
-
-        fun create(
-            database: DatabaseName,
-            stream: StreamName,
-            subject: StreamSubject? = null,
-            events: List<Event> = listOf()
-        ): Stream =
-            if (subject != null) {
-                SubjectStream(
-                    database,
-                    stream,
-                    subject,
-                    events,
-                )
-            } else {
-                BaseStream(
-                    database,
-                    stream,
-                    events
-                )
-            }
-    }
-}
-
-data class BaseStreamSummary(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    override val eventIds: List<EventId>,
-): StreamSummary
-
-data class SubjectStreamSummary(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    val subject: StreamSubject,
-    override val eventIds: List<EventId>,
-): StreamSummary
-
-data class BaseStream(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    override val events: List<Event>
-): Stream {
-    override val eventIds: List<EventId>
-        get() = events.map { it.id }
-}
-
-data class SubjectStream(
-    override val database: DatabaseName,
-    override val name: StreamName,
-    val subject: StreamSubject,
-    override val events: List<Event>
-): Stream {
-    override val eventIds: List<EventId>
-        get() = events.map { it.id }
-}
-
 // Events & Batches
+
+typealias EventId = Long
+typealias EventKey = String
+typealias EventType = String
 
 data class UnvalidatedProposedEvent(
     val event: CloudEvent,
-    val stream: StreamName,
+    val stream: String,
     val streamState: ProposedEventStreamState = StreamState.Any,
 )
 
 data class ProposedEvent(
-    val id: EventId,
     val event: CloudEvent,
     val stream: StreamName,
     val streamState: ProposedEventStreamState = StreamState.Any,
@@ -267,7 +179,12 @@ data class Event(
     val stream: StreamName
 ) {
     val id: EventId
-        get() = EventId.fromString(event.id)
+        get() = event.getExtension("sequence").let {
+            when(it) {
+                is String -> base32HexStringToLong(it)
+                else -> throw IllegalStateException("Event Sequence must be a String")
+            }
+        }
 }
 
 typealias BatchId = UUID
@@ -286,6 +203,7 @@ data class Batch(
     val database: DatabaseName,
     val events: List<Event>,
     val streamRevisions: Map<StreamName, StreamRevision>,
+    val timestamp: Instant,
 ) {
     val revision: DatabaseRevision
         get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
@@ -300,6 +218,7 @@ data class BatchSummary(
     val database: DatabaseName,
     val events: List<BatchSummaryEvent>,
     val streamRevisions: Map<StreamName, StreamRevision>,
+    val timestamp: Instant,
 ) {
     val revision: DatabaseRevision
         get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
@@ -308,7 +227,7 @@ data class BatchSummary(
 }
 
 data class TransactBatch(
-    override val id: CommandId,
+    override val id: EnvelopeId,
     override val database: DatabaseName,
     override val data: ProposedBatch
 ): CommandEnvelope
@@ -317,24 +236,33 @@ sealed interface BatchTransactionError: ErrorBody
 
 data class BatchTransactionResult(
     val batch: Batch,
-    val database: Database,
-): EventBody
+    val databaseBefore: Database,
+): EventBody {
+    val databaseAfter: Database
+        get() = Database(
+            databaseBefore.name,
+            databaseBefore.created,
+            batch.streamRevisions,
+        )
+}
 
 data class BatchTransacted(
-    override val id: EventId,
-    override val commandId: CommandId,
+    override val id: EnvelopeId,
+    override val commandId: EnvelopeId,
     override val database: DatabaseName,
     override val data: BatchTransactionResult
 ): EventEnvelope, BatchEvent
 
 // Errors
 
+sealed interface NotFoundError
+
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
-data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError
-data class BatchNotFoundError(val database: String, val batchId: BatchId)
-data class StreamNotFoundError(val database: String, val stream: StreamName)
-data class EventNotFoundError(val database: String, val eventId: EventId)
+data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
+data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
+data class StreamNotFoundError(val database: String, val stream: String): NotFoundError
+data class EventNotFoundError(val database: String, val eventId: EventId): NotFoundError
 
 sealed interface InvalidBatchError: BatchTransactionError
 

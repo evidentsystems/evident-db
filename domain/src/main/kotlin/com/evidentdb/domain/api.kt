@@ -3,9 +3,9 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
-import arrow.core.right
 import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
+import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 
 interface CommandService {
@@ -16,7 +16,7 @@ interface CommandService {
         either {
             val name = DatabaseName.of(proposedName).bind()
             val command = CreateDatabase(
-                CommandId.randomUUID(),
+                EnvelopeId.randomUUID(),
                 name,
                 DatabaseCreationInfo(name)
             )
@@ -28,7 +28,7 @@ interface CommandService {
         either {
             val name = DatabaseName.of(nameStr).bind()
             val command = DeleteDatabase(
-                CommandId.randomUUID(),
+                EnvelopeId.randomUUID(),
                 name,
                 DatabaseDeletionInfo(name)
             )
@@ -41,9 +41,12 @@ interface CommandService {
     ): Either<BatchTransactionError, BatchTransacted> =
         either {
             val databaseName = DatabaseName.of(databaseNameStr).bind()
-            val validatedEvents = validateUnvalidatedProposedEvents(events).bind()
+            val validatedEvents = validateUnvalidatedProposedEvents(
+                databaseName,
+                events,
+            ).bind()
             val command = TransactBatch(
-                CommandId.randomUUID(),
+                EnvelopeId.randomUUID(),
                 databaseName,
                 ProposedBatch(
                     BatchId.randomUUID(),
@@ -75,9 +78,8 @@ interface CommandHandler {
                 databaseReadModel,
                 command.data.name,
             ).bind()
-            val eventId = EventId.randomUUID()
             DatabaseCreated(
-                eventId,
+                EnvelopeId.randomUUID(),
                 command.id,
                 availableName,
                 DatabaseCreationResult(
@@ -97,9 +99,8 @@ interface CommandHandler {
                 databaseReadModel,
                 command.database,
             ).bind()
-            val eventId = EventId.randomUUID()
             DatabaseDeleted(
-                eventId,
+                EnvelopeId.randomUUID(),
                 command.id,
                 database.name,
                 DatabaseDeletionResult(database),
@@ -118,17 +119,13 @@ interface CommandHandler {
                 batchSummaryReadModel,
                 command.data
             ).bind()
-            val eventId = EventId.randomUUID()
             BatchTransacted(
-                eventId,
+                EnvelopeId.randomUUID(),
                 command.id,
                 database.name,
                 BatchTransactionResult(
                     validBatch,
-                    databaseAfterBatchTransacted(
-                        database,
-                        validBatch,
-                    )
+                    database,
                 )
             )
         }
@@ -137,11 +134,9 @@ interface CommandHandler {
 interface DatabaseReadModel {
     fun exists(name: DatabaseName): Boolean =
         database(name) != null
-    fun log(name: DatabaseName): List<BatchSummary>?
-    fun database(name: DatabaseName): Database?
-    fun database(name: DatabaseName, revision: DatabaseRevision): Database?
-    fun summary(name: DatabaseName): DatabaseSummary?
-    fun catalog(): Set<DatabaseSummary>
+    fun log(name: DatabaseName): Flow<BatchSummary>?
+    fun database(name: DatabaseName, revision: DatabaseRevision? = null): Database?
+    fun catalog(): Flow<Database>
 }
 
 interface BatchSummaryReadModel {
@@ -149,23 +144,22 @@ interface BatchSummaryReadModel {
 }
 
 interface BatchReadModel: BatchSummaryReadModel {
-    fun batch(id: BatchId): Batch?
+    fun batch(database: DatabaseName, id: BatchId): Batch?
 }
 
-interface StreamSummaryReadModel {
+interface StreamReadModel {
     fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
-    fun databaseStreams(databaseName: DatabaseName): Set<StreamSummary>
-    fun streamSummary(streamKey: StreamKey): StreamSummary?
-    fun streamSummary(databaseName: DatabaseName, name: StreamName): StreamSummary? =
-        streamSummary(buildStreamKey(databaseName, name))
-}
-
-interface StreamReadModel: StreamSummaryReadModel {
-    fun stream(databaseName: DatabaseName, name: StreamName): Stream?
+    fun stream(databaseName: DatabaseName, name: StreamName): Flow<EventId>
+    fun subjectStream(
+        databaseName: DatabaseName,
+        name: StreamName,
+        subject: StreamSubject,
+    ): Flow<EventId>
 }
 
 interface EventReadModel {
-    fun event(id: EventId): CloudEvent?
+    fun event(database: DatabaseName, id: EventId): CloudEvent?
+    // TODO: event by userspace id?
 }
 
 sealed interface DatabaseOperation {
@@ -181,8 +175,8 @@ sealed interface BatchOperation {
 }
 
 sealed interface StreamOperation {
-    data class StoreStreams(val updates: LinkedHashMap<StreamKey, List<EventId>>): StreamOperation
-    data class DeleteStreams(val streams: List<StreamKey>): StreamOperation
+    data class StoreStreams(val updates: List<Pair<StreamKey, EventId>>): StreamOperation
+    data class DeleteStreams(val database: DatabaseName): StreamOperation
     object DoNothing: StreamOperation
 }
 
@@ -214,7 +208,8 @@ object EventHandler {
                                 it.stream
                             )
                         },
-                        batch.streamRevisions
+                        batch.streamRevisions,
+                        batch.timestamp,
                     )
                 }
             )
@@ -223,40 +218,25 @@ object EventHandler {
         }
     }
 
-    fun streamUpdate(
-        streamSummaryReadModel: StreamSummaryReadModel,
-        event: EventEnvelope
-    ): StreamOperation {
-        val database = event.database
+    fun streamUpdate(event: EventEnvelope): StreamOperation {
         return when (event) {
             is BatchTransacted -> {
-                val updates = LinkedHashMap<StreamKey, List<EventId>>()
+                val database = event.data.databaseBefore.name
+                val streamRevisions = event.data.databaseBefore.streamRevisions.toMutableMap()
+                var databaseRevision = event.data.databaseBefore.revision
+                val updates = mutableListOf<Pair<StreamKey, EventId>>()
                 for (evt in event.data.batch.events) {
-                    val eventIds = updates.getOrPut(
-                        buildStreamKey(database, evt.stream)
-                    ) { mutableListOf() } as MutableList<EventId>
-                    eventIds.add(evt.id)
+                    val streamName = evt.stream
+                    databaseRevision += 1
+                    val streamRevision = (streamRevisions[streamName] ?: 0) + 1
+                    streamRevisions[streamName] = streamRevision
+                    updates.add(Pair(buildStreamKey(database, streamName, streamRevision), databaseRevision))
                 }
-                val result = LinkedHashMap<StreamKey, List<EventId>>(
-                    event.data.batch.events.size
-                )
-                for ((streamKey, eventIds) in updates) {
-                    val idempotentEventIds = LinkedHashSet(
-                        streamSummaryReadModel
-                            .streamSummary(streamKey)
-                            ?.eventIds
-                            .orEmpty()
-                    )
-                    for (eventId in eventIds)
-                        idempotentEventIds.add(eventId)
-                    result[streamKey] = idempotentEventIds.toList()
-                }
-                StreamOperation.StoreStreams(result)
+                // TODO: remove after verifying
+                require(streamRevisions == event.data.databaseAfter.streamRevisions)
+                StreamOperation.StoreStreams(updates)
             }
-            is DatabaseDeleted -> StreamOperation.DeleteStreams(
-                streamSummaryReadModel.databaseStreams(database)
-                    .map { buildStreamKey(database, it.name) }
-            )
+            is DatabaseDeleted -> StreamOperation.DeleteStreams(event.database)
             else -> StreamOperation.DoNothing
         }
     }
@@ -279,7 +259,7 @@ interface QueryService {
     val streamReadModel: StreamReadModel
     val eventReadModel: EventReadModel
 
-    private fun lookupDatabaseMaybeAtRevision(
+    fun lookupDatabaseMaybeAtRevision(
         name: DatabaseName,
         revision: DatabaseRevision,
     ): Database? =
@@ -288,12 +268,12 @@ interface QueryService {
         else
             databaseReadModel.database(name, revision)
 
-    suspend fun getCatalog(): Set<DatabaseSummary> =
+    fun getCatalog(): Flow<Database> =
         databaseReadModel.catalog()
 
     suspend fun getDatabase(
         name: String,
-        revision: DatabaseRevision,
+        revision: DatabaseRevision = NO_REVISION_SPECIFIED,
     ): Either<DatabaseNotFoundError, Database> = either {
         val validName = DatabaseName.of(name)
             .mapLeft { DatabaseNotFoundError(name) }
@@ -304,7 +284,7 @@ interface QueryService {
     }
 
     suspend fun getDatabaseLog(name: String)
-            : Either<DatabaseNotFoundError, List<BatchSummary>> = either {
+            : Either<DatabaseNotFoundError, Flow<BatchSummary>> = either {
         val validName = DatabaseName.of(name)
             .mapLeft { DatabaseNotFoundError(name) }
             .bind()
@@ -313,8 +293,6 @@ interface QueryService {
             .bind()
     }
 
-    // TODO: support fetching multiple batches at once
-    // TODO: ensure batch with id exists w/in database
     suspend fun getBatch(database: String, batchId: BatchId)
             : Either<BatchNotFoundError, Batch> = either {
         val validName = DatabaseName.of(database)
@@ -323,59 +301,41 @@ interface QueryService {
         databaseReadModel.exists(validName)
             .rightIfNotNull { BatchNotFoundError(database, batchId) }
             .bind()
-        batchReadModel.batch(batchId)
+        batchReadModel.batch(validName, batchId)
             .rightIfNotNull { BatchNotFoundError(database, batchId) }
             .bind()
     }
 
-    // TODO: support fetching multiple events at once
-    // TODO: ensure Event with id exists w/in database
     suspend fun getEvent(
         database: String,
         eventId: EventId,
-    ) : Either<EventNotFoundError, CloudEvent> = either {
+    ) : Either<EventNotFoundError, Pair<EventId, CloudEvent>> = either {
+        val error = EventNotFoundError(database, eventId)
         val validName = DatabaseName.of(database)
-            .mapLeft { EventNotFoundError(database, eventId) }
+            .mapLeft { error }
             .bind()
-        databaseReadModel.exists(validName)
-            .rightIfNotNull { EventNotFoundError(database, eventId) }
-            .bind()
-        eventReadModel.event(eventId)
-            .rightIfNotNull { EventNotFoundError(database, eventId) }
-            .bind()
-    }
-
-    // TODO: monadic binding for invalid database name
-    suspend fun getDatabaseStreams(
-        database: String,
-        revision: DatabaseRevision,
-    ) : Either<DatabaseNotFoundError, Set<StreamSummary>> = either {
-        val validName = DatabaseName.of(database)
-            .mapLeft { DatabaseNotFoundError(database) }
-            .bind()
-        val db = lookupDatabaseMaybeAtRevision(validName, revision)
-            .rightIfNotNull { DatabaseNotFoundError(database) }
-            .bind()
-        streamReadModel.databaseStreams(validName)
-            .mapNotNull { filterStreamByRevisions(it, db.streamRevisions) }
-            .toSet()
+        if (databaseReadModel.exists(validName))
+            eventReadModel.event(validName, eventId)?.let { event ->
+                Pair(eventId, event)
+            }.rightIfNotNull { error }.bind()
+        else
+            error.left().bind<Pair<EventId, CloudEvent>>()
     }
 
     suspend fun getStream(
         database: String,
         databaseRevision: DatabaseRevision,
-        streamName: StreamName,
-    ) : Either<StreamNotFoundError, Stream> = either {
-        val validName = DatabaseName.of(database)
-            .mapLeft { StreamNotFoundError(database, streamName) }
+        stream: String,
+    ) : Either<StreamNotFoundError, Flow<EventId>> = either {
+        val databaseName = DatabaseName.of(database)
+            .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
-        val db = lookupDatabaseMaybeAtRevision(validName, databaseRevision)
-            .rightIfNotNull { StreamNotFoundError(database, streamName) }
+        val streamName = StreamName.of(stream)
+            .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
-        val stream = streamReadModel.stream(validName, streamName)
-            .rightIfNotNull { StreamNotFoundError(database, streamName) }
+        streamReadModel.stream(databaseName, streamName)
+            .rightIfNotNull { StreamNotFoundError(database, stream) }
             .bind()
-        filterStreamByRevisions(stream, db.streamRevisions) as Stream
     }
 
     suspend fun getSubjectStream(
@@ -383,6 +343,6 @@ interface QueryService {
         databaseRevision: DatabaseRevision,
         stream: StreamName,
         subject: StreamSubject,
-    ) : Either<StreamNotFoundError, SubjectStream> =
+    ) : Either<StreamNotFoundError, Flow<EventId>> =
         TODO("Filter per revision lookup of database streamRevisions")
 }

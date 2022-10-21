@@ -9,16 +9,11 @@ import com.evidentdb.kafka.*
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.withTimeoutOrNull
-import org.apache.kafka.clients.consumer.Consumer
-import org.apache.kafka.clients.consumer.ConsumerConfig
-import org.apache.kafka.clients.consumer.KafkaConsumer
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.consumeEach
 import org.apache.kafka.clients.producer.*
 import org.apache.kafka.common.Cluster
-import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.errors.WakeupException
-import org.apache.kafka.common.serialization.UUIDDeserializer
 import org.apache.kafka.common.serialization.UUIDSerializer
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.StoreQueryParameters
@@ -28,11 +23,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.concurrent.thread
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
+import kotlin.coroutines.*
 
 private suspend inline fun <reified K: Any, reified V : Any> Producer<K, V>.publish(record: ProducerRecord<K, V>) =
     suspendCoroutine { continuation ->
@@ -65,31 +56,28 @@ class DatabaseIdPartitioner: Partitioner {
     override fun close() {}
 }
 
-class KafkaCommandManager(
+class KafkaProducerCommandManager(
     kafkaBootstrapServers: String,
     private val internalCommandsTopic: String,
-    private val internalEventsTopic: String,
     producerLingerMs: Int,
     private val meterRegistry: MeterRegistry,
+    private val eventChannel: ReceiveChannel<EventEnvelope>
 ) : CommandManager, AutoCloseable {
-    private val running = AtomicBoolean(true)
-    private val inFlight = ConcurrentHashMap<CommandId, CompletableDeferred<EventEnvelope>>()
-    private val samples = ConcurrentHashMap<CommandId, Timer.Sample>()
-    private val producer: Producer<CommandId, CommandEnvelope>
+    private val scope = CoroutineScope(Dispatchers.Default)
+    private val inFlight = ConcurrentHashMap<EnvelopeId, CompletableDeferred<EventEnvelope>>()
+    private val samples = ConcurrentHashMap<EnvelopeId, Timer.Sample>()
+    private val producer: Producer<EnvelopeId, CommandEnvelope>
     private val producerMetrics: KafkaClientMetrics
-    private val consumer: Consumer<EventId, EventEnvelope>
-    private val consumerMetrics: KafkaClientMetrics
 
     companion object {
         private const val REQUEST_TIMEOUT = 3000L
-        private val CONSUMER_POLL_INTERVAL = Duration.ofMillis(5000) // TODO: configurable?
-        private val LOGGER: Logger = LoggerFactory.getLogger(KafkaCommandManager::class.java)
+        private val LOGGER: Logger = LoggerFactory.getLogger(KafkaProducerCommandManager::class.java)
     }
 
     init {
         val producerConfig = Properties()
         producerConfig[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
-        // TODO: configurable CLIENT_ID
+        // TODO: configurable CLIENT_ID w/ Tenant
         producerConfig[ProducerConfig.PARTITIONER_CLASS_CONFIG] = DatabaseIdPartitioner::class.java
         producerConfig[ProducerConfig.LINGER_MS_CONFIG] = producerLingerMs
         this.producer = KafkaProducer(
@@ -99,43 +87,6 @@ class KafkaCommandManager(
         )
         this.producerMetrics = KafkaClientMetrics(producer)
         producerMetrics.bindTo(meterRegistry)
-
-        val consumerConfig = Properties()
-        consumerConfig[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
-        // TODO: configurable CLIENT_ID
-        consumerConfig[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
-        consumerConfig[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = false
-        consumerConfig[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = false
-        this.consumer = KafkaConsumer(
-            consumerConfig,
-            UUIDDeserializer(),
-            EventEnvelopeSerde.EventEnvelopeDeserializer()
-        )
-        this.consumerMetrics = KafkaClientMetrics(consumer)
-        consumerMetrics.bindTo(meterRegistry)
-        thread {
-            try {
-                consumer.assign(consumer.listTopics()[internalEventsTopic]!!.map {
-                    TopicPartition(it.topic(), it.partition())
-                })
-                while (running.get()) {
-                    consumer.poll(CONSUMER_POLL_INTERVAL).forEach { record ->
-                        LOGGER.info("Event received: ${record.key()}")
-                        LOGGER.debug("Event data: ${record.value()}")
-                        val commandId = record.value().commandId
-                        inFlight.remove(commandId)?.complete(record.value())
-                        samples.remove(commandId)?.stop(
-                            meterRegistry.timer("in.flight.requests")
-                        )
-                    }
-                }
-            } catch (e: WakeupException) {
-                if (running.get()) throw e
-            } finally {
-                consumer.close()
-                consumerMetrics.close()
-            }
-        }
     }
 
     override suspend fun createDatabase(command: CreateDatabase): Either<DatabaseCreationError, DatabaseCreated> = either {
@@ -181,9 +132,20 @@ class KafkaCommandManager(
         }.bind()
     }
 
+    fun start() = scope.launch {
+        eventChannel.consumeEach { event ->
+            LOGGER.info("Event received on response channel: ${event.id}")
+            LOGGER.debug("Received response event data: $event")
+            val commandId = event.commandId
+            inFlight.remove(commandId)?.complete(event)
+            samples.remove(commandId)?.stop(
+                meterRegistry.timer("in.flight.requests")
+            )
+        }
+    }
+
     override fun close() {
-        running.set(false)
-        consumer.wakeup()
+        scope.cancel()
         producer.close(Duration.ofMillis(10000))
         producerMetrics.close()
     }
@@ -214,18 +176,21 @@ class KafkaCommandManager(
 class KafkaCommandService(
     kafkaBootstrapServers: String,
     internalCommandsTopic: String,
-    internalEventsTopic: String,
-
     producerLingerMs: Int,
+    eventChannel: ReceiveChannel<EventEnvelope>,
     meterRegistry: MeterRegistry,
 ): CommandService, AutoCloseable {
-    override val commandManager = KafkaCommandManager(
+    override val commandManager = KafkaProducerCommandManager(
         kafkaBootstrapServers,
         internalCommandsTopic,
-        internalEventsTopic,
         producerLingerMs,
         meterRegistry,
+        eventChannel,
     )
+
+    fun start() {
+        commandManager.start()
+    }
 
     override fun close() {
         commandManager.close()
@@ -287,8 +252,7 @@ class KafkaQueryService(
                     streamStoreName,
                     QueryableStoreTypes.keyValueStore()
                 )
-            ),
-            eventKeyValueStore
+            )
         )
 
         eventReadModel = EventReadOnlyStore(eventKeyValueStore)

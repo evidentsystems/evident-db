@@ -16,8 +16,15 @@ evidentdb:
 kafka:
   bootstrap:
     servers: localhost:9092
-  producer:
-    linger.ms: 5
+  producers:
+    default:
+      linger.ms: 5
+  consumers:
+    default:
+      key:
+        deserializer: org.apache.kafka.common.serialization.UUIDDeserializer
+      value:
+        deserializer: com.evidentdb.kafka.EventEnvelopeSerde$EventEnvelopeDeserializer
   streams:
     producer.linger.ms: 0
   topics:

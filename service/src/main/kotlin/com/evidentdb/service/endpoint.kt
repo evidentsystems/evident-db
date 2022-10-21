@@ -9,12 +9,17 @@ import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toProto
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 class EvidentDbEndpoint(
     private val commandService: CommandService,
     private val queryService: QueryService,
+    private val databaseFlow: SharedFlow<Database>,
 ) : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
@@ -109,15 +114,40 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override suspend fun getCatalog(request: CatalogRequest): CatalogReply {
-        LOGGER.debug("getCatalog request received: $request")
-        val builder = CatalogReply.newBuilder()
-        builder.addAllDatabases(queryService.getCatalog().map { it.toProto() })
-        return builder.build()
+    override fun catalog(request: CatalogRequest): Flow<CatalogReply> {
+        LOGGER.debug("catalog request received: $request")
+        return queryService.getCatalog().map {
+            val builder = CatalogReply.newBuilder()
+                .setDatabase(it.toProto())
+            builder.build()
+        }
     }
 
-    override suspend fun getDatabase(request: DatabaseRequest): DatabaseReply {
-        LOGGER.debug("getDatabase request received: $request")
+    override fun connect(request: DatabaseRequest): Flow<DatabaseReply> = flow {
+        LOGGER.debug("connect request received: $request")
+        val initialReplyBuilder = DatabaseReply.newBuilder()
+        when(val result = queryService.getDatabase(request.name)) {
+            is Either.Left -> {
+                initialReplyBuilder.notFoundBuilder.name = result.value.name
+                emit(initialReplyBuilder.build())
+            }
+            is Either.Right -> {
+                initialReplyBuilder.database = result.value.toProto()
+                emit(initialReplyBuilder.build())
+
+                databaseFlow.collect { database ->
+                    if (request.name == database.name.value) {
+                        val replyBuilder = DatabaseReply.newBuilder()
+                        replyBuilder.database = database.toProto()
+                        emit(replyBuilder.build())
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun database(request: DatabaseRequest): DatabaseReply {
+        LOGGER.debug("database request received: $request")
         val builder = DatabaseReply.newBuilder()
         when (val result = queryService.getDatabase(
             request.name,
@@ -130,77 +160,69 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override suspend fun getDatabaseLog(request: DatabaseLogRequest): DatabaseLogReply {
-        LOGGER.debug("getDatabaseLog request received: $request")
-        val builder = DatabaseLogReply.newBuilder()
+    override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
+        LOGGER.debug("databaseLog request received: $request")
         when (val result = queryService.getDatabaseLog(request.database)) {
-            is Either.Left -> builder.databaseNotFoundBuilder.name = result.value.name
-            is Either.Right -> builder.logBuilder.addAllBatches(result.value.map { it.toProto() })
+            is Either.Left -> {
+                val builder = DatabaseLogReply.newBuilder()
+                builder.databaseNotFoundBuilder.name = result.value.name
+                emit(builder.build())
+            }
+            is Either.Right ->
+                result.value.collect { batch ->
+                    val builder = DatabaseLogReply.newBuilder()
+                    builder.batch = batch.toProto()
+                    emit(builder.build())
+                }
         }
-        return builder.build()
     }
 
-    override suspend fun getBatch(request: BatchRequest): BatchReply {
-        LOGGER.debug("getBatch request received: $request")
-        val builder = BatchReply.newBuilder()
-        val batchId = BatchId.fromString(request.batchId)
-        when (val result = queryService.getBatch(request.database, batchId)
-        ) {
-            is Either.Left -> builder.batchNotFoundBuilder
-                .setDatabase(result.value.database)
-                .setBatchId(result.value.batchId.toString())
-            is Either.Right -> builder.batch = result.value.toProto()
-        }
-        return builder.build()
-    }
-
-    override suspend fun getDatabaseStreams(request: DatabaseStreamsRequest): DatabaseStreamsReply {
-        LOGGER.debug("getDatabaseStreams request received: $request")
-        val builder = DatabaseStreamsReply.newBuilder()
-        when (val result = queryService.getDatabaseStreams(
-            request.database,
-            request.revision,
-        )) {
-            is Either.Left -> builder.databaseNotFoundBuilder.name = request.database
-            is Either.Right -> builder.streamsBuilder.addAllStreams(
-                result.value.map { it.toProto() }
-            )
-        }
-        return builder.build()
-    }
-
-    override suspend fun getStream(request: StreamRequest): StreamReply {
-        LOGGER.debug("getStream request received: $request")
-        val builder = StreamReply.newBuilder()
+    override fun stream(request: StreamRequest): Flow<StreamEventIdReply> = flow {
+        LOGGER.debug("stream request received: $request")
         when (val result = queryService.getStream(
             request.database,
             request.databaseRevision,
             request.stream,
         )
         ) {
-            is Either.Left -> builder.streamNotFoundBuilder
-                .setDatabase(result.value.database)
-                .setStream(result.value.stream)
-            is Either.Right -> builder.stream = result.value.toProto()
+            is Either.Left -> {
+                val builder = StreamEventIdReply.newBuilder()
+                builder.streamNotFoundBuilder
+                    .setDatabase(result.value.database)
+                    .setStream(result.value.stream)
+                emit(builder.build())
+            }
+            is Either.Right ->
+                result.value.collect { eventId ->
+                    val builder = StreamEventIdReply.newBuilder()
+                        .setEventId(eventId)
+                    emit(builder.build())
+                }
         }
-        return builder.build()
     }
 
-    override suspend fun getSubjectStream(request: SubjectStreamRequest): SubjectStreamReply =
+    override fun subjectStream(request: SubjectStreamRequest): Flow<StreamEventIdReply> = flow {
         TODO("Not Implemented Yet")
+    }
 
-    override suspend fun getEvent(request: EventRequest): EventReply {
-        LOGGER.debug("getEvent request received: $request")
-        val builder = EventReply.newBuilder()
-        val eventId = EventId.fromString(request.eventId)
-        when (val result = queryService.getEvent(request.database, eventId)
-        ) {
-            is Either.Left -> {
-                builder.eventNotFoundBuilder.database = request.database
-                builder.eventNotFoundBuilder.eventId = request.eventId
+    override fun events(requests: Flow<EventRequest>): Flow<EventReply> = flow {
+        requests.collect { request ->
+            LOGGER.debug("event request received: $request")
+            val eventId = request.eventId.toLong()
+            val replyBuilder = EventReply.newBuilder()
+            when (val result = queryService.getEvent(request.database, eventId)) {
+                is Either.Left -> {
+                    replyBuilder.eventNotFoundBuilder
+                        .setDatabase(result.value.database)
+                        .setEventId(result.value.eventId)
+                }
+
+                is Either.Right -> {
+                    replyBuilder.eventMapEntryBuilder.eventId = result.value.first
+                    replyBuilder.eventMapEntryBuilder.event = result.value.second.toProto()
+                }
             }
-            is Either.Right -> builder.event = result.value.toProto()
+            emit(replyBuilder.build())
         }
-        return builder.build()
     }
 }

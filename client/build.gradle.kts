@@ -3,6 +3,8 @@ import com.google.protobuf.gradle.*
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.protobuf)
+    `java-library`
+    `maven-publish`
 }
 
 group = "com.evidentdb"
@@ -67,3 +69,13 @@ sourceSets {
 tasks.test {
     useJUnitPlatform()
 }
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            artifactId = "java-client"
+        }
+    }
+}
+

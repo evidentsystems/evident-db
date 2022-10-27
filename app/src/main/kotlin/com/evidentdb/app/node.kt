@@ -12,20 +12,14 @@ import io.micronaut.configuration.kafka.annotation.KafkaListener
 import io.micronaut.configuration.kafka.annotation.OffsetReset
 import io.micronaut.configuration.kafka.annotation.OffsetStrategy
 import io.micronaut.configuration.kafka.annotation.Topic
-import io.micronaut.context.annotation.Bean
-import io.micronaut.context.annotation.Factory
-import io.micronaut.context.annotation.Property
-import io.micronaut.context.annotation.Requires
-import io.micronaut.context.annotation.Value
+import io.micronaut.context.annotation.*
 import io.micronaut.health.HealthStatus
 import io.micronaut.management.endpoint.health.HealthEndpoint
 import io.micronaut.management.health.indicator.AbstractHealthIndicator
 import io.micronaut.management.health.indicator.annotation.Liveness
 import io.micronaut.management.health.indicator.annotation.Readiness
-import io.micronaut.runtime.Micronaut.build
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
-import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,40 +42,27 @@ import java.util.concurrent.ConcurrentHashMap
 
 const val BUFFER_SIZE = 1000
 
-fun main(args: Array<String>) {
-	build()
-	    .args(*args)
-		.packages("com.evidentdb.app")
-		.start()
-}
-
 @Factory
-class Configuration {
+@Requires(env = ["node"])
+class NodeBeans {
 	companion object {
-		private val LOGGER = LoggerFactory.getLogger(InternalEventListener::class.java)
+		private val LOGGER = LoggerFactory.getLogger(NodeBeans::class.java)
 	}
-
-	@Inject
-	lateinit var transactorTopologyRunner: TransactorTopologyRunner
-
-	@Inject
-	lateinit var transactorHealthIndicator: TransactorHealthIndicator
 
 	@Singleton
 	@Bean(preDestroy = "close")
 	fun commandService(
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
-		@Value("\${kafka.topics.internal-commands.name}")
-		internalCommandsTopic: String,
-		@Value("\${kafka.producers.default.linger.ms}")
+		topicsConfig: EvidentDbConfig.TopicsConfig,
+		@Value("\${kafka.producers.service.linger.ms}")
 		producerLingerMs: Int,
 		commandResponseChannel: ReceiveChannel<EventEnvelope>,
 		meterRegistry: MeterRegistry,
 	): KafkaCommandService {
 		val service = KafkaCommandService(
 			kafkaBootstrapServers,
-			internalCommandsTopic,
+			topicsConfig.internalCommands.name,
 			producerLingerMs,
 			commandResponseChannel,
 			meterRegistry,
@@ -112,7 +93,9 @@ class Configuration {
 	}
 
 	@Singleton
-	fun queryService(transactorTopologyRunner: TransactorTopologyRunner): KafkaQueryService =
+	fun queryService(
+		transactorTopologyRunner: TransactorTopologyRunner
+	): KafkaQueryService =
 		KafkaQueryService(
 			transactorTopologyRunner.streams,
 			TransactorTopology.DATABASE_STORE,
@@ -136,20 +119,15 @@ class Configuration {
 }
 
 @Singleton
+@Requires(env = ["node"])
 class TransactorTopologyRunner(
-	@Value("\${evidentdb.transactor.state.dir}")
-	stateDir: String,
-	@Value("\${kafka.topics.internal-commands.name}")
-	internalCommandsTopic: String,
-	@Value("\${kafka.topics.internal-commands.partitions}")
-	internalCommandsPartitions: Int,
-	@Value("\${kafka.topics.internal-events.name}")
-	internalEventsTopic: String,
-	@Value("\${micronaut.application.name}")
-	applicationId: String,
+	evidentDbConfig: EvidentDbConfig,
+	topicsConfig: EvidentDbConfig.TopicsConfig,
 	@Value("\${kafka.bootstrap.servers}")
 	kafkaBootstrapServers: String,
-	@Value("\${kafka.streams.producer.linger.ms}")
+	@Value("\${kafka.streams.transactor.state.dir}")
+	stateDir: String,
+	@Value("\${kafka.streams.transactor.producer.linger.ms}")
 	producerLingerMs: Int,
 	meterRegistry: MeterRegistry,
 ) {
@@ -158,8 +136,7 @@ class TransactorTopologyRunner(
 
 	init {
 		val config = Properties()
-		val appId = "$applicationId-evidentdb-transactor"
-		config[StreamsConfig.APPLICATION_ID_CONFIG] = appId
+		config[StreamsConfig.APPLICATION_ID_CONFIG] = "evidentdb-${evidentDbConfig.tenant}-transactor"
 		config[StreamsConfig.STATE_DIR_CONFIG] = stateDir
 		config[StreamsConfig.BOOTSTRAP_SERVERS_CONFIG] = kafkaBootstrapServers
 		config[StreamsConfig.PROCESSING_GUARANTEE_CONFIG] = "at_least_once" // "exactly_once_v2"
@@ -167,7 +144,7 @@ class TransactorTopologyRunner(
 		config[StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG)] = "all"
 		config[StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG)] = producerLingerMs
 		config[StreamsConfig.RETRY_BACKOFF_MS_CONFIG] = 0
-		config[StreamsConfig.NUM_STREAM_THREADS_CONFIG] = internalCommandsPartitions
+		//config[StreamsConfig.NUM_STREAM_THREADS_CONFIG] = topicsConfig.internalCommands.partitions
 		// TODO: standby replicas for query high-availability
 		// config[StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG] = 1
 //      On broker:
@@ -175,8 +152,8 @@ class TransactorTopologyRunner(
 //		log.flush.interval.ms=0
 
 		val topology = TransactorTopology.build(
-			internalCommandsTopic,
-			internalEventsTopic,
+			topicsConfig.internalCommands.name,
+			topicsConfig.internalEvents.name,
 			meterRegistry,
 		)
 
@@ -197,14 +174,19 @@ class TransactorTopologyRunner(
 	}
 }
 
-// TODO: configurable CLIENT_ID/GROUP_ID w/ Tenant
+@Singleton
+@Requires(env = ["node"], beans = [EvidentDbConfig::class])
 @KafkaListener(
-	groupId = "\${micronaut.application.name}-internal-event-listener",
+	groupId = "evidentdb-\${evidentdb.tenant}-internal-event-listener",
 	uniqueGroupId = true,
 	isolation = IsolationLevel.READ_COMMITTED,
 	offsetStrategy = OffsetStrategy.DISABLED,
 	offsetReset = OffsetReset.LATEST,
-	properties = [Property(name = ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, value = "false")]
+	properties = [
+		Property(name = ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, value = "false"),
+		Property(name = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, value = "org.apache.kafka.common.serialization.UUIDDeserializer"),
+		Property(name = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, value = "com.evidentdb.kafka.EventEnvelopeSerde\$EventEnvelopeDeserializer")
+	]
 )
 class InternalEventListener {
 	companion object {
@@ -221,11 +203,11 @@ class InternalEventListener {
 		listeners.remove(key)
 	}
 
-	@Topic("\${kafka.topics.internal-events.name}")
+	@Topic("\${evidentdb.topics.internal-events.name}")
 	fun receive(event: EventEnvelope) {
 		LOGGER.info("Invoking InternalEventListener for event ${event.id}")
 		LOGGER.debug("KafkaListener event data $event, listeners $listeners")
-		for ((key, listener) in listeners) {
+		for ((_, listener) in listeners) {
 			scope.launch {
 				listener.invoke(event)
 			}
@@ -241,7 +223,7 @@ class InternalEventListener {
 @Singleton
 @Liveness
 @Readiness
-@Requires(beans = [HealthEndpoint::class])
+@Requires(beans = [HealthEndpoint::class], env = ["node"])
 class TransactorHealthIndicator(
 	private val runner: TransactorTopologyRunner,
 ): AbstractHealthIndicator<KafkaStreams.State>() {

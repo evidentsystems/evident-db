@@ -62,13 +62,13 @@
 
   (def batch-result @(.transact conn batch))
 
-  (def db2 @(.db conn (.getRevision batch-result)))
+  (def db2 @(.sync conn (.getRevision batch-result)))
 
   (def db3 @(.sync conn))
 
   (= db2 db3)
 
-  (eagerize (.stream db2 "my-stream"))
+  (count (eagerize (.stream db2 "my-stream")))
 
   (count (eagerize (.log conn)))
 

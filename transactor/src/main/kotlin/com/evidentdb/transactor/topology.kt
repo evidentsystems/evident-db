@@ -8,6 +8,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
 import org.apache.kafka.clients.admin.AdminClient
+import org.apache.kafka.common.header.internals.RecordHeader
+import org.apache.kafka.common.header.internals.RecordHeaders
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
@@ -38,6 +40,7 @@ object TransactorTopology {
     const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
+    private const val USERSPACE_EVENT_SINK = "USERSPACE_EVENTS"
 
     fun build(
         internalCommandsTopic: String,
@@ -51,6 +54,7 @@ object TransactorTopology {
         val topology = Topology()
         val databaseNameSerde = DatabaseNameSerde()
 
+        // Internal Commands
         topology.addSource(
             INTERNAL_COMMAND_SOURCE,
             Serdes.UUID().deserializer(),
@@ -100,6 +104,7 @@ object TransactorTopology {
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             STREAM_INDEXER,
+            EVENT_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
@@ -145,7 +150,7 @@ object TransactorTopology {
             EVENT_INDEXER,
         )
 
-        // Event Log
+        // Internal Event Log
         topology.addSink(
             INTERNAL_EVENT_SINK,
             internalEventsTopic,
@@ -153,6 +158,15 @@ object TransactorTopology {
             EventEnvelopeSerde.EventEnvelopeSerializer(),
             DatabaseStreamPartitioner(),
             COMMAND_PROCESSOR,
+        )
+
+        // Userspace Events
+        topology.addSink(
+            USERSPACE_EVENT_SINK,
+            DatabaseTopicNameExtractor(),
+            Serdes.String().serializer(), // StreamName
+            EventSerde.EventSerializer(), // CloudEvent
+            EVENT_INDEXER,
         )
 
         return topology
@@ -325,32 +339,39 @@ object TransactorTopology {
     }
 
     private class EventIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, CloudEvent>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, String, CloudEvent>() {
         lateinit var eventStore: EventStore
+        lateinit var databaseStore: DatabaseReadOnlyKeyValueStore
 
         override fun init(context: ProcessorContext<StreamKey, CloudEvent>?) {
             super.init(context)
-            this.eventStore = EventStore(
-                context().getStateStore(EVENT_STORE)
-            )
+            this.eventStore = EventStore(context().getStateStore(EVENT_STORE))
+            this.databaseStore = context().getStateStore(DATABASE_STORE)
         }
 
         override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val internalEvent = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.eventsToIndex(internalEvent)
             if (result != null) {
+                val database = databaseStore.get(result.first().second.database)
                 for ((eventId, event) in result) {
-                    context().forward(
-                        Record(
-                            "${buildStreamKeyPrefix(event.database)}${event.stream}",
-                            event.event,
-                            context().currentStreamTimeMs()
-                        )
-                    )
                     eventStore.putEvent(
                         event.database,
                         eventId,
                         event.event
+                    )
+                    context().forward(
+                        Record(
+                            event.stream.value,
+                            event.event,
+                            context().currentStreamTimeMs(),
+                            RecordHeaders(listOf(
+                                RecordHeader(
+                                    TOPIC_HEADER,
+                                    database.topic.toByteArray(Charsets.UTF_8)
+                                )
+                            ))
+                        )
                     )
                 }
             }

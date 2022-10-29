@@ -16,7 +16,7 @@ option objc_class_prefix = "EDB";
 
 service EvidentDb {
   // Command
-  rpc createDatabase(DatabaseCreationInfo) returns (CreateDatabaseReply) {}
+  rpc createDatabase(CreateDatabaseRequest) returns (CreateDatabaseReply) {}
   rpc deleteDatabase(DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
   rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
 
@@ -31,12 +31,17 @@ service EvidentDb {
   rpc events(stream EventRequest) returns (stream EventReply) {}
 }
 
+message CreateDatabaseRequest {
+  string name = 1;
+}
+
 message CreateDatabaseReply {
   oneof result {
     DatabaseCreationResult database_creation = 1;
     InvalidDatabaseNameError invalid_database_name_error = 2;
     DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
-    InternalServerError internal_server_error = 4;
+    DatabaseTopicCreationError database_topic_creation_error = 4;
+    InternalServerError internal_server_error = 5;
   }
 }
 
@@ -45,7 +50,8 @@ message DeleteDatabaseReply {
     DatabaseDeletionResult database_deletion = 1;
     InvalidDatabaseNameError invalid_database_name_error = 2;
     DatabaseNotFoundError database_not_found_error = 3;
-    InternalServerError internal_server_error = 4;
+    DatabaseTopicDeletionError database_topic_deletion_error = 4;
+    InternalServerError internal_server_error = 5;
   }
 }
 

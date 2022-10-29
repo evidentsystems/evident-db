@@ -187,6 +187,18 @@ class EventEnvelopeSerde:
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )
+                "DatabaseTopicCreationError" -> ErrorEnvelope(
+                    eventId,
+                    commandId,
+                    databaseId,
+                    databaseTopicCreationErrorFromBytes(dataBytes)
+                )
+                "DatabaseTopicDeletionError" -> ErrorEnvelope(
+                    eventId,
+                    commandId,
+                    databaseId,
+                    databaseTopicDeletionErrorFromBytes(dataBytes)
+                )
                 else -> throw IllegalArgumentException("unknown event type ${cloudEvent.type}")
             }
         }

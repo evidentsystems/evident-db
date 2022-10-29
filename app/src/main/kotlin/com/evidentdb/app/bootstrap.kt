@@ -1,5 +1,7 @@
 package com.evidentdb.app
 
+import com.evidentdb.kafka.RETENTION_MS
+import com.evidentdb.kafka.minInsyncReplicas
 import io.micronaut.context.annotation.*
 import jakarta.annotation.PostConstruct
 import org.apache.kafka.clients.admin.AdminClient

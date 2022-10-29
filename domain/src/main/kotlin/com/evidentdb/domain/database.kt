@@ -3,6 +3,11 @@ package com.evidentdb.domain
 import arrow.core.*
 import java.net.URI
 
+fun databaseOutputTopic(
+    tenantName: TenantName,
+    databaseName: DatabaseName,
+) = "evidentdb-${tenantName.value}-${databaseName.value}-event-log"
+
 fun databaseUri(name: DatabaseName): URI =
     URI(DB_URI_SCHEME, name.value, null)
 

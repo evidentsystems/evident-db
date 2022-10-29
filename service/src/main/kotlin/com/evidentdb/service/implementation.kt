@@ -174,6 +174,7 @@ class KafkaProducerCommandManager(
 }
 
 class KafkaCommandService(
+    override val tenant: TenantName,
     kafkaBootstrapServers: String,
     internalCommandsTopic: String,
     producerLingerMs: Int,

@@ -15,6 +15,7 @@ option objc_class_prefix = "EDB";
 
 message DatabaseCreationInfo {
   string name = 1;
+  string topic = 2;
 }
 
 message DatabaseCreationResult {
@@ -31,13 +32,15 @@ message DatabaseDeletionResult {
 
 message Database {
   string name = 1;
-  google.protobuf.Timestamp created = 2;
-  map<string, int64> stream_revisions = 3;
+  string topic = 2;
+  google.protobuf.Timestamp created = 3;
+  map<string, int64> stream_revisions = 4;
 }
 
 message DatabaseSummary {
   string name = 1;
-  google.protobuf.Timestamp created = 2;
+  string topic = 2;
+  google.protobuf.Timestamp created = 3;
 }
 
 enum StreamState {
@@ -152,6 +155,16 @@ message StreamStateConflictsError {
 
 message InternalServerError {
   string message = 1;
+}
+
+message DatabaseTopicCreationError {
+  string database = 1;
+  string topic = 2;
+}
+
+message DatabaseTopicDeletionError {
+  string database = 1;
+  string topic = 2;
 }
 
 message BatchNotFoundError {

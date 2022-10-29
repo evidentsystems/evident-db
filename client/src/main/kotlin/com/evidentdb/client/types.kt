@@ -108,6 +108,11 @@ data class DatabaseNameAlreadyExistsError(val name: DatabaseName):
 data class DatabaseNotFoundError(val name: String):
     DatabaseDeletionError, BatchTransactionError, NotFoundError,
     IllegalStateException("Database not found: $name")
+data class DatabaseTopicCreationError(val database: String, val topic: String): DatabaseCreationError,
+    IllegalStateException("Database $database topic $topic could not be created.")
+data class DatabaseTopicDeletionError(val database: String, val topic: String): DatabaseDeletionError,
+    IllegalStateException("Database $database topic $topic could not be deleted.")
+
 data class BatchNotFoundError(val database: String, val batchId: BatchId):
     NotFoundError,
     IllegalStateException("Batch $batchId not found in database $database")

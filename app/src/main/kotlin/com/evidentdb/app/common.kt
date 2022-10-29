@@ -7,11 +7,6 @@ import javax.validation.constraints.Min
 import javax.validation.constraints.NotBlank
 import javax.validation.constraints.NotNull
 
-fun minInsyncReplicas(replication: Int) =
-    replication.div(2) + 1
-
-const val RETENTION_MS = -1
-
 @ConfigurationProperties("evidentdb")
 interface EvidentDbConfig {
     @get:NotBlank

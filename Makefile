@@ -104,7 +104,7 @@ test:
 
 .PHONY: run
 run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
-	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run --args="node"
+	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run --args="node -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
 
 .PHONY: perf
 perf:

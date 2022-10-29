@@ -3,6 +3,7 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
+import arrow.core.right
 import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
@@ -10,6 +11,7 @@ import java.time.Instant
 
 interface CommandService {
     val commandManager: CommandManager
+    val tenant: TenantName
 
     suspend fun createDatabase(proposedName: String)
             : Either<DatabaseCreationError, DatabaseCreated> =
@@ -18,7 +20,10 @@ interface CommandService {
             val command = CreateDatabase(
                 EnvelopeId.randomUUID(),
                 name,
-                DatabaseCreationInfo(name)
+                DatabaseCreationInfo(
+                    name,
+                    databaseOutputTopic(tenant, name),
+                )
             )
             commandManager.createDatabase(command).bind()
         }
@@ -71,12 +76,19 @@ interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
     val batchSummaryReadModel: BatchSummaryReadModel
 
+    suspend fun createDatabaseTopic(database: DatabaseName, topicName: TopicName): Either<DatabaseTopicCreationError, TopicName> =
+        topicName.right()
+
     suspend fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
         either {
             val availableName = validateDatabaseNameNotTaken(
                 databaseReadModel,
                 command.data.name,
+            ).bind()
+            val createdTopicName = createDatabaseTopic(
+                availableName,
+                command.data.topic
             ).bind()
             DatabaseCreated(
                 EnvelopeId.randomUUID(),
@@ -85,12 +97,16 @@ interface CommandHandler {
                 DatabaseCreationResult(
                     Database(
                         availableName,
+                        createdTopicName,
                         Instant.now(),
                         mapOf()
                     )
                 ),
             )
         }
+
+    suspend fun deleteDatabaseTopic(database: DatabaseName, topicName: TopicName): Either<DatabaseTopicDeletionError, Unit> =
+        Unit.right()
 
     suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
@@ -99,6 +115,7 @@ interface CommandHandler {
                 databaseReadModel,
                 command.database,
             ).bind()
+            deleteDatabaseTopic(database.name, database.topic).bind()
             DatabaseDeleted(
                 EnvelopeId.randomUUID(),
                 command.id,
@@ -187,7 +204,8 @@ object EventHandler {
                 event.data.database.let {
                     DatabaseSummary(
                         it.name,
-                        it.created
+                        it.topic,
+                        it.created,
                     )
                 }
             )

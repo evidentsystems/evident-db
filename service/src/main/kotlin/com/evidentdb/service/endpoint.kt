@@ -25,7 +25,7 @@ class EvidentDbEndpoint(
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
     }
 
-    override suspend fun createDatabase(request: DatabaseCreationInfo): CreateDatabaseReply {
+    override suspend fun createDatabase(request: CreateDatabaseRequest): CreateDatabaseReply {
         LOGGER.debug("createDatabase request received: $request")
         val builder = CreateDatabaseReply.newBuilder()
         commandService.createDatabase(request.name).bimap(
@@ -39,6 +39,10 @@ class EvidentDbEndpoint(
                     }
                     is InternalServerError -> {
                         builder.internalServerError = it.toProto()
+                    }
+
+                    is DatabaseTopicCreationError -> {
+                        builder.databaseTopicCreationError = it.toProto()
                     }
                 }
             },
@@ -59,11 +63,16 @@ class EvidentDbEndpoint(
                         is DatabaseNotFoundError -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
-                        is InternalServerError -> {
-                            builder.internalServerError = it.toProto()
-                        }
                         is InvalidDatabaseNameError -> {
                             builder.invalidDatabaseNameError = it.toProto()
+                        }
+
+                        is DatabaseTopicDeletionError -> {
+                            builder.databaseTopicDeletionError = it.toProto()
+                        }
+
+                        is InternalServerError -> {
+                            builder.internalServerError = it.toProto()
                         }
                     }
                 },

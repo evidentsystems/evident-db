@@ -83,7 +83,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             throw ClientClosedException(this)
         else {
             val result = grpcClient.createDatabase(
-                DatabaseCreationInfo.newBuilder()
+                CreateDatabaseRequest.newBuilder()
                     .setName(name)
                     .build()
             )
@@ -96,6 +96,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                 CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
                     throw DatabaseNameAlreadyExistsError(name)
+
+                CreateDatabaseReply.ResultCase.DATABASE_TOPIC_CREATION_ERROR ->
+                    throw DatabaseTopicCreationError(
+                        result.databaseTopicCreationError.database,
+                        result.databaseTopicCreationError.topic
+                    )
 
                 CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
                     throw InternalServerError(result.internalServerError.message)
@@ -125,6 +131,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                 DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
                     throw DatabaseNotFoundError(name)
+
+                DeleteDatabaseReply.ResultCase.DATABASE_TOPIC_DELETION_ERROR ->
+                    throw DatabaseTopicDeletionError(
+                        result.databaseTopicDeletionError.database,
+                        result.databaseTopicDeletionError.topic
+                    )
 
                 DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
                     throw InternalServerError(result.internalServerError.message)

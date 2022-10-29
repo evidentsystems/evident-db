@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.IsolationLevel
@@ -52,6 +53,8 @@ class NodeBeans {
 	@Singleton
 	@Bean(preDestroy = "close")
 	fun commandService(
+		@Value("\${evidentdb.tenant}")
+		tenant: String,
 		@Value("\${kafka.bootstrap.servers}")
 		kafkaBootstrapServers: String,
 		topicsConfig: EvidentDbConfig.TopicsConfig,
@@ -61,6 +64,7 @@ class NodeBeans {
 		meterRegistry: MeterRegistry,
 	): KafkaCommandService {
 		val service = KafkaCommandService(
+			TenantName.build(tenant),
 			kafkaBootstrapServers,
 			topicsConfig.internalCommands.name,
 			producerLingerMs,
@@ -129,6 +133,7 @@ class TransactorTopologyRunner(
 	stateDir: String,
 	@Value("\${kafka.streams.transactor.producer.linger.ms}")
 	producerLingerMs: Int,
+	adminClient: AdminClient,
 	meterRegistry: MeterRegistry,
 ) {
 	val streams: KafkaStreams
@@ -154,6 +159,9 @@ class TransactorTopologyRunner(
 		val topology = TransactorTopology.build(
 			topicsConfig.internalCommands.name,
 			topicsConfig.internalEvents.name,
+			adminClient,
+			topicsConfig.databaseTopics.replication.toShort(),
+			topicsConfig.databaseTopics.compressionType,
 			meterRegistry,
 		)
 

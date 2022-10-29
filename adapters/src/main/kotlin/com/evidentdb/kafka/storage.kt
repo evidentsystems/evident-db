@@ -77,25 +77,20 @@ open class DatabaseReadModelStore(
         revision: DatabaseRevision?
     ): Database? =
         databaseStore.get(name)?.let { databaseSummary ->
-            if (revision == null)
-                logStore.latest(name)?.let {batchSummary ->
-                    Database(
-                        name,
-                        databaseSummary.created,
-                        batchSummary.streamRevisions
-                    )
-                } ?: Database(name, databaseSummary.created, mapOf())
-            else
-                // TODO: seek to revision key, rather than exact lookup, to
-                //  tolerate users speculating about revision? Still fail if
-                //  given revision exceeds available revision
-                logStore.entry(name, revision)?.let { batchSummary ->
-                    Database(
-                        name,
-                        databaseSummary.created,
-                        batchSummary.streamRevisions
-                    )
-                }
+            val streamRevisions: Map<StreamName, StreamRevision>? =
+                if (revision == null)
+                    logStore.latest(name)?.streamRevisions
+                else
+                    // TODO: seek to revision key, rather than exact lookup, to
+                    //  tolerate users speculating about revision? Still fail if
+                    //  given revision exceeds available revision
+                    logStore.entry(name, revision)?.streamRevisions
+            Database(
+                name,
+                databaseSummary.topic,
+                databaseSummary.created,
+                streamRevisions ?: mapOf()
+            )
         }
 
     override fun catalog(): Flow<Database> = flow {
@@ -103,16 +98,13 @@ open class DatabaseReadModelStore(
             for (kv in databaseIterator) {
                 val databaseSummary = kv.value
                 emit(
-                    logStore.latest(databaseSummary.name)?.let { batchSummary ->
-                        Database(
-                            databaseSummary.name,
-                            databaseSummary.created,
-                            batchSummary.streamRevisions
-                        )
-                    } ?: Database(
+                    Database(
                         databaseSummary.name,
+                        databaseSummary.topic,
                         databaseSummary.created,
-                        mapOf()
+                        logStore.latest(databaseSummary.name)
+                            ?.streamRevisions
+                            ?: mapOf()
                     )
                 )
             }

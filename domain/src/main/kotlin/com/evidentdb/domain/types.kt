@@ -48,11 +48,25 @@ data class ErrorEnvelope(
         get() = "com.evidentdb.error.${data.javaClass.simpleName}"
 }
 
+// Tenant
+
+//typealias TenantRevision = Long
+
+@JvmInline
+value class TenantName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): TenantName =
+            validate(TenantName(value)) {
+                validate(TenantName::value).matches(Regex(NAME_PATTERN))
+            }
+    }
+}
+
 // Database
 
 typealias DatabaseRevision = Long
-typealias TenantRevision = Long
 typealias DatabaseLogKey = String
+typealias TopicName = String
 
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
@@ -63,34 +77,19 @@ value class DatabaseName private constructor(val value: String) {
             }
 
         fun of(value: String): Validated<InvalidDatabaseNameError, DatabaseName> =
-            valikate {
-                build(value)
-            }.mapLeft { InvalidDatabaseNameError(value) }
-    }
-}
-
-@JvmInline
-value class StreamName private constructor(val value: String) {
-    companion object {
-        fun build(value: String): StreamName =
-            validate(StreamName(value)) {
-                validate(StreamName::value).matches(Regex(NAME_PATTERN))
-            }
-
-        fun of(value: String): Validated<InvalidStreamName, StreamName> =
-            valikate {
-                build(value)
-            }.mapLeft { InvalidStreamName(value) }
+            valikate { build(value) }.mapLeft { InvalidDatabaseNameError(value) }
     }
 }
 
 data class DatabaseSummary(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
 )
 
 data class Database(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
@@ -100,7 +99,10 @@ data class Database(
         }
 }
 
-data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationInfo(
+    val name: DatabaseName,
+    val topic: TopicName
+): CommandBody
 
 data class CreateDatabase(
     override val id: EnvelopeId,
@@ -142,6 +144,19 @@ data class DatabaseDeleted(
 typealias StreamKey = String
 typealias StreamRevision = Long
 typealias StreamSubject = String
+
+@JvmInline
+value class StreamName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): StreamName =
+            validate(StreamName(value)) {
+                validate(StreamName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidStreamName, StreamName> =
+            valikate { build(value) }.mapLeft { InvalidStreamName(value) }
+    }
+}
 
 sealed interface ProposedEventStreamState
 
@@ -241,6 +256,7 @@ data class BatchTransactionResult(
     val databaseAfter: Database
         get() = Database(
             databaseBefore.name,
+            databaseBefore.topic,
             databaseBefore.created,
             batch.streamRevisions,
         )
@@ -260,6 +276,9 @@ sealed interface NotFoundError
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
+data class DatabaseTopicCreationError(val database: String, val topic: TopicName): DatabaseCreationError
+data class DatabaseTopicDeletionError(val database: String, val topic: TopicName): DatabaseDeletionError
+
 data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
 data class StreamNotFoundError(val database: String, val stream: String): NotFoundError
 data class EventNotFoundError(val database: String, val eventId: EventId): NotFoundError

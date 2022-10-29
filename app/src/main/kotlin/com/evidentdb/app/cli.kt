@@ -1,8 +1,11 @@
 package com.evidentdb.app
 
+import com.evidentdb.domain.NAME_PATTERN
+import com.evidentdb.domain.TenantName
 import io.micronaut.context.env.Environment
 import io.micronaut.runtime.Micronaut
 import picocli.CommandLine
+import picocli.CommandLine.ITypeConverter
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
 
@@ -36,7 +39,25 @@ class Cli : Runnable {
         defaultValue = "default-tenant",
         required = true
     )
-    var tenant: String = "default-tenant"
+    var tenant: TenantName = TenantName.build("default-tenant")
+
+    @CommandLine.Option(
+        names = ["-r", "--replication"],
+        description = ["The replication factor for all EvidentDB-managed topics."],
+        defaultValue = "3",
+        required = true,
+        scope = CommandLine.ScopeType.INHERIT
+    )
+    var replication: Int = 3
+
+    @CommandLine.Option(
+        names = ["-c", "--compression-type"],
+        description = ["The compression.type to configure for all EvidentDB-managed topics."],
+        defaultValue = "uncompressed",
+        required = true,
+        scope = CommandLine.ScopeType.INHERIT
+    )
+    var compressionType: String = "uncompressed"
 
     @Spec
     lateinit var spec: CommandSpec
@@ -61,25 +82,11 @@ class Cli : Runnable {
             required = true
         )
         partitions: Int = 6,
-        @CommandLine.Option(
-            names = ["-r", "--replication"],
-            description = ["The replication factor to establish when creating EvidentDB's internal topics."],
-            defaultValue = "3",
-            required = true
-        )
-        replication: Int = 3,
-        @CommandLine.Option(
-            names = ["-c", "--compression-type"],
-            description = ["The compression.type to configure when creating EvidentDB's internal topics."],
-            defaultValue = "uncompressed",
-            required = true
-        )
-        compressionType: String = "uncompressed"
     ) {
         Micronaut
             .build()
             .properties(mapOf(
-                "evidentdb.tenant" to tenant,
+                "evidentdb.tenant" to tenant.value,
                 "evidentdb.topics.internal-commands.partitions" to partitions,
                 "evidentdb.topics.internal-commands.replication" to replication,
                 "evidentdb.topics.internal-commands.compression-type" to compressionType,
@@ -103,10 +110,23 @@ class Cli : Runnable {
             .build()
             .eagerInitSingletons(true)
             .properties(mapOf(
-                "evidentdb.tenant" to tenant,
-                "kafka.bootstrap.servers" to kafkaBootstrapServers
+                "evidentdb.tenant" to tenant.value,
+                "kafka.bootstrap.servers" to kafkaBootstrapServers,
+                "evidentdb.topics.database-topics.replication" to replication,
+                "evidentdb.topics.database-topics.compression-type" to compressionType,
             ))
             .environments("node")
             .start()
     }
+}
+
+class TenantNameConverter: ITypeConverter<TenantName> {
+    override fun convert(value: String?): TenantName =
+        try {
+            TenantName.build(value!!)
+        } catch (e: Exception) {
+            throw CommandLine.TypeConversionException(
+                "Invalid tenant name $value. Tenants must must match $NAME_PATTERN."
+            )
+        }
 }

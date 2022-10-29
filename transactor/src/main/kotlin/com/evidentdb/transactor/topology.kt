@@ -7,6 +7,7 @@ import io.cloudevents.CloudEvent
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
+import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
@@ -41,6 +42,9 @@ object TransactorTopology {
     fun build(
         internalCommandsTopic: String,
         internalEventsTopic: String,
+        adminClient: AdminClient,
+        databaseTopicReplication: Short,
+        databaseTopicCompressionType: String,
         meterRegistry: MeterRegistry,
     ): Topology {
         LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic")
@@ -56,7 +60,14 @@ object TransactorTopology {
 
         topology.addProcessor(
             COMMAND_PROCESSOR,
-            ProcessorSupplier { CommandProcessor(meterRegistry) },
+            ProcessorSupplier {
+                CommandProcessor(
+                    adminClient,
+                    databaseTopicReplication,
+                    databaseTopicCompressionType,
+                    meterRegistry
+                )
+            },
             INTERNAL_COMMAND_SOURCE,
         )
         topology.addProcessor(
@@ -152,9 +163,17 @@ object TransactorTopology {
             partitionByDatabase(value!!.database, numPartitions)
     }
 
-    private class CommandProcessor(val meterRegistry: MeterRegistry):
-        ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
-        private var transactor = KafkaStreamsCommandHandler()
+    private class CommandProcessor(
+        val adminClient: AdminClient,
+        val databaseTopicReplication: Short,
+        val databaseTopicCompressionType: String,
+        val meterRegistry: MeterRegistry
+    ): ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
+        private var transactor = KafkaStreamsCommandHandler(
+            adminClient,
+            databaseTopicReplication,
+            databaseTopicCompressionType
+        )
 
         override fun init(context: ProcessorContext<EnvelopeId, EventEnvelope>?) {
             super.init(context)
@@ -167,7 +186,11 @@ object TransactorTopology {
 
         override fun close() {
             super.close()
-            this.transactor = KafkaStreamsCommandHandler()
+            this.transactor = KafkaStreamsCommandHandler(
+                adminClient,
+                databaseTopicReplication,
+                databaseTopicCompressionType
+            )
         }
 
         override fun process(record: Record<EnvelopeId, CommandEnvelope>?): Unit = runBlocking {

@@ -24,6 +24,8 @@ import com.evidentdb.dto.v1.proto.DuplicateBatchError as ProtoDuplicateBatchErro
 import com.evidentdb.dto.v1.proto.Event as ProtoEvent
 import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InternalServerError as ProtoInternalServerError
+import com.evidentdb.dto.v1.proto.DatabaseTopicCreationError as ProtoDatabaseTopicCreationError
+import com.evidentdb.dto.v1.proto.DatabaseTopicDeletionError as ProtoDatabaseTopicDeletionError
 import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError as ProtoInvalidDatabaseNameError
 import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
 import com.evidentdb.dto.v1.proto.InvalidEventsError as ProtoInvalidEventsError
@@ -45,7 +47,8 @@ fun Instant.toTimestamp(): Timestamp =
 
 fun databaseCreationInfoFromProto(proto: ProtoDatabaseCreationInfo) =
     DatabaseCreationInfo(
-        DatabaseName.build(proto.name)
+        DatabaseName.build(proto.name),
+        proto.topic
     )
 
 fun databaseCreationInfoFromBytes(bytes: ByteArray): DatabaseCreationInfo =
@@ -54,6 +57,7 @@ fun databaseCreationInfoFromBytes(bytes: ByteArray): DatabaseCreationInfo =
 fun DatabaseCreationInfo.toProto(): ProtoDatabaseCreationInfo =
     ProtoDatabaseCreationInfo.newBuilder()
         .setName(this.name.value)
+        .setTopic(this.topic)
         .build()
 
 fun databaseCreationResultFromProto(proto: ProtoDatabaseCreationResult) =
@@ -408,6 +412,44 @@ fun internalServerErrorFromProto(proto: ProtoInternalServerError): InternalServe
 fun internalServerErrorFromBytes(bytes: ByteArray): InternalServerError =
     internalServerErrorFromProto(ProtoInternalServerError.parseFrom(bytes))
 
+fun DatabaseTopicCreationError.toProto(): ProtoDatabaseTopicCreationError =
+    ProtoDatabaseTopicCreationError.newBuilder()
+        .setDatabase(this.database)
+        .setTopic(this.topic)
+        .build()
+
+fun databaseTopicCreationErrorFromProto(
+    proto: ProtoDatabaseTopicCreationError
+): DatabaseTopicCreationError =
+    DatabaseTopicCreationError(
+        proto.database,
+        proto.topic
+    )
+
+fun databaseTopicCreationErrorFromBytes(
+    bytes: ByteArray
+): DatabaseTopicCreationError =
+    databaseTopicCreationErrorFromProto(ProtoDatabaseTopicCreationError.parseFrom(bytes))
+
+fun DatabaseTopicDeletionError.toProto(): ProtoDatabaseTopicDeletionError =
+    ProtoDatabaseTopicDeletionError.newBuilder()
+        .setDatabase(this.database)
+        .setTopic(this.topic)
+        .build()
+
+fun databaseTopicDeletionErrorFromProto(
+    proto: ProtoDatabaseTopicDeletionError
+): DatabaseTopicDeletionError =
+    DatabaseTopicDeletionError(
+        proto.database,
+        proto.topic
+    )
+
+fun databaseTopicDeletionErrorFromBytes(
+    bytes: ByteArray
+): DatabaseTopicDeletionError =
+    databaseTopicDeletionErrorFromProto(ProtoDatabaseTopicDeletionError.parseFrom(bytes))
+
 fun EventBody.toProto(): Message =
     when(this) {
         is DatabaseCreationResult -> this.toProto()
@@ -422,11 +464,14 @@ fun EventBody.toProto(): Message =
         is DuplicateBatchError -> this.toProto()
         is StreamStateConflictsError -> this.toProto()
         is InternalServerError -> this.toProto()
+        is DatabaseTopicCreationError -> this.toProto()
+        is DatabaseTopicDeletionError -> this.toProto()
     }
 
 fun Database.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
         .setName(this.name.value)
+        .setTopic(this.topic)
         .setCreated(this.created.toTimestamp())
         .putAllStreamRevisions(streamRevisionsToDto(this.streamRevisions))
         .build()
@@ -437,6 +482,7 @@ fun Database.toByteArray(): ByteArray =
 fun databaseFromProto(proto: ProtoDatabase) =
     Database(
         DatabaseName.build(proto.name),
+        proto.topic,
         proto.created.toInstant(),
         streamRevisionsFromDto(proto.streamRevisionsMap)
     )
@@ -447,6 +493,7 @@ fun databaseFromBytes(data: ByteArray): Database =
 fun DatabaseSummary.toProto(): ProtoDatabaseSummary =
     ProtoDatabaseSummary.newBuilder()
         .setName(this.name.value)
+        .setTopic(this.topic)
         .setCreated(this.created.toTimestamp())
         .build()
 
@@ -456,7 +503,8 @@ fun DatabaseSummary.toByteArray(): ByteArray =
 fun databaseSummaryFromProto(proto: ProtoDatabaseSummary) =
     DatabaseSummary(
         DatabaseName.build(proto.name),
-        proto.created.toInstant(),
+        proto.topic,
+        proto.created.toInstant()
     )
 
 fun databaseSummaryFromBytes(data: ByteArray): DatabaseSummary =

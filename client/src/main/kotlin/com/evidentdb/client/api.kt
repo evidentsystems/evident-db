@@ -13,7 +13,6 @@ import io.grpc.ManagedChannelBuilder
 import java.net.URI
 import java.util.*
 
-
 object EvidentDB {
     @JvmStatic
     fun javaClient(channelBuilder: ManagedChannelBuilder<*>): JavaClient =

@@ -7,9 +7,11 @@ import java.util.*
 
 typealias DatabaseName = String
 typealias DatabaseRevision = Long
+typealias TopicName = String
 
 data class DatabaseSummary(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
@@ -46,27 +48,6 @@ data class Batch(
     val id: BatchId,
     val database: DatabaseName,
     val events: List<Event>,
-    val streamRevisions: Map<StreamName, StreamRevision>,
-    val timestamp: Instant,
-) {
-    val revision: DatabaseRevision
-        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
-            acc + v
-        }
-}
-
-data class ProposedBatch(
-    val id: BatchId,
-    val database: DatabaseName,
-    val events: List<EventProposal>
-)
-
-data class BatchSummaryEvent(val id: EventId, val stream: StreamName)
-
-data class BatchSummary(
-    val id: BatchId,
-    val database: DatabaseName,
-    val events: List<BatchSummaryEvent>,
     val streamRevisions: Map<StreamName, StreamRevision>,
     val timestamp: Instant,
 ) {
@@ -113,9 +94,9 @@ data class DatabaseTopicCreationError(val database: String, val topic: String): 
 data class DatabaseTopicDeletionError(val database: String, val topic: String): DatabaseDeletionError,
     IllegalStateException("Database $database topic $topic could not be deleted.")
 
-data class BatchNotFoundError(val database: String, val batchId: BatchId):
-    NotFoundError,
-    IllegalStateException("Batch $batchId not found in database $database")
+//data class BatchNotFoundError(val database: String, val batchId: BatchId):
+//    NotFoundError,
+//    IllegalStateException("Batch $batchId not found in database $database")
 data class StreamNotFoundError(val database: String, val stream: StreamName):
     NotFoundError,
     IllegalStateException("Stream $stream not found in database $database")

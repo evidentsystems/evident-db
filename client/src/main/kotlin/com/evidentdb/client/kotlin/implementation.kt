@@ -6,7 +6,6 @@ import com.evidentdb.client.dto.protobuf.toDomain
 import com.evidentdb.client.dto.protobuf.toInstant
 import com.evidentdb.client.dto.protobuf.toProto
 import com.evidentdb.dto.v1.proto.BatchProposal
-import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import com.github.benmanes.caffeine.cache.AsyncCache
@@ -298,6 +297,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 latestRevision.get().let { summary ->
                     DatabaseImpl(
                         summary.name,
+                        summary.topic,
                         summary.created,
                         summary.streamRevisions,
                     )
@@ -319,6 +319,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 }.await()
                 DatabaseImpl(
                     summary.name,
+                    summary.topic,
                     summary.created,
                     summary.streamRevisions,
                 )
@@ -333,6 +334,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         dbCache.get(summary.revision) { _ -> summary }
                         DatabaseImpl(
                             summary.name,
+                            summary.topic,
                             summary.created,
                             summary.streamRevisions,
                         )
@@ -424,6 +426,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
+            override val topic: TopicName,
             override val created: Instant,
             override val streamRevisions: Map<StreamName, StreamRevision>,
         ) : Database {
@@ -502,7 +505,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
 
             override fun toString(): String {
-                return "Database(name='$name', created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+                return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
             }
         }
     }

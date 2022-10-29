@@ -54,6 +54,7 @@ fun ProtoProposedEvent.toDomain(): EventProposal {
 fun ProtoDatabase.toDomain(): DatabaseSummary =
     DatabaseSummary(
         this.name,
+        this.topic,
         this.created.toInstant(),
         this.streamRevisionsMap
     )

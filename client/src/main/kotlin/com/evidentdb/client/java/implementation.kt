@@ -83,6 +83,8 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
     private class DatabaseImpl(private val kotlinDatabase: DatabaseKt): Database {
         override val name: DatabaseName
             get() = kotlinDatabase.name
+        override val topic: TopicName
+            get() = kotlinDatabase.topic
         override val created: Instant
             get() = kotlinDatabase.created
         override val streamRevisions: Map<StreamName, StreamRevision>
@@ -130,7 +132,7 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
         }
 
         override fun toString(): String {
-            return "Database(name='$name', created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+            return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
         }
     }
 }

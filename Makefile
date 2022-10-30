@@ -23,7 +23,7 @@ LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
   \"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
   \"events\":[\
     {\
-      \"stream\": \"load-test-stream\",\
+      \"stream\": \"load-test-stream-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
       \"stream_state\": 0,\
       \"event\": {\
         \"id\": \"will be overwritten\",\

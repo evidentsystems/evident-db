@@ -10,7 +10,6 @@ import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.future.future
-import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
@@ -145,6 +144,7 @@ internal class FlowIterator<T>(
     private val flow: Flow<T>
 ): CloseableIterator<T> {
     private val asyncScope = CoroutineScope(Dispatchers.Default)
+    private val blockingContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val queue = LinkedBlockingQueue<Option<T>>(ITERATOR_READ_AHEAD_CACHE_SIZE)
     private val nextItem: AtomicReference<Option<T>>
 
@@ -154,6 +154,7 @@ internal class FlowIterator<T>(
                 transfer(it.some())
             }
             transfer(None)
+            close()
         }
         nextItem = AtomicReference(queue.take())
     }
@@ -166,19 +167,20 @@ internal class FlowIterator<T>(
             val currentItem = nextItem.get()
             nextItem.set(queue.take())
             when(currentItem) {
-                None -> throw IllegalStateException("Iterator bounds exceeded")
+                None -> throw IndexOutOfBoundsException("Iterator bounds exceeded")
                 is Some -> currentItem.value
             }
         }
         else
-            throw IllegalStateException("Iterator bounds exceeded")
+            throw IndexOutOfBoundsException("Iterator bounds exceeded")
 
     override fun close() {
         nextItem.set(None)
         asyncScope.cancel()
+        blockingContext.close()
     }
 
-    private suspend inline fun transfer(item: Option<T>) = withContext(Dispatchers.IO) {
+    private suspend inline fun transfer(item: Option<T>) = withContext(blockingContext) {
         suspendCoroutine { continuation ->
             try {
                 queue.put(item)

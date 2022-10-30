@@ -5,14 +5,10 @@ import com.evidentdb.domain.*
 import com.evidentdb.dto.protobuf.toProto
 import com.evidentdb.dto.protobuf.unvalidatedProposedEventFromProto
 import com.evidentdb.dto.v1.proto.BatchProposal
-import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toProto
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -144,13 +140,13 @@ class EvidentDbEndpoint(
                 initialReplyBuilder.database = result.value.toProto()
                 emit(initialReplyBuilder.build())
 
-                databaseFlow.collect { database ->
-                    if (request.name == database.name.value) {
+                databaseFlow
+                    .filter { database -> request.name == database.name.value }
+                    .collect { database ->
                         val replyBuilder = DatabaseReply.newBuilder()
                         replyBuilder.database = database.toProto()
                         emit(replyBuilder.build())
                     }
-                }
             }
         }
     }
@@ -169,7 +165,9 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
+    override fun databaseLog(
+        request: DatabaseLogRequest
+    ): Flow<DatabaseLogReply> = flow {
         LOGGER.debug("databaseLog request received: $request")
         when (val result = queryService.getDatabaseLog(request.database)) {
             is Either.Left -> {

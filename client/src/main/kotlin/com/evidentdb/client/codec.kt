@@ -9,8 +9,10 @@ internal fun longToByteArray(long: Long): ByteArray {
     return buffer.array()
 }
 
-fun Long.toBase32HexString(): String = Base32(true)
-    .encodeToString(longToByteArray(this))
+fun longToBase32HexString(l: Long): String =
+    Base32(true).encodeToString(longToByteArray(l))
+
+fun Long.toBase32HexString(): String = longToBase32HexString(this)
 
 internal fun longFromByteArray(bytes: ByteArray): Long {
     val buffer = ByteBuffer.allocate(Long.SIZE_BYTES)

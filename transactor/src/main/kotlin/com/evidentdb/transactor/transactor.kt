@@ -40,6 +40,7 @@ class KafkaStreamsCommandHandler(
         topicName: TopicName
     ): Either<DatabaseTopicCreationError, TopicName> {
         return try {
+            LOGGER.info("Creating database ${database.value} event log topic $topicName...")
             adminClient.createTopics(
                 listOf(
                     NewTopic(
@@ -55,6 +56,7 @@ class KafkaStreamsCommandHandler(
                     )
                 )
             ).all().get()
+            LOGGER.info("...done")
             topicName.right()
         } catch (e: Exception) {
             LOGGER.error(
@@ -73,7 +75,9 @@ class KafkaStreamsCommandHandler(
         topicName: TopicName
     ): Either<DatabaseTopicDeletionError, Unit> {
         return try {
+            LOGGER.info("Deleting database ${database.value} event log topic $topicName...")
             adminClient.deleteTopics(listOf(topicName)).all().get()
+            LOGGER.info("...done")
             Unit.right()
         } catch (e: Exception) {
             LOGGER.error(

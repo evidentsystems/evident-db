@@ -165,11 +165,11 @@ interface BatchReadModel: BatchSummaryReadModel {
 }
 
 interface StreamReadModel {
-    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
-    fun stream(databaseName: DatabaseName, name: StreamName): Flow<EventId>
+    fun streamState(databaseName: DatabaseName, stream: StreamName): StreamState
+    fun stream(databaseName: DatabaseName, stream: StreamName): Flow<EventId>
     fun subjectStream(
         databaseName: DatabaseName,
-        name: StreamName,
+        stream: StreamName,
         subject: EventSubject,
     ): Flow<EventId>
 }
@@ -248,7 +248,21 @@ object EventHandler {
                     databaseRevision += 1
                     val streamRevision = (streamRevisions[streamName] ?: 0) + 1
                     streamRevisions[streamName] = streamRevision
-                    updates.add(Pair(buildStreamKey(database, streamName, streamRevision), databaseRevision))
+                    updates.add(
+                        Pair(
+                            buildStreamKey(database, streamName, streamRevision),
+                            databaseRevision
+                        )
+                    )
+                    evt.event.subject?.let {
+                        val subject = EventSubject.build(it)
+                        updates.add(
+                            Pair(
+                                buildSubjectStreamKey(database, streamName, subject, streamRevision),
+                                databaseRevision
+                            )
+                        )
+                    }
                 }
                 // TODO: remove after verifying
                 require(streamRevisions == event.data.databaseAfter.streamRevisions)

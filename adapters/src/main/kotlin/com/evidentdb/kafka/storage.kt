@@ -210,9 +210,9 @@ interface IStreamReadOnlyStore: StreamReadModel {
 
     override fun stream(
         databaseName: DatabaseName,
-        name: StreamName
+        stream: StreamName
     ): Flow<EventId> = flow {
-        val streamKeyPrefix = buildStreamKeyPrefix(databaseName, name)
+        val streamKeyPrefix = buildStreamKeyPrefix(databaseName, stream)
         streamStore.prefixScan(
             streamKeyPrefix,
             Serdes.String().serializer(),
@@ -224,18 +224,29 @@ interface IStreamReadOnlyStore: StreamReadModel {
 
     override fun subjectStream(
         databaseName: DatabaseName,
-        name: StreamName,
+        stream: StreamName,
         subject: EventSubject
-    ): Flow<EventId> {
-        TODO("Not yet implemented")
+    ): Flow<EventId> = flow {
+        val subjectStreamKeyPrefix = buildSubjectStreamKeyPrefix(
+            databaseName,
+            stream,
+            subject
+        )
+        streamStore.prefixScan(
+            subjectStreamKeyPrefix,
+            Serdes.String().serializer(),
+        ).use { eventIds ->
+            for (entry in eventIds)
+                emit(entry.value)
+        }
     }
 
     override fun streamState(
         databaseName: DatabaseName,
-        name: StreamName
+        stream: StreamName
     ): StreamState {
         return streamStore.prefixScan(
-            buildStreamKeyPrefix(databaseName, name),
+            buildStreamKeyPrefix(databaseName, stream),
             Serdes.String().serializer()
         ).use { eventIds ->
             if (eventIds.hasNext())

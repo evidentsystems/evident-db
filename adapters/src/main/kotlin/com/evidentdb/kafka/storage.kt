@@ -225,7 +225,7 @@ interface IStreamSummaryReadOnlyStore: StreamReadModel {
     override fun subjectStream(
         databaseName: DatabaseName,
         name: StreamName,
-        subject: StreamSubject
+        subject: EventSubject
     ): Flow<EventId> {
         TODO("Not yet implemented")
     }

@@ -224,6 +224,8 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                         DatabaseReply.ResultCase.NOT_FOUND -> {
                             shutdownNow()
+                            // TODO: throwing here doesn't prevent connection
+                            //  from constructing and returning from connectDatabase
                             throw DatabaseNotFoundError(database)
                         }
 

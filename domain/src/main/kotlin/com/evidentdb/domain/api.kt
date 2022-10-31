@@ -170,7 +170,7 @@ interface StreamReadModel {
     fun subjectStream(
         databaseName: DatabaseName,
         name: StreamName,
-        subject: StreamSubject,
+        subject: EventSubject,
     ): Flow<EventId>
 }
 
@@ -360,7 +360,7 @@ interface QueryService {
         database: String,
         databaseRevision: DatabaseRevision,
         stream: StreamName,
-        subject: StreamSubject,
+        subject: EventSubject,
     ) : Either<StreamNotFoundError, Flow<EventId>> =
         TODO("Filter per revision lookup of database streamRevisions")
 }

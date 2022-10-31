@@ -1,8 +1,7 @@
 package com.evidentdb.dto.protobuf
 
 import com.evidentdb.domain.*
-import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.INVALID_EVENT_TYPE
-import com.evidentdb.dto.v1.proto.EventInvalidation.InvalidationCase.INVALID_STREAM_NAME
+import com.evidentdb.dto.v1.proto.EventInvalidation
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.cloudEventFromProto
@@ -333,6 +332,8 @@ fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
                             builder.invalidEventTypeBuilder.eventType = error.eventType
                         is InvalidStreamName ->
                             builder.invalidStreamNameBuilder.streamName = error.streamName
+                        is InvalidEventSubject ->
+                            builder.invalidEventSubjectBuilder.eventSubject = error.eventSubject
                     }
                     builder.build()
                 })
@@ -347,8 +348,9 @@ fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsEr
                 unvalidatedProposedEventFromProto(invalidEvent.event),
                 invalidEvent.invalidationsList.map { error ->
                     when(error.invalidationCase) {
-                        INVALID_STREAM_NAME -> InvalidStreamName(error.invalidStreamName.streamName)
-                        INVALID_EVENT_TYPE -> InvalidEventType(error.invalidEventType.eventType)
+                        EventInvalidation.InvalidationCase.INVALID_STREAM_NAME -> InvalidStreamName(error.invalidStreamName.streamName)
+                        EventInvalidation.InvalidationCase.INVALID_EVENT_TYPE -> InvalidEventType(error.invalidEventType.eventType)
+                        EventInvalidation.InvalidationCase.INVALID_EVENT_SUBJECT -> InvalidEventSubject(error.invalidEventSubject.eventSubject)
                         else -> throw IllegalArgumentException("Error parsing invalid event error from protobuf")
                     }
                 }

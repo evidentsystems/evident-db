@@ -123,10 +123,15 @@ message InvalidEventType {
   string event_type = 1;
 }
 
+message InvalidEventSubject {
+  string event_subject = 1;
+}
+
 message EventInvalidation {
   oneof invalidation {
     InvalidStreamName invalid_stream_name = 1;
     InvalidEventType invalid_event_type = 2;
+    InvalidEventSubject invalid_event_subject = 3;
   }
 }
 

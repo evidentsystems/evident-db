@@ -23,15 +23,24 @@ fun validateEventType(eventType: EventType)
     else
         InvalidEventType(eventType).invalidNel()
 
+fun validateEventSubject(subjectString: String?)
+        : ValidatedNel<InvalidEventSubject, EventSubject> =
+    when (val eventSubject = EventSubject.of(subjectString)) {
+        is Validated.Valid -> eventSubject.value.validNel()
+        is Validated.Invalid -> InvalidEventSubject(subjectString!!).invalidNel()
+    }
+
 fun validateUnvalidatedProposedEvent(
     databaseName: DatabaseName,
     event: UnvalidatedProposedEvent
 ): Validated<InvalidEvent, ProposedEvent> =
     validateStreamName(event.stream).zip(
         Semigroup.nonEmptyList(),
-        validateEventType(event.event.type)
-    ) { streamName, _ ->
-        val newEvent = CloudEventBuilder.from(event.event)
+        validateEventType(event.event.type),
+        validateEventSubject(event.event.subject)
+    ) { streamName, _, _ ->
+        val newEvent = CloudEventBuilder
+            .from(event.event)
             .withSource(eventSource(databaseName, event))
             .build()
         ProposedEvent(

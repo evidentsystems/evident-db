@@ -114,6 +114,8 @@ sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: String):
     EventInvalidation
+data class InvalidEventSubject(val eventSubject: String)
+    : EventInvalidation
 data class InvalidEventType(val eventType: String):
     EventInvalidation
 

@@ -1,7 +1,6 @@
 package com.evidentdb.domain
 
-import arrow.core.Validated
-import arrow.core.foldLeft
+import arrow.core.*
 import io.cloudevents.CloudEvent
 import org.valiktor.functions.matches
 import org.valiktor.validate
@@ -143,7 +142,6 @@ data class DatabaseDeleted(
 
 typealias StreamKey = String
 typealias StreamRevision = Long
-typealias StreamSubject = String
 
 @JvmInline
 value class StreamName private constructor(val value: String) {
@@ -175,6 +173,22 @@ sealed interface StreamState {
 typealias EventId = Long
 typealias EventKey = String
 typealias EventType = String
+
+@JvmInline
+value class EventSubject private constructor(val value: String?) {
+    companion object {
+        fun build(value: String?): EventSubject =
+            validate(EventSubject(value)) {
+                when(it.value) {
+                    null -> Unit
+                    else -> validate(EventSubject::value).matches(Regex(NAME_PATTERN))
+                }
+            }
+
+        fun of(value: String?): Validated<InvalidEventSubject, EventSubject> =
+            valikate { build(value) }.mapLeft { InvalidEventSubject(value!!) }
+    }
+}
 
 data class UnvalidatedProposedEvent(
     val event: CloudEvent,
@@ -290,6 +304,7 @@ object NoEventsProvidedError: InvalidBatchError
 sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: String): EventInvalidation
+data class InvalidEventSubject(val eventSubject: String): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
 
 data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)

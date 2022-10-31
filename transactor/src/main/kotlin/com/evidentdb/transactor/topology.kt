@@ -309,11 +309,11 @@ object TransactorTopology {
 
     private class StreamIndexer:
         ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, EventId>() {
-        lateinit var streamStore: StreamSummaryStore
+        lateinit var streamStore: StreamStore
 
         override fun init(context: ProcessorContext<StreamKey, EventId>?) {
             super.init(context)
-            this.streamStore = StreamSummaryStore(
+            this.streamStore = StreamStore(
                 context().getStateStore(STREAM_STORE)
             )
         }

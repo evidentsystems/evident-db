@@ -205,7 +205,7 @@ class BatchReadOnlyStore(
         }
 }
 
-interface IStreamSummaryReadOnlyStore: StreamReadModel {
+interface IStreamReadOnlyStore: StreamReadModel {
     val streamStore: StreamReadOnlyKeyValueStore
 
     override fun stream(
@@ -248,7 +248,7 @@ interface IStreamSummaryReadOnlyStore: StreamReadModel {
     }
 }
 
-interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
+interface IStreamStore: IStreamReadOnlyStore {
     override val streamStore: StreamKeyValueStore
 
     fun putStreamEventId(streamKey: StreamKey, eventId: EventId) {
@@ -266,13 +266,13 @@ interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
     }
 }
 
-class StreamSummaryStore(
+class StreamStore(
     override val streamStore: StreamKeyValueStore
-): IStreamSummaryStore
+): IStreamStore
 
 class StreamReadOnlyStore(
     override val streamStore: StreamReadOnlyKeyValueStore,
-): IStreamSummaryReadOnlyStore
+): IStreamReadOnlyStore
 
 interface IEventReadOnlyStore: EventReadModel {
     val eventStore: EventReadOnlyKeyValueStore

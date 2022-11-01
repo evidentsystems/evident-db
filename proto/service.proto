@@ -26,8 +26,8 @@ service EvidentDb {
   rpc database(DatabaseRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
   rpc batch(BatchRequest) returns (BatchReply) {}
-  rpc stream(StreamRequest) returns (stream StreamEventIdReply) {}
-  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEventIdReply) {}
+  rpc stream(StreamRequest) returns (stream StreamEntryReply) {}
+  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEntryReply) {}
   rpc events(stream EventRequest) returns (stream EventReply) {}
 }
 
@@ -118,9 +118,14 @@ message SubjectStreamRequest {
   string subject = 4;
 }
 
-message StreamEventIdReply {
+message StreamMapEntry {
+  int64 stream_revision = 1;
+  int64 event_id = 2;
+}
+
+message StreamEntryReply {
   oneof result {
-    int64 event_id = 1;
+    StreamMapEntry stream_map_entry = 1;
     StreamNotFoundError stream_not_found = 2;
   }
 }

@@ -165,13 +165,19 @@ interface BatchReadModel: BatchSummaryReadModel {
 }
 
 interface StreamReadModel {
-    fun streamState(databaseName: DatabaseName, stream: StreamName): StreamState
-    fun stream(databaseName: DatabaseName, stream: StreamName): Flow<EventId>
+    fun streamState(
+        databaseName: DatabaseName,
+        stream: StreamName
+    ): StreamState
+    fun stream(
+        databaseName: DatabaseName,
+        stream: StreamName
+    ): Flow<Pair<StreamRevision, EventId>>
     fun subjectStream(
         databaseName: DatabaseName,
         stream: StreamName,
         subject: EventSubject,
-    ): Flow<EventId>
+    ): Flow<Pair<StreamRevision, EventId>>
 }
 
 interface EventReadModel {
@@ -250,7 +256,7 @@ object EventHandler {
                     streamRevisions[streamName] = streamRevision
                     updates.add(
                         Pair(
-                            buildStreamKey(database, streamName, streamRevision),
+                            BaseStreamKey(database, streamName, streamRevision),
                             databaseRevision
                         )
                     )
@@ -258,7 +264,7 @@ object EventHandler {
                         val subject = EventSubject.build(it)
                         updates.add(
                             Pair(
-                                buildSubjectStreamKey(database, streamName, subject, streamRevision),
+                                SubjectStreamKey(database, streamName, subject, streamRevision),
                                 databaseRevision
                             )
                         )
@@ -358,7 +364,7 @@ interface QueryService {
         database: String,
         databaseRevision: DatabaseRevision,
         stream: String,
-    ) : Either<StreamNotFoundError, Flow<EventId>> = either {
+    ) : Either<StreamNotFoundError, Flow<Pair<StreamRevision, EventId>>> = either {
         val databaseName = DatabaseName.of(database)
             .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
@@ -373,8 +379,20 @@ interface QueryService {
     suspend fun getSubjectStream(
         database: String,
         databaseRevision: DatabaseRevision,
-        stream: StreamName,
-        subject: EventSubject,
-    ) : Either<StreamNotFoundError, Flow<EventId>> =
-        TODO("Filter per revision lookup of database streamRevisions")
+        stream: String,
+        subject: String,
+    ) : Either<StreamNotFoundError, Flow<Pair<StreamRevision, EventId>>> = either {
+        val databaseName = DatabaseName.of(database)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        val streamName = StreamName.of(stream)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        val subjectName = EventSubject.of(subject)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        streamReadModel.subjectStream(databaseName, streamName, subjectName)
+            .rightIfNotNull { StreamNotFoundError(database, stream) }
+            .bind()
+    }
 }

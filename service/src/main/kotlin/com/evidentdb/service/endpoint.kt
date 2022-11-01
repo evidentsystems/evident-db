@@ -184,7 +184,7 @@ class EvidentDbEndpoint(
         }
     }
 
-    override fun stream(request: StreamRequest): Flow<StreamEventIdReply> = flow {
+    override fun stream(request: StreamRequest): Flow<StreamEntryReply> = flow {
         LOGGER.debug("stream request received: $request")
         when (val result = queryService.getStream(
             request.database,
@@ -193,29 +193,58 @@ class EvidentDbEndpoint(
         )
         ) {
             is Either.Left -> {
-                val builder = StreamEventIdReply.newBuilder()
+                val builder = StreamEntryReply.newBuilder()
                 builder.streamNotFoundBuilder
                     .setDatabase(result.value.database)
                     .setStream(result.value.stream)
                 emit(builder.build())
             }
             is Either.Right ->
-                result.value.collect { eventId ->
-                    val builder = StreamEventIdReply.newBuilder()
-                        .setEventId(eventId)
+                result.value.collect { (streamRevision, eventId) ->
+                    val builder = StreamEntryReply.newBuilder()
+                        .setStreamMapEntry(
+                            StreamMapEntry.newBuilder()
+                                .setStreamRevision(streamRevision)
+                                .setEventId(eventId)
+                        )
                     emit(builder.build())
                 }
         }
     }
 
-    override fun subjectStream(request: SubjectStreamRequest): Flow<StreamEventIdReply> = flow {
-        TODO("Not Implemented Yet")
+    override fun subjectStream(request: SubjectStreamRequest): Flow<StreamEntryReply> = flow {
+        LOGGER.debug("subjectStream request received: $request")
+        when (val result = queryService.getSubjectStream(
+            request.database,
+            request.databaseRevision,
+            request.stream,
+            request.subject
+        )) {
+            is Either.Left -> {
+                // TODO: New SubjectStreamNotFound error type
+                val builder = StreamEntryReply.newBuilder()
+                builder.streamNotFoundBuilder
+                    .setDatabase(result.value.database)
+                    .setStream(result.value.stream)
+                emit(builder.build())
+            }
+            is Either.Right ->
+                result.value.collect { (streamRevision, eventId) ->
+                    val builder = StreamEntryReply.newBuilder()
+                        .setStreamMapEntry(
+                            StreamMapEntry.newBuilder()
+                                .setStreamRevision(streamRevision)
+                                .setEventId(eventId)
+                        )
+                    emit(builder.build())
+                }
+        }
     }
 
     override fun events(requests: Flow<EventRequest>): Flow<EventReply> = flow {
         requests.collect { request ->
             LOGGER.debug("event request received: $request")
-            val eventId = request.eventId.toLong()
+            val eventId = request.eventId
             val replyBuilder = EventReply.newBuilder()
             when (val result = queryService.getEvent(request.database, eventId)) {
                 is Either.Left -> {

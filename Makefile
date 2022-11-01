@@ -29,7 +29,8 @@ LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
         \"id\": \"will be overwritten\",\
         \"source\": \"https://localhost:8080/foo/bar\",\
         \"spec_version\": \"1.0\",\
-        \"type\": \"demo.event\"\
+        \"type\": \"demo.event\",\
+        \"attributes\": {\"subject\": {\"ce_string\": \"subject-{{randomInt 0 1000}}\"}}\
       }\
     }\
   ]\

@@ -69,6 +69,8 @@ typealias TopicName = String
 
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
+    fun asStreamKeyPrefix() = "$value/"
+
     companion object {
         fun build(value: String): DatabaseName =
             validate(DatabaseName(value)) {
@@ -140,7 +142,6 @@ data class DatabaseDeleted(
 
 // Streams & Indexes
 
-typealias StreamKey = String
 typealias StreamRevision = Long
 
 @JvmInline
@@ -154,6 +155,62 @@ value class StreamName private constructor(val value: String) {
         fun of(value: String): Validated<InvalidStreamName, StreamName> =
             valikate { build(value) }.mapLeft { InvalidStreamName(value) }
     }
+}
+
+sealed interface StreamKey {
+    val database: DatabaseName
+    val streamName: StreamName
+    val revision: StreamRevision?
+
+    fun streamPrefix(): String
+
+    fun toBytes() =
+        if (revision == null)
+            throw IllegalStateException("Cannot serialize to bytes when revision is null")
+        else
+            "${streamPrefix()}${revision!!.toBase32HexString()}".toByteArray(ENCODING_CHARSET)
+
+    companion object {
+        val ENCODING_CHARSET = Charsets.UTF_8
+
+        fun fromBytes(bytes: ByteArray): StreamKey {
+            val string = bytes.toString(ENCODING_CHARSET)
+            val split = string.split('/', '@')
+            return when(split.size) {
+                3 -> BaseStreamKey(
+                    DatabaseName.build(split[0]),
+                    StreamName.build((split[1])),
+                    base32HexStringToLong(split[2])
+                )
+                4 -> SubjectStreamKey(
+                    DatabaseName.build(split[0]),
+                    StreamName.build((split[1])),
+                    EventSubject.build(split[2]),
+                    base32HexStringToLong(split[3])
+                )
+                else -> throw IllegalArgumentException("Invalid StreamKey: $string")
+            }
+        }
+    }
+}
+
+data class BaseStreamKey(
+    override val database: DatabaseName,
+    override val streamName: StreamName,
+    override val revision: StreamRevision? = null
+): StreamKey {
+    override fun streamPrefix(): String =
+        "${database.asStreamKeyPrefix()}${streamName.value}@"
+}
+
+data class SubjectStreamKey(
+    override val database: DatabaseName,
+    override val streamName: StreamName,
+    val subject: EventSubject,
+    override val revision: StreamRevision? = null
+): StreamKey {
+    override fun streamPrefix(): String =
+        "${database.asStreamKeyPrefix()}${streamName.value}/${subject.value}@"
 }
 
 sealed interface ProposedEventStreamState

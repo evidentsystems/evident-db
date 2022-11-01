@@ -269,3 +269,18 @@ class BatchSummarySerde: Serdes.WrapperSerde<BatchSummary>(
             data?.let { batchSummaryFromBytes(it) }
     }
 }
+
+class StreamKeySerde: Serdes.WrapperSerde<StreamKey>(
+    StreamKeySerializer(),
+    StreamKeyDeserializer(),
+) {
+    class StreamKeySerializer : Serializer<StreamKey> {
+        override fun serialize(topic: String?, data: StreamKey?): ByteArray? =
+            data?.toBytes()
+    }
+
+    class StreamKeyDeserializer : Deserializer<StreamKey> {
+        override fun deserialize(topic: String?, data: ByteArray?): StreamKey? =
+            data?.let { StreamKey.fromBytes(it) }
+    }
+}

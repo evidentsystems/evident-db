@@ -8,29 +8,27 @@
 
 (defn event-proposal
   ([event-type stream-name]
-   (event-proposal event-type stream-name StreamState$Any/INSTANCE))
-  ([event-type stream-name stream-state]
-   (event-proposal event-type stream-name stream-state nil))
-  ([event-type stream-name stream-state event-id]
-   (event-proposal event-type stream-name stream-state event-id nil))
-  ([event-type stream-name stream-state event-id data]
-   (event-proposal event-type stream-name stream-state event-id data nil))
-  ([event-type stream-name stream-state event-id data data-content-type]
-   (event-proposal event-type stream-name stream-state event-id data data-content-type nil))
-  ([event-type stream-name stream-state event-id data data-content-type data-schema]
-   (event-proposal event-type stream-name stream-state event-id data data-content-type data-schema nil))
-  ([event-type stream-name stream-state event-id data data-content-type data-schema subject]
-   (event-proposal event-type stream-name stream-state event-id data data-content-type data-schema subject []))
-  ([^String event-type
-    ^String stream-name
-    ^StreamState stream-state
-    ^String event-id
-    ^CloudEventData data
-    ^String data-content-type
-    ^URI data-schema
-    ^String subject
-    extensions]
-   (EvidentDB/eventProposal event-type stream-name stream-state event-id data data-content-type data-schema subject extensions)))
+   (event-proposal event-type stream-name nil))
+  ([event-type
+    stream-name
+    {:keys [stream-state
+            subject
+            event-id
+            data
+            data-content-type
+            data-schema
+            extensions]
+     :or {stream-state StreamState$Any/INSTANCE
+          extensions   []}}]
+   (EvidentDB/eventProposal ^String event-type
+                            ^String stream-name
+                            ^StreamState stream-state
+                            ^String subject
+                            ^String event-id
+                            ^CloudEventData data
+                            ^String data-content-type
+                            ^URI data-schema
+                            extensions)))
 
 (defn eagerize
   [^CloseableIterator iter]
@@ -59,8 +57,12 @@
 
   db1
 
-  (def batch [(event-proposal "event.occurred" "my-stream")
-              (event-proposal "event.happened" "another-my-stream")])
+  (def batch [(event-proposal "event.occurred"
+                              (str "stream-" (rand-int 4))
+                              {:subject (str "foo-" (rand-int 10))})
+              (event-proposal "event.happened"
+                              (str "stream-" (rand-int 4))
+                              {:subject (str "foo-" (rand-int 10))})])
 
   (def batch-result @(.transact conn batch))
 
@@ -70,7 +72,9 @@
 
   (= db2 db3)
 
-  (time (eagerize (.stream db1 "another-my-stream")))
+  (time (eagerize (.stream db1 "stream-1")))
+
+  (time (eagerize (.subjectStream db1 "stream-1" "foo-2")))
 
   (time (eagerize (.log conn)))
 

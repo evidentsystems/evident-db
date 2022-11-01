@@ -19,10 +19,7 @@ import io.grpc.Channel
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
 import java.time.Instant
@@ -443,26 +440,17 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    val eventCount = streamRevisions[streamName]
+                    val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
-                    val result = grpcClient.stream(
-                        StreamRequest.newBuilder()
-                            .setDatabase(database)
-                            .setStream(streamName)
-                            .build()
+                    processStreamReplyFlow(
+                        maxRevision,
+                        grpcClient.stream(
+                            StreamRequest.newBuilder()
+                                .setDatabase(database)
+                                .setStream(streamName)
+                                .build()
+                        )
                     )
-                    result.map { reply ->
-                        when (reply.resultCase) {
-                            StreamEventIdReply.ResultCase.EVENT_ID ->
-                                eventCache[reply.eventId].await()
-                            StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
-                                throw StreamNotFoundError(
-                                    reply.streamNotFound.database,
-                                    reply.streamNotFound.stream,
-                                )
-                            else -> throw SerializationError("Result not set")
-                        }
-                    }.take(eventCount.toInt())
                 }
 
             override fun subjectStream(
@@ -472,8 +460,41 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    TODO("Not yet implemented")
+                    val maxRevision = streamRevisions[streamName]
+                        ?: throw StreamNotFoundError(database, streamName)
+                    processStreamReplyFlow(
+                        maxRevision,
+                        grpcClient.subjectStream(
+                            SubjectStreamRequest.newBuilder()
+                                .setDatabase(database)
+                                .setStream(streamName)
+                                .setSubject(subjectName)
+                                .build()
+                        )
+                    )
                 }
+
+            private fun processStreamReplyFlow(
+                maxRevision: Long,
+                streamReplyFlow: Flow<StreamEntryReply>
+            ) = streamReplyFlow
+                .map { reply ->
+                    when (reply.resultCase) {
+                        StreamEntryReply.ResultCase.STREAM_MAP_ENTRY ->
+                            reply.streamMapEntry
+                        StreamEntryReply.ResultCase.STREAM_NOT_FOUND ->
+                            throw StreamNotFoundError(
+                                reply.streamNotFound.database,
+                                reply.streamNotFound.stream,
+                            )
+                        else -> throw SerializationError("Result not set")
+                    }
+                }.takeWhile { entry ->
+                    entry.streamRevision <= maxRevision
+                }.map { entry ->
+                    eventCache[entry.eventId].await()
+                }
+
 
             override suspend fun event(eventId: EventId): CloudEvent? =
                 if (!connectionScope.isActive)

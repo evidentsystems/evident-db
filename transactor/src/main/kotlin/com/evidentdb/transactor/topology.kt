@@ -128,7 +128,7 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
-                Serdes.String(), // StreamKey
+                StreamKeySerde(),
                 Serdes.Long(),   // EventId
             ),
             COMMAND_PROCESSOR,
@@ -343,7 +343,7 @@ object TransactorTopology {
         lateinit var eventStore: EventStore
         lateinit var databaseStore: DatabaseReadOnlyKeyValueStore
 
-        override fun init(context: ProcessorContext<StreamKey, CloudEvent>?) {
+        override fun init(context: ProcessorContext<String, CloudEvent>?) {
             super.init(context)
             this.eventStore = EventStore(context().getStateStore(EVENT_STORE))
             this.databaseStore = context().getStateStore(DATABASE_STORE)

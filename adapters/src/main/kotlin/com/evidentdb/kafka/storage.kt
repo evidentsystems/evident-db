@@ -211,42 +211,47 @@ interface IStreamReadOnlyStore: StreamReadModel {
     override fun stream(
         databaseName: DatabaseName,
         stream: StreamName
-    ): Flow<EventId> = flow {
-        val streamKeyPrefix = buildStreamKeyPrefix(databaseName, stream)
-        streamStore.prefixScan(
-            streamKeyPrefix,
-            Serdes.String().serializer(),
-        ).use { eventIds ->
-            for (entry in eventIds)
-                emit(entry.value)
-        }
+    ): Flow<Pair<StreamRevision, EventId>> = flow {
+        forEachStreamEntryByPrefix(
+            BaseStreamKey(databaseName, stream).streamPrefix(),
+            ::emit
+        )
     }
 
     override fun subjectStream(
         databaseName: DatabaseName,
         stream: StreamName,
         subject: EventSubject
-    ): Flow<EventId> = flow {
-        val subjectStreamKeyPrefix = buildSubjectStreamKeyPrefix(
-            databaseName,
-            stream,
-            subject
+    ): Flow<Pair<StreamRevision, EventId>> = flow {
+        forEachStreamEntryByPrefix(
+            SubjectStreamKey(
+                databaseName,
+                stream,
+                subject
+            ).streamPrefix(),
+            ::emit
         )
-        streamStore.prefixScan(
-            subjectStreamKeyPrefix,
-            Serdes.String().serializer(),
-        ).use { eventIds ->
-            for (entry in eventIds)
-                emit(entry.value)
-        }
+    }
+
+    private suspend fun forEachStreamEntryByPrefix(
+        streamKeyPrefix: String,
+        process: suspend (Pair<StreamRevision, EventId>) -> Unit
+    ) = streamStore.prefixScan(
+        streamKeyPrefix,
+        Serdes.String().serializer(),
+    ).use { eventIds ->
+        for (entry in eventIds)
+            process(entry.key.revision!! to entry.value)
     }
 
     override fun streamState(
         databaseName: DatabaseName,
         stream: StreamName
-    ): StreamState {
-        return streamStore.prefixScan(
-            buildStreamKeyPrefix(databaseName, stream),
+    ): StreamState =
+        // TODO: reverse scan/range, pull revision
+        //  off latest key rather than counting
+        streamStore.prefixScan(
+            BaseStreamKey(databaseName, stream).streamPrefix(),
             Serdes.String().serializer()
         ).use { eventIds ->
             if (eventIds.hasNext())
@@ -256,7 +261,6 @@ interface IStreamReadOnlyStore: StreamReadModel {
             else
                 StreamState.NoStream
         }
-    }
 }
 
 interface IStreamStore: IStreamReadOnlyStore {
@@ -268,7 +272,7 @@ interface IStreamStore: IStreamReadOnlyStore {
 
     fun deleteStreams(database: DatabaseName) {
         streamStore.prefixScan(
-            buildStreamKeyPrefix(database),
+            database.asStreamKeyPrefix(),
             Serdes.String().serializer(),
         ).use { streamEntries ->
             for (entry in streamEntries)

@@ -10,7 +10,6 @@ import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.future.future
-import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
@@ -83,6 +82,8 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
     private class DatabaseImpl(private val kotlinDatabase: DatabaseKt): Database {
         override val name: DatabaseName
             get() = kotlinDatabase.name
+        override val topic: TopicName
+            get() = kotlinDatabase.topic
         override val created: Instant
             get() = kotlinDatabase.created
         override val streamRevisions: Map<StreamName, StreamRevision>
@@ -130,7 +131,7 @@ class EvidentDB(channelBuilder: ManagedChannelBuilder<*>): Client {
         }
 
         override fun toString(): String {
-            return "Database(name='$name', created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+            return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
         }
     }
 }
@@ -143,6 +144,7 @@ internal class FlowIterator<T>(
     private val flow: Flow<T>
 ): CloseableIterator<T> {
     private val asyncScope = CoroutineScope(Dispatchers.Default)
+    private val blockingContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val queue = LinkedBlockingQueue<Option<T>>(ITERATOR_READ_AHEAD_CACHE_SIZE)
     private val nextItem: AtomicReference<Option<T>>
 
@@ -152,6 +154,7 @@ internal class FlowIterator<T>(
                 transfer(it.some())
             }
             transfer(None)
+            close()
         }
         nextItem = AtomicReference(queue.take())
     }
@@ -164,19 +167,20 @@ internal class FlowIterator<T>(
             val currentItem = nextItem.get()
             nextItem.set(queue.take())
             when(currentItem) {
-                None -> throw IllegalStateException("Iterator bounds exceeded")
+                None -> throw IndexOutOfBoundsException("Iterator bounds exceeded")
                 is Some -> currentItem.value
             }
         }
         else
-            throw IllegalStateException("Iterator bounds exceeded")
+            throw IndexOutOfBoundsException("Iterator bounds exceeded")
 
     override fun close() {
         nextItem.set(None)
         asyncScope.cancel()
+        blockingContext.close()
     }
 
-    private suspend inline fun transfer(item: Option<T>) = withContext(Dispatchers.IO) {
+    private suspend inline fun transfer(item: Option<T>) = withContext(blockingContext) {
         suspendCoroutine { continuation ->
             try {
                 queue.put(item)

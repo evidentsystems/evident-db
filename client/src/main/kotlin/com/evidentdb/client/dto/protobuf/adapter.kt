@@ -54,6 +54,7 @@ fun ProtoProposedEvent.toDomain(): EventProposal {
 fun ProtoDatabase.toDomain(): DatabaseSummary =
     DatabaseSummary(
         this.name,
+        this.topic,
         this.created.toInstant(),
         this.streamRevisionsMap
     )
@@ -84,6 +85,8 @@ fun ProtoInvalidEvent.toDomain(): InvalidEvent =
                     InvalidStreamName(error.invalidStreamName.streamName)
                 EventInvalidation.InvalidationCase.INVALID_EVENT_TYPE ->
                     InvalidEventType(error.invalidEventType.eventType)
+                EventInvalidation.InvalidationCase.INVALID_EVENT_SUBJECT ->
+                    InvalidEventSubject(error.invalidEventSubject.eventSubject)
                 else ->
                     throw IllegalStateException("Error parsing invalid event error from protobuf")
             }

@@ -18,25 +18,30 @@ dependencies {
     implementation(project(":transactor"))
 
     implementation(libs.kafka.streams)
-
     implementation(libs.grpc.kotlin.stub)
+
+    implementation("info.picocli:picocli")
     implementation("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
     implementation("jakarta.annotation:jakarta.annotation-api")
-    runtimeOnly("ch.qos.logback:logback-classic")
     implementation("io.micronaut:micronaut-validation")
     implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
     implementation("io.micronaut:micronaut-management")
     implementation("io.micronaut:micronaut-http-server-netty")
     implementation("io.micronaut.kafka:micronaut-kafka")
+    runtimeOnly("ch.qos.logback:logback-classic")
 
     testImplementation("io.micronaut:micronaut-http-client")
 }
 
 kotlin {
     jvmToolchain {
-        languageVersion.set(JavaLanguageVersion.of("${project.properties["java.version"]}"))
+        languageVersion.set(
+            JavaLanguageVersion.of(
+                "${project.properties["java.version"]}"
+            )
+        )
     }
 }
 
@@ -50,6 +55,6 @@ micronaut {
 }
 
 application {
-    mainClass.set("com.evidentdb.app.ApplicationKt")
+    mainClass.set("com.evidentdb.app.CliKt")
     applicationDefaultJvmArgs = listOf("-Xmx4g", "-Xms4g")
 }

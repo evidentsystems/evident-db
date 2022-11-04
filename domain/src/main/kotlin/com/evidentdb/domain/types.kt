@@ -1,7 +1,6 @@
 package com.evidentdb.domain
 
-import arrow.core.Validated
-import arrow.core.foldLeft
+import arrow.core.*
 import io.cloudevents.CloudEvent
 import org.valiktor.functions.matches
 import org.valiktor.validate
@@ -48,14 +47,30 @@ data class ErrorEnvelope(
         get() = "com.evidentdb.error.${data.javaClass.simpleName}"
 }
 
+// Tenant
+
+//typealias TenantRevision = Long
+
+@JvmInline
+value class TenantName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): TenantName =
+            validate(TenantName(value)) {
+                validate(TenantName::value).matches(Regex(NAME_PATTERN))
+            }
+    }
+}
+
 // Database
 
 typealias DatabaseRevision = Long
-typealias TenantRevision = Long
 typealias DatabaseLogKey = String
+typealias TopicName = String
 
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
+    fun asStreamKeyPrefix() = "$value/"
+
     companion object {
         fun build(value: String): DatabaseName =
             validate(DatabaseName(value)) {
@@ -63,34 +78,19 @@ value class DatabaseName private constructor(val value: String) {
             }
 
         fun of(value: String): Validated<InvalidDatabaseNameError, DatabaseName> =
-            valikate {
-                build(value)
-            }.mapLeft { InvalidDatabaseNameError(value) }
-    }
-}
-
-@JvmInline
-value class StreamName private constructor(val value: String) {
-    companion object {
-        fun build(value: String): StreamName =
-            validate(StreamName(value)) {
-                validate(StreamName::value).matches(Regex(NAME_PATTERN))
-            }
-
-        fun of(value: String): Validated<InvalidStreamName, StreamName> =
-            valikate {
-                build(value)
-            }.mapLeft { InvalidStreamName(value) }
+            valikate { build(value) }.mapLeft { InvalidDatabaseNameError(value) }
     }
 }
 
 data class DatabaseSummary(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
 )
 
 data class Database(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
@@ -100,7 +100,10 @@ data class Database(
         }
 }
 
-data class DatabaseCreationInfo(val name: DatabaseName): CommandBody
+data class DatabaseCreationInfo(
+    val name: DatabaseName,
+    val topic: TopicName
+): CommandBody
 
 data class CreateDatabase(
     override val id: EnvelopeId,
@@ -139,9 +142,76 @@ data class DatabaseDeleted(
 
 // Streams & Indexes
 
-typealias StreamKey = String
 typealias StreamRevision = Long
-typealias StreamSubject = String
+
+@JvmInline
+value class StreamName private constructor(val value: String) {
+    companion object {
+        fun build(value: String): StreamName =
+            validate(StreamName(value)) {
+                validate(StreamName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidStreamName, StreamName> =
+            valikate { build(value) }.mapLeft { InvalidStreamName(value) }
+    }
+}
+
+sealed interface StreamKey {
+    val database: DatabaseName
+    val streamName: StreamName
+    val revision: StreamRevision?
+
+    fun streamPrefix(): String
+
+    fun toBytes() =
+        if (revision == null)
+            throw IllegalStateException("Cannot serialize to bytes when revision is null")
+        else
+            "${streamPrefix()}${revision!!.toBase32HexString()}".toByteArray(ENCODING_CHARSET)
+
+    companion object {
+        val ENCODING_CHARSET = Charsets.UTF_8
+
+        fun fromBytes(bytes: ByteArray): StreamKey {
+            val string = bytes.toString(ENCODING_CHARSET)
+            val split = string.split('/', '@')
+            return when(split.size) {
+                3 -> BaseStreamKey(
+                    DatabaseName.build(split[0]),
+                    StreamName.build((split[1])),
+                    base32HexStringToLong(split[2])
+                )
+                4 -> SubjectStreamKey(
+                    DatabaseName.build(split[0]),
+                    StreamName.build((split[1])),
+                    EventSubject.build(split[2]),
+                    base32HexStringToLong(split[3])
+                )
+                else -> throw IllegalArgumentException("Invalid StreamKey: $string")
+            }
+        }
+    }
+}
+
+data class BaseStreamKey(
+    override val database: DatabaseName,
+    override val streamName: StreamName,
+    override val revision: StreamRevision? = null
+): StreamKey {
+    override fun streamPrefix(): String =
+        "${database.asStreamKeyPrefix()}${streamName.value}@"
+}
+
+data class SubjectStreamKey(
+    override val database: DatabaseName,
+    override val streamName: StreamName,
+    val subject: EventSubject,
+    override val revision: StreamRevision? = null
+): StreamKey {
+    override fun streamPrefix(): String =
+        "${database.asStreamKeyPrefix()}${streamName.value}/${subject.value}@"
+}
 
 sealed interface ProposedEventStreamState
 
@@ -160,6 +230,22 @@ sealed interface StreamState {
 typealias EventId = Long
 typealias EventKey = String
 typealias EventType = String
+
+@JvmInline
+value class EventSubject private constructor(val value: String?) {
+    companion object {
+        fun build(value: String?): EventSubject =
+            validate(EventSubject(value)) {
+                when(it.value) {
+                    null -> Unit
+                    else -> validate(EventSubject::value).matches(Regex(NAME_PATTERN))
+                }
+            }
+
+        fun of(value: String?): Validated<InvalidEventSubject, EventSubject> =
+            valikate { build(value) }.mapLeft { InvalidEventSubject(value!!) }
+    }
+}
 
 data class UnvalidatedProposedEvent(
     val event: CloudEvent,
@@ -241,6 +327,7 @@ data class BatchTransactionResult(
     val databaseAfter: Database
         get() = Database(
             databaseBefore.name,
+            databaseBefore.topic,
             databaseBefore.created,
             batch.streamRevisions,
         )
@@ -260,6 +347,9 @@ sealed interface NotFoundError
 data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
 data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
+data class DatabaseTopicCreationError(val database: String, val topic: TopicName): DatabaseCreationError
+data class DatabaseTopicDeletionError(val database: String, val topic: TopicName): DatabaseDeletionError
+
 data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
 data class StreamNotFoundError(val database: String, val stream: String): NotFoundError
 data class EventNotFoundError(val database: String, val eventId: EventId): NotFoundError
@@ -271,6 +361,7 @@ object NoEventsProvidedError: InvalidBatchError
 sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: String): EventInvalidation
+data class InvalidEventSubject(val eventSubject: String): EventInvalidation
 data class InvalidEventType(val eventType: EventType): EventInvalidation
 
 data class InvalidEvent(val event: UnvalidatedProposedEvent, val errors: List<EventInvalidation>)

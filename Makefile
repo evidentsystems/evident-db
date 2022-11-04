@@ -8,9 +8,9 @@ MAKEFLAGS += --no-builtin-rules
 GRADLE ?= ./gradlew
 CARGO  ?= cargo
 CLUSTER_TYPE ?= kafka# or redpanda
-REPLICATION_FACTOR ?= 1
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 PARTITION_COUNT ?= 4
+REPLICATION_FACTOR ?= 1
 COMPRESSION_TYPE ?= uncompressed# snappy
 DOCKER_COMPOSE ?= docker compose
 RPK ?= docker exec -it redpanda-0 rpk
@@ -23,13 +23,14 @@ LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
   \"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
   \"events\":[\
     {\
-      \"stream\": \"load-test-stream\",\
+      \"stream\": \"load-test-stream-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
       \"stream_state\": 0,\
       \"event\": {\
         \"id\": \"will be overwritten\",\
         \"source\": \"https://localhost:8080/foo/bar\",\
         \"spec_version\": \"1.0\",\
-        \"type\": \"demo.event\"\
+        \"type\": \"demo.event\",\
+        \"attributes\": {\"subject\": {\"ce_string\": \"subject-{{randomInt 0 1000}}\"}}\
       }\
     }\
   ]\
@@ -67,13 +68,12 @@ clean-kafka:
 
 .PHONY: kafka-topics
 kafka-topics:
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-commands --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --create --if-not-exists --topic evidentdb-internal-events --partitions $(PARTITION_COUNT) --replication-factor $(REPLICATION_FACTOR) --config compression.type=$(COMPRESSION_TYPE) --config retention.ms="-1" --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	$(GRADLE) run --args="-k $(KAFKA_BOOTSTRAP_SERVERS) bootstrap -p $(PARTITION_COUNT) -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
-	-kafka-topics --delete --if-exists --topic evidentdb-internal-events --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-default-tenant-internal-commands --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
+	-kafka-topics --delete --if-exists --topic evidentdb-default-tenant-internal-events   --bootstrap-server $(KAFKA_BOOTSTRAP_SERVERS)
 
 # Redpanda Cluster
 
@@ -105,7 +105,7 @@ test:
 
 .PHONY: run
 run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
-	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run
+	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run --args="node -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
 
 .PHONY: perf
 perf:

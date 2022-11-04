@@ -7,6 +7,9 @@ import io.cloudevents.CloudEvent
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.runBlocking
+import org.apache.kafka.clients.admin.AdminClient
+import org.apache.kafka.common.header.internals.RecordHeader
+import org.apache.kafka.common.header.internals.RecordHeaders
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.StreamPartitioner
@@ -37,16 +40,21 @@ object TransactorTopology {
     const val EVENT_STORE = "EVENT_STORE"
 
     private const val INTERNAL_EVENT_SINK = "INTERNAL_EVENTS"
+    private const val USERSPACE_EVENT_SINK = "USERSPACE_EVENTS"
 
     fun build(
         internalCommandsTopic: String,
         internalEventsTopic: String,
+        adminClient: AdminClient,
+        databaseTopicReplication: Short,
+        databaseTopicCompressionType: String,
         meterRegistry: MeterRegistry,
     ): Topology {
         LOGGER.info("Building Transactor Topology: $internalCommandsTopic, $internalEventsTopic")
         val topology = Topology()
         val databaseNameSerde = DatabaseNameSerde()
 
+        // Internal Commands
         topology.addSource(
             INTERNAL_COMMAND_SOURCE,
             Serdes.UUID().deserializer(),
@@ -56,7 +64,14 @@ object TransactorTopology {
 
         topology.addProcessor(
             COMMAND_PROCESSOR,
-            ProcessorSupplier { CommandProcessor(meterRegistry) },
+            ProcessorSupplier {
+                CommandProcessor(
+                    adminClient,
+                    databaseTopicReplication,
+                    databaseTopicCompressionType,
+                    meterRegistry
+                )
+            },
             INTERNAL_COMMAND_SOURCE,
         )
         topology.addProcessor(
@@ -89,6 +104,7 @@ object TransactorTopology {
             COMMAND_PROCESSOR,
             DATABASE_INDEXER,
             STREAM_INDEXER,
+            EVENT_INDEXER,
         )
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
@@ -112,7 +128,7 @@ object TransactorTopology {
         topology.addStateStore(
             Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(STREAM_STORE),
-                Serdes.String(), // StreamKey
+                StreamKeySerde(),
                 Serdes.Long(),   // EventId
             ),
             COMMAND_PROCESSOR,
@@ -134,7 +150,7 @@ object TransactorTopology {
             EVENT_INDEXER,
         )
 
-        // Event Log
+        // Internal Event Log
         topology.addSink(
             INTERNAL_EVENT_SINK,
             internalEventsTopic,
@@ -142,6 +158,15 @@ object TransactorTopology {
             EventEnvelopeSerde.EventEnvelopeSerializer(),
             DatabaseStreamPartitioner(),
             COMMAND_PROCESSOR,
+        )
+
+        // Userspace Events
+        topology.addSink(
+            USERSPACE_EVENT_SINK,
+            DatabaseTopicNameExtractor(),
+            Serdes.String().serializer(), // StreamName
+            EventSerde.EventSerializer(), // CloudEvent
+            EVENT_INDEXER,
         )
 
         return topology
@@ -152,9 +177,17 @@ object TransactorTopology {
             partitionByDatabase(value!!.database, numPartitions)
     }
 
-    private class CommandProcessor(val meterRegistry: MeterRegistry):
-        ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
-        private var transactor = KafkaStreamsCommandHandler()
+    private class CommandProcessor(
+        val adminClient: AdminClient,
+        val databaseTopicReplication: Short,
+        val databaseTopicCompressionType: String,
+        val meterRegistry: MeterRegistry
+    ): ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
+        private var transactor = KafkaStreamsCommandHandler(
+            adminClient,
+            databaseTopicReplication,
+            databaseTopicCompressionType
+        )
 
         override fun init(context: ProcessorContext<EnvelopeId, EventEnvelope>?) {
             super.init(context)
@@ -167,7 +200,11 @@ object TransactorTopology {
 
         override fun close() {
             super.close()
-            this.transactor = KafkaStreamsCommandHandler()
+            this.transactor = KafkaStreamsCommandHandler(
+                adminClient,
+                databaseTopicReplication,
+                databaseTopicCompressionType
+            )
         }
 
         override fun process(record: Record<EnvelopeId, CommandEnvelope>?): Unit = runBlocking {
@@ -272,11 +309,11 @@ object TransactorTopology {
 
     private class StreamIndexer:
         ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, EventId>() {
-        lateinit var streamStore: StreamSummaryStore
+        lateinit var streamStore: StreamStore
 
         override fun init(context: ProcessorContext<StreamKey, EventId>?) {
             super.init(context)
-            this.streamStore = StreamSummaryStore(
+            this.streamStore = StreamStore(
                 context().getStateStore(STREAM_STORE)
             )
         }
@@ -302,32 +339,39 @@ object TransactorTopology {
     }
 
     private class EventIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, CloudEvent>() {
+        ContextualProcessor<EnvelopeId, EventEnvelope, String, CloudEvent>() {
         lateinit var eventStore: EventStore
+        lateinit var databaseStore: DatabaseReadOnlyKeyValueStore
 
-        override fun init(context: ProcessorContext<StreamKey, CloudEvent>?) {
+        override fun init(context: ProcessorContext<String, CloudEvent>?) {
             super.init(context)
-            this.eventStore = EventStore(
-                context().getStateStore(EVENT_STORE)
-            )
+            this.eventStore = EventStore(context().getStateStore(EVENT_STORE))
+            this.databaseStore = context().getStateStore(DATABASE_STORE)
         }
 
         override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
             val internalEvent = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.eventsToIndex(internalEvent)
             if (result != null) {
+                val database = databaseStore.get(result.first().second.database)
                 for ((eventId, event) in result) {
-                    context().forward(
-                        Record(
-                            "${buildStreamKeyPrefix(event.database)}${event.stream}",
-                            event.event,
-                            context().currentStreamTimeMs()
-                        )
-                    )
                     eventStore.putEvent(
                         event.database,
                         eventId,
                         event.event
+                    )
+                    context().forward(
+                        Record(
+                            event.stream.value,
+                            event.event,
+                            context().currentStreamTimeMs(),
+                            RecordHeaders(listOf(
+                                RecordHeader(
+                                    TOPIC_HEADER,
+                                    database.topic.toByteArray(Charsets.UTF_8)
+                                )
+                            ))
+                        )
                     )
                 }
             }

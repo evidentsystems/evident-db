@@ -7,9 +7,11 @@ import java.util.*
 
 typealias DatabaseName = String
 typealias DatabaseRevision = Long
+typealias TopicName = String
 
 data class DatabaseSummary(
     val name: DatabaseName,
+    val topic: TopicName,
     val created: Instant,
     val streamRevisions: Map<StreamName, StreamRevision>,
 ) {
@@ -55,27 +57,6 @@ data class Batch(
         }
 }
 
-data class ProposedBatch(
-    val id: BatchId,
-    val database: DatabaseName,
-    val events: List<EventProposal>
-)
-
-data class BatchSummaryEvent(val id: EventId, val stream: StreamName)
-
-data class BatchSummary(
-    val id: BatchId,
-    val database: DatabaseName,
-    val events: List<BatchSummaryEvent>,
-    val streamRevisions: Map<StreamName, StreamRevision>,
-    val timestamp: Instant,
-) {
-    val revision: DatabaseRevision
-        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
-            acc + v
-        }
-}
-
 typealias StreamName = String
 typealias StreamRevision = Long
 typealias StreamSubject = String
@@ -108,9 +89,14 @@ data class DatabaseNameAlreadyExistsError(val name: DatabaseName):
 data class DatabaseNotFoundError(val name: String):
     DatabaseDeletionError, BatchTransactionError, NotFoundError,
     IllegalStateException("Database not found: $name")
-data class BatchNotFoundError(val database: String, val batchId: BatchId):
-    NotFoundError,
-    IllegalStateException("Batch $batchId not found in database $database")
+data class DatabaseTopicCreationError(val database: String, val topic: String): DatabaseCreationError,
+    IllegalStateException("Database $database topic $topic could not be created.")
+data class DatabaseTopicDeletionError(val database: String, val topic: String): DatabaseDeletionError,
+    IllegalStateException("Database $database topic $topic could not be deleted.")
+
+//data class BatchNotFoundError(val database: String, val batchId: BatchId):
+//    NotFoundError,
+//    IllegalStateException("Batch $batchId not found in database $database")
 data class StreamNotFoundError(val database: String, val stream: StreamName):
     NotFoundError,
     IllegalStateException("Stream $stream not found in database $database")
@@ -128,6 +114,8 @@ sealed interface EventInvalidation
 
 data class InvalidStreamName(val streamName: String):
     EventInvalidation
+data class InvalidEventSubject(val eventSubject: String)
+    : EventInvalidation
 data class InvalidEventType(val eventType: String):
     EventInvalidation
 

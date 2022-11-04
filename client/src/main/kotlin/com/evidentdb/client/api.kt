@@ -13,7 +13,6 @@ import io.grpc.ManagedChannelBuilder
 import java.net.URI
 import java.util.*
 
-
 object EvidentDB {
     @JvmStatic
     fun javaClient(channelBuilder: ManagedChannelBuilder<*>): JavaClient =
@@ -39,11 +38,11 @@ object EvidentDB {
         eventType: String,
         streamName: StreamName,
         streamState: ProposedEventStreamState = StreamState.Any,
+        subject: String? = null,
         eventId: String? = null,
         data: CloudEventData? = null,
         dataContentType: String? = null,
         dataSchema: URI? = null,
-        subject: String? = null,
         extensions: List<CloudEventExtension> = listOf(),
     ): EventProposal {
         val builder = CloudEventBuilder.v1()

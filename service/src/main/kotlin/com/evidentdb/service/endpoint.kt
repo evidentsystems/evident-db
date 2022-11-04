@@ -5,14 +5,10 @@ import com.evidentdb.domain.*
 import com.evidentdb.dto.protobuf.toProto
 import com.evidentdb.dto.protobuf.unvalidatedProposedEventFromProto
 import com.evidentdb.dto.v1.proto.BatchProposal
-import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toProto
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -25,7 +21,7 @@ class EvidentDbEndpoint(
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
     }
 
-    override suspend fun createDatabase(request: DatabaseCreationInfo): CreateDatabaseReply {
+    override suspend fun createDatabase(request: CreateDatabaseRequest): CreateDatabaseReply {
         LOGGER.debug("createDatabase request received: $request")
         val builder = CreateDatabaseReply.newBuilder()
         commandService.createDatabase(request.name).bimap(
@@ -39,6 +35,10 @@ class EvidentDbEndpoint(
                     }
                     is InternalServerError -> {
                         builder.internalServerError = it.toProto()
+                    }
+
+                    is DatabaseTopicCreationError -> {
+                        builder.databaseTopicCreationError = it.toProto()
                     }
                 }
             },
@@ -59,11 +59,16 @@ class EvidentDbEndpoint(
                         is DatabaseNotFoundError -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
-                        is InternalServerError -> {
-                            builder.internalServerError = it.toProto()
-                        }
                         is InvalidDatabaseNameError -> {
                             builder.invalidDatabaseNameError = it.toProto()
+                        }
+
+                        is DatabaseTopicDeletionError -> {
+                            builder.databaseTopicDeletionError = it.toProto()
+                        }
+
+                        is InternalServerError -> {
+                            builder.internalServerError = it.toProto()
                         }
                     }
                 },
@@ -135,13 +140,13 @@ class EvidentDbEndpoint(
                 initialReplyBuilder.database = result.value.toProto()
                 emit(initialReplyBuilder.build())
 
-                databaseFlow.collect { database ->
-                    if (request.name == database.name.value) {
+                databaseFlow
+                    .filter { database -> request.name == database.name.value }
+                    .collect { database ->
                         val replyBuilder = DatabaseReply.newBuilder()
                         replyBuilder.database = database.toProto()
                         emit(replyBuilder.build())
                     }
-                }
             }
         }
     }
@@ -160,7 +165,9 @@ class EvidentDbEndpoint(
         return builder.build()
     }
 
-    override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
+    override fun databaseLog(
+        request: DatabaseLogRequest
+    ): Flow<DatabaseLogReply> = flow {
         LOGGER.debug("databaseLog request received: $request")
         when (val result = queryService.getDatabaseLog(request.database)) {
             is Either.Left -> {
@@ -177,7 +184,7 @@ class EvidentDbEndpoint(
         }
     }
 
-    override fun stream(request: StreamRequest): Flow<StreamEventIdReply> = flow {
+    override fun stream(request: StreamRequest): Flow<StreamEntryReply> = flow {
         LOGGER.debug("stream request received: $request")
         when (val result = queryService.getStream(
             request.database,
@@ -186,29 +193,58 @@ class EvidentDbEndpoint(
         )
         ) {
             is Either.Left -> {
-                val builder = StreamEventIdReply.newBuilder()
+                val builder = StreamEntryReply.newBuilder()
                 builder.streamNotFoundBuilder
                     .setDatabase(result.value.database)
                     .setStream(result.value.stream)
                 emit(builder.build())
             }
             is Either.Right ->
-                result.value.collect { eventId ->
-                    val builder = StreamEventIdReply.newBuilder()
-                        .setEventId(eventId)
+                result.value.collect { (streamRevision, eventId) ->
+                    val builder = StreamEntryReply.newBuilder()
+                        .setStreamMapEntry(
+                            StreamMapEntry.newBuilder()
+                                .setStreamRevision(streamRevision)
+                                .setEventId(eventId)
+                        )
                     emit(builder.build())
                 }
         }
     }
 
-    override fun subjectStream(request: SubjectStreamRequest): Flow<StreamEventIdReply> = flow {
-        TODO("Not Implemented Yet")
+    override fun subjectStream(request: SubjectStreamRequest): Flow<StreamEntryReply> = flow {
+        LOGGER.debug("subjectStream request received: $request")
+        when (val result = queryService.getSubjectStream(
+            request.database,
+            request.databaseRevision,
+            request.stream,
+            request.subject
+        )) {
+            is Either.Left -> {
+                // TODO: New SubjectStreamNotFound error type
+                val builder = StreamEntryReply.newBuilder()
+                builder.streamNotFoundBuilder
+                    .setDatabase(result.value.database)
+                    .setStream(result.value.stream)
+                emit(builder.build())
+            }
+            is Either.Right ->
+                result.value.collect { (streamRevision, eventId) ->
+                    val builder = StreamEntryReply.newBuilder()
+                        .setStreamMapEntry(
+                            StreamMapEntry.newBuilder()
+                                .setStreamRevision(streamRevision)
+                                .setEventId(eventId)
+                        )
+                    emit(builder.build())
+                }
+        }
     }
 
     override fun events(requests: Flow<EventRequest>): Flow<EventReply> = flow {
         requests.collect { request ->
             LOGGER.debug("event request received: $request")
-            val eventId = request.eventId.toLong()
+            val eventId = request.eventId
             val replyBuilder = EventReply.newBuilder()
             when (val result = queryService.getEvent(request.database, eventId)) {
                 is Either.Left -> {

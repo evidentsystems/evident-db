@@ -187,6 +187,18 @@ class EventEnvelopeSerde:
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )
+                "DatabaseTopicCreationError" -> ErrorEnvelope(
+                    eventId,
+                    commandId,
+                    databaseId,
+                    databaseTopicCreationErrorFromBytes(dataBytes)
+                )
+                "DatabaseTopicDeletionError" -> ErrorEnvelope(
+                    eventId,
+                    commandId,
+                    databaseId,
+                    databaseTopicDeletionErrorFromBytes(dataBytes)
+                )
                 else -> throw IllegalArgumentException("unknown event type ${cloudEvent.type}")
             }
         }
@@ -255,5 +267,20 @@ class BatchSummarySerde: Serdes.WrapperSerde<BatchSummary>(
     class BatchSummaryDeserializer : Deserializer<BatchSummary> {
         override fun deserialize(topic: String?, data: ByteArray?): BatchSummary? =
             data?.let { batchSummaryFromBytes(it) }
+    }
+}
+
+class StreamKeySerde: Serdes.WrapperSerde<StreamKey>(
+    StreamKeySerializer(),
+    StreamKeyDeserializer(),
+) {
+    class StreamKeySerializer : Serializer<StreamKey> {
+        override fun serialize(topic: String?, data: StreamKey?): ByteArray? =
+            data?.toBytes()
+    }
+
+    class StreamKeyDeserializer : Deserializer<StreamKey> {
+        override fun deserialize(topic: String?, data: ByteArray?): StreamKey? =
+            data?.let { StreamKey.fromBytes(it) }
     }
 }

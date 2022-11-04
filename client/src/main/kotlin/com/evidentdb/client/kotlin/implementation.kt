@@ -6,7 +6,6 @@ import com.evidentdb.client.dto.protobuf.toDomain
 import com.evidentdb.client.dto.protobuf.toInstant
 import com.evidentdb.client.dto.protobuf.toProto
 import com.evidentdb.dto.v1.proto.BatchProposal
-import com.evidentdb.dto.v1.proto.DatabaseCreationInfo
 import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
 import com.evidentdb.service.v1.*
 import com.github.benmanes.caffeine.cache.AsyncCache
@@ -20,10 +19,7 @@ import io.grpc.Channel
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
 import java.time.Instant
@@ -83,7 +79,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             throw ClientClosedException(this)
         else {
             val result = grpcClient.createDatabase(
-                DatabaseCreationInfo.newBuilder()
+                CreateDatabaseRequest.newBuilder()
                     .setName(name)
                     .build()
             )
@@ -96,6 +92,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                 CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
                     throw DatabaseNameAlreadyExistsError(name)
+
+                CreateDatabaseReply.ResultCase.DATABASE_TOPIC_CREATION_ERROR ->
+                    throw DatabaseTopicCreationError(
+                        result.databaseTopicCreationError.database,
+                        result.databaseTopicCreationError.topic
+                    )
 
                 CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
                     throw InternalServerError(result.internalServerError.message)
@@ -125,6 +127,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                 DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
                     throw DatabaseNotFoundError(name)
+
+                DeleteDatabaseReply.ResultCase.DATABASE_TOPIC_DELETION_ERROR ->
+                    throw DatabaseTopicDeletionError(
+                        result.databaseTopicDeletionError.database,
+                        result.databaseTopicDeletionError.topic
+                    )
 
                 DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
                     throw InternalServerError(result.internalServerError.message)
@@ -213,6 +221,8 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
                         DatabaseReply.ResultCase.NOT_FOUND -> {
                             shutdownNow()
+                            // TODO: throwing here doesn't prevent connection
+                            //  from constructing and returning from connectDatabase
                             throw DatabaseNotFoundError(database)
                         }
 
@@ -286,6 +296,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 latestRevision.get().let { summary ->
                     DatabaseImpl(
                         summary.name,
+                        summary.topic,
                         summary.created,
                         summary.streamRevisions,
                     )
@@ -307,6 +318,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 }.await()
                 DatabaseImpl(
                     summary.name,
+                    summary.topic,
                     summary.created,
                     summary.streamRevisions,
                 )
@@ -321,6 +333,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         dbCache.get(summary.revision) { _ -> summary }
                         DatabaseImpl(
                             summary.name,
+                            summary.topic,
                             summary.created,
                             summary.streamRevisions,
                         )
@@ -412,6 +425,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
+            override val topic: TopicName,
             override val created: Instant,
             override val streamRevisions: Map<StreamName, StreamRevision>,
         ) : Database {
@@ -426,26 +440,17 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    val eventCount = streamRevisions[streamName]
+                    val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
-                    val result = grpcClient.stream(
-                        StreamRequest.newBuilder()
-                            .setDatabase(database)
-                            .setStream(streamName)
-                            .build()
+                    processStreamReplyFlow(
+                        maxRevision,
+                        grpcClient.stream(
+                            StreamRequest.newBuilder()
+                                .setDatabase(database)
+                                .setStream(streamName)
+                                .build()
+                        )
                     )
-                    result.map { reply ->
-                        when (reply.resultCase) {
-                            StreamEventIdReply.ResultCase.EVENT_ID ->
-                                eventCache[reply.eventId].await()
-                            StreamEventIdReply.ResultCase.STREAM_NOT_FOUND ->
-                                throw StreamNotFoundError(
-                                    reply.streamNotFound.database,
-                                    reply.streamNotFound.stream,
-                                )
-                            else -> throw SerializationError("Result not set")
-                        }
-                    }.take(eventCount.toInt())
                 }
 
             override fun subjectStream(
@@ -455,8 +460,41 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    TODO("Not yet implemented")
+                    val maxRevision = streamRevisions[streamName]
+                        ?: throw StreamNotFoundError(database, streamName)
+                    processStreamReplyFlow(
+                        maxRevision,
+                        grpcClient.subjectStream(
+                            SubjectStreamRequest.newBuilder()
+                                .setDatabase(database)
+                                .setStream(streamName)
+                                .setSubject(subjectName)
+                                .build()
+                        )
+                    )
                 }
+
+            private fun processStreamReplyFlow(
+                maxRevision: Long,
+                streamReplyFlow: Flow<StreamEntryReply>
+            ) = streamReplyFlow
+                .map { reply ->
+                    when (reply.resultCase) {
+                        StreamEntryReply.ResultCase.STREAM_MAP_ENTRY ->
+                            reply.streamMapEntry
+                        StreamEntryReply.ResultCase.STREAM_NOT_FOUND ->
+                            throw StreamNotFoundError(
+                                reply.streamNotFound.database,
+                                reply.streamNotFound.stream,
+                            )
+                        else -> throw SerializationError("Result not set")
+                    }
+                }.takeWhile { entry ->
+                    entry.streamRevision <= maxRevision
+                }.map { entry ->
+                    eventCache[entry.eventId].await()
+                }
+
 
             override suspend fun event(eventId: EventId): CloudEvent? =
                 if (!connectionScope.isActive)
@@ -490,7 +528,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
 
             override fun toString(): String {
-                return "Database(name='$name', created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+                return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
             }
         }
     }

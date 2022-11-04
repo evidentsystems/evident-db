@@ -1,32 +1,5 @@
 package com.evidentdb.domain
 
-fun buildStreamKeyPrefix(databaseName: DatabaseName): String =
-    "${databaseName.value}/"
-
-fun buildStreamKeyPrefix(
-    databaseName: DatabaseName,
-    streamName: StreamName
-): String =
-    "${buildStreamKeyPrefix(databaseName)}${streamName.value}/"
-
-fun buildStreamKey(
-    databaseName: DatabaseName,
-    streamName: StreamName,
-    index: Long,
-): String =
-    "${buildStreamKeyPrefix(databaseName, streamName)}${index.toBase32HexString()}"
-
-fun parseStreamKey(streamKey: StreamKey)
-        : Triple<DatabaseName, StreamName, EventId> {
-    val split = streamKey.split('/')
-    require(split.size == 3) { "Invalid StreamKey" }
-    return Triple(
-        DatabaseName.build(split[0]),
-        StreamName.build(split[1]),
-        split[2].toLong(),
-    )
-}
-
 fun streamStateFromRevisions(
     streamRevisions: Map<StreamName, StreamRevision>,
     streamName: StreamName

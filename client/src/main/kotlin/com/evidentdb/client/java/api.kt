@@ -166,6 +166,7 @@ interface Connection: GrpcLifecycle {
  */
 interface Database {
     val name: DatabaseName
+    val topic: TopicName
     val created: Instant
     val revision: DatabaseRevision
     val streamRevisions: Map<StreamName, StreamRevision>

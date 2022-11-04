@@ -3,6 +3,7 @@ package com.evidentdb.domain
 import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
+import arrow.core.right
 import arrow.core.rightIfNotNull
 import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
@@ -10,6 +11,7 @@ import java.time.Instant
 
 interface CommandService {
     val commandManager: CommandManager
+    val tenant: TenantName
 
     suspend fun createDatabase(proposedName: String)
             : Either<DatabaseCreationError, DatabaseCreated> =
@@ -18,7 +20,10 @@ interface CommandService {
             val command = CreateDatabase(
                 EnvelopeId.randomUUID(),
                 name,
-                DatabaseCreationInfo(name)
+                DatabaseCreationInfo(
+                    name,
+                    databaseOutputTopic(tenant, name),
+                )
             )
             commandManager.createDatabase(command).bind()
         }
@@ -71,12 +76,19 @@ interface CommandHandler {
     val databaseReadModel: DatabaseReadModel
     val batchSummaryReadModel: BatchSummaryReadModel
 
+    suspend fun createDatabaseTopic(database: DatabaseName, topicName: TopicName): Either<DatabaseTopicCreationError, TopicName> =
+        topicName.right()
+
     suspend fun handleCreateDatabase(command: CreateDatabase)
             : Either<DatabaseCreationError, DatabaseCreated> =
         either {
             val availableName = validateDatabaseNameNotTaken(
                 databaseReadModel,
                 command.data.name,
+            ).bind()
+            val createdTopicName = createDatabaseTopic(
+                availableName,
+                command.data.topic
             ).bind()
             DatabaseCreated(
                 EnvelopeId.randomUUID(),
@@ -85,12 +97,16 @@ interface CommandHandler {
                 DatabaseCreationResult(
                     Database(
                         availableName,
+                        createdTopicName,
                         Instant.now(),
                         mapOf()
                     )
                 ),
             )
         }
+
+    suspend fun deleteDatabaseTopic(database: DatabaseName, topicName: TopicName): Either<DatabaseTopicDeletionError, Unit> =
+        Unit.right()
 
     suspend fun handleDeleteDatabase(command: DeleteDatabase)
             : Either<DatabaseDeletionError, DatabaseDeleted> =
@@ -99,6 +115,7 @@ interface CommandHandler {
                 databaseReadModel,
                 command.database,
             ).bind()
+            deleteDatabaseTopic(database.name, database.topic).bind()
             DatabaseDeleted(
                 EnvelopeId.randomUUID(),
                 command.id,
@@ -148,13 +165,19 @@ interface BatchReadModel: BatchSummaryReadModel {
 }
 
 interface StreamReadModel {
-    fun streamState(databaseName: DatabaseName, name: StreamName): StreamState
-    fun stream(databaseName: DatabaseName, name: StreamName): Flow<EventId>
+    fun streamState(
+        databaseName: DatabaseName,
+        stream: StreamName
+    ): StreamState
+    fun stream(
+        databaseName: DatabaseName,
+        stream: StreamName
+    ): Flow<Pair<StreamRevision, EventId>>
     fun subjectStream(
         databaseName: DatabaseName,
-        name: StreamName,
-        subject: StreamSubject,
-    ): Flow<EventId>
+        stream: StreamName,
+        subject: EventSubject,
+    ): Flow<Pair<StreamRevision, EventId>>
 }
 
 interface EventReadModel {
@@ -187,7 +210,8 @@ object EventHandler {
                 event.data.database.let {
                     DatabaseSummary(
                         it.name,
-                        it.created
+                        it.topic,
+                        it.created,
                     )
                 }
             )
@@ -230,7 +254,21 @@ object EventHandler {
                     databaseRevision += 1
                     val streamRevision = (streamRevisions[streamName] ?: 0) + 1
                     streamRevisions[streamName] = streamRevision
-                    updates.add(Pair(buildStreamKey(database, streamName, streamRevision), databaseRevision))
+                    updates.add(
+                        Pair(
+                            BaseStreamKey(database, streamName, streamRevision),
+                            databaseRevision
+                        )
+                    )
+                    evt.event.subject?.let {
+                        val subject = EventSubject.build(it)
+                        updates.add(
+                            Pair(
+                                SubjectStreamKey(database, streamName, subject, streamRevision),
+                                databaseRevision
+                            )
+                        )
+                    }
                 }
                 // TODO: remove after verifying
                 require(streamRevisions == event.data.databaseAfter.streamRevisions)
@@ -326,7 +364,7 @@ interface QueryService {
         database: String,
         databaseRevision: DatabaseRevision,
         stream: String,
-    ) : Either<StreamNotFoundError, Flow<EventId>> = either {
+    ) : Either<StreamNotFoundError, Flow<Pair<StreamRevision, EventId>>> = either {
         val databaseName = DatabaseName.of(database)
             .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
@@ -341,8 +379,20 @@ interface QueryService {
     suspend fun getSubjectStream(
         database: String,
         databaseRevision: DatabaseRevision,
-        stream: StreamName,
-        subject: StreamSubject,
-    ) : Either<StreamNotFoundError, Flow<EventId>> =
-        TODO("Filter per revision lookup of database streamRevisions")
+        stream: String,
+        subject: String,
+    ) : Either<StreamNotFoundError, Flow<Pair<StreamRevision, EventId>>> = either {
+        val databaseName = DatabaseName.of(database)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        val streamName = StreamName.of(stream)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        val subjectName = EventSubject.of(subject)
+            .mapLeft { StreamNotFoundError(database, stream) }
+            .bind()
+        streamReadModel.subjectStream(databaseName, streamName, subjectName)
+            .rightIfNotNull { StreamNotFoundError(database, stream) }
+            .bind()
+    }
 }

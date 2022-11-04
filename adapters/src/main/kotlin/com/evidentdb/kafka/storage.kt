@@ -77,25 +77,20 @@ open class DatabaseReadModelStore(
         revision: DatabaseRevision?
     ): Database? =
         databaseStore.get(name)?.let { databaseSummary ->
-            if (revision == null)
-                logStore.latest(name)?.let {batchSummary ->
-                    Database(
-                        name,
-                        databaseSummary.created,
-                        batchSummary.streamRevisions
-                    )
-                } ?: Database(name, databaseSummary.created, mapOf())
-            else
-                // TODO: seek to revision key, rather than exact lookup, to
-                //  tolerate users speculating about revision? Still fail if
-                //  given revision exceeds available revision
-                logStore.entry(name, revision)?.let { batchSummary ->
-                    Database(
-                        name,
-                        databaseSummary.created,
-                        batchSummary.streamRevisions
-                    )
-                }
+            val streamRevisions: Map<StreamName, StreamRevision>? =
+                if (revision == null)
+                    logStore.latest(name)?.streamRevisions
+                else
+                    // TODO: seek to revision key, rather than exact lookup, to
+                    //  tolerate users speculating about revision? Still fail if
+                    //  given revision exceeds available revision
+                    logStore.entry(name, revision)?.streamRevisions
+            Database(
+                name,
+                databaseSummary.topic,
+                databaseSummary.created,
+                streamRevisions ?: mapOf()
+            )
         }
 
     override fun catalog(): Flow<Database> = flow {
@@ -103,16 +98,13 @@ open class DatabaseReadModelStore(
             for (kv in databaseIterator) {
                 val databaseSummary = kv.value
                 emit(
-                    logStore.latest(databaseSummary.name)?.let { batchSummary ->
-                        Database(
-                            databaseSummary.name,
-                            databaseSummary.created,
-                            batchSummary.streamRevisions
-                        )
-                    } ?: Database(
+                    Database(
                         databaseSummary.name,
+                        databaseSummary.topic,
                         databaseSummary.created,
-                        mapOf()
+                        logStore.latest(databaseSummary.name)
+                            ?.streamRevisions
+                            ?: mapOf()
                     )
                 )
             }
@@ -213,37 +205,53 @@ class BatchReadOnlyStore(
         }
 }
 
-interface IStreamSummaryReadOnlyStore: StreamReadModel {
+interface IStreamReadOnlyStore: StreamReadModel {
     val streamStore: StreamReadOnlyKeyValueStore
 
     override fun stream(
         databaseName: DatabaseName,
-        name: StreamName
-    ): Flow<EventId> = flow {
-        val streamKeyPrefix = buildStreamKeyPrefix(databaseName, name)
-        streamStore.prefixScan(
-            streamKeyPrefix,
-            Serdes.String().serializer(),
-        ).use { eventIds ->
-            for (entry in eventIds)
-                emit(entry.value)
-        }
+        stream: StreamName
+    ): Flow<Pair<StreamRevision, EventId>> = flow {
+        forEachStreamEntryByPrefix(
+            BaseStreamKey(databaseName, stream).streamPrefix(),
+            ::emit
+        )
     }
 
     override fun subjectStream(
         databaseName: DatabaseName,
-        name: StreamName,
-        subject: StreamSubject
-    ): Flow<EventId> {
-        TODO("Not yet implemented")
+        stream: StreamName,
+        subject: EventSubject
+    ): Flow<Pair<StreamRevision, EventId>> = flow {
+        forEachStreamEntryByPrefix(
+            SubjectStreamKey(
+                databaseName,
+                stream,
+                subject
+            ).streamPrefix(),
+            ::emit
+        )
+    }
+
+    private suspend fun forEachStreamEntryByPrefix(
+        streamKeyPrefix: String,
+        process: suspend (Pair<StreamRevision, EventId>) -> Unit
+    ) = streamStore.prefixScan(
+        streamKeyPrefix,
+        Serdes.String().serializer(),
+    ).use { eventIds ->
+        for (entry in eventIds)
+            process(entry.key.revision!! to entry.value)
     }
 
     override fun streamState(
         databaseName: DatabaseName,
-        name: StreamName
-    ): StreamState {
-        return streamStore.prefixScan(
-            buildStreamKeyPrefix(databaseName, name),
+        stream: StreamName
+    ): StreamState =
+        // TODO: reverse scan/range, pull revision
+        //  off latest key rather than counting
+        streamStore.prefixScan(
+            BaseStreamKey(databaseName, stream).streamPrefix(),
             Serdes.String().serializer()
         ).use { eventIds ->
             if (eventIds.hasNext())
@@ -253,10 +261,9 @@ interface IStreamSummaryReadOnlyStore: StreamReadModel {
             else
                 StreamState.NoStream
         }
-    }
 }
 
-interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
+interface IStreamStore: IStreamReadOnlyStore {
     override val streamStore: StreamKeyValueStore
 
     fun putStreamEventId(streamKey: StreamKey, eventId: EventId) {
@@ -265,7 +272,7 @@ interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
 
     fun deleteStreams(database: DatabaseName) {
         streamStore.prefixScan(
-            buildStreamKeyPrefix(database),
+            database.asStreamKeyPrefix(),
             Serdes.String().serializer(),
         ).use { streamEntries ->
             for (entry in streamEntries)
@@ -274,13 +281,13 @@ interface IStreamSummaryStore: IStreamSummaryReadOnlyStore {
     }
 }
 
-class StreamSummaryStore(
+class StreamStore(
     override val streamStore: StreamKeyValueStore
-): IStreamSummaryStore
+): IStreamStore
 
 class StreamReadOnlyStore(
     override val streamStore: StreamReadOnlyKeyValueStore,
-): IStreamSummaryReadOnlyStore
+): IStreamReadOnlyStore
 
 interface IEventReadOnlyStore: EventReadModel {
     val eventStore: EventReadOnlyKeyValueStore

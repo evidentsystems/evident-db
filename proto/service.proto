@@ -16,7 +16,7 @@ option objc_class_prefix = "EDB";
 
 service EvidentDb {
   // Command
-  rpc createDatabase(DatabaseCreationInfo) returns (CreateDatabaseReply) {}
+  rpc createDatabase(CreateDatabaseRequest) returns (CreateDatabaseReply) {}
   rpc deleteDatabase(DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
   rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
 
@@ -26,9 +26,13 @@ service EvidentDb {
   rpc database(DatabaseRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
   rpc batch(BatchRequest) returns (BatchReply) {}
-  rpc stream(StreamRequest) returns (stream StreamEventIdReply) {}
-  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEventIdReply) {}
+  rpc stream(StreamRequest) returns (stream StreamEntryReply) {}
+  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEntryReply) {}
   rpc events(stream EventRequest) returns (stream EventReply) {}
+}
+
+message CreateDatabaseRequest {
+  string name = 1;
 }
 
 message CreateDatabaseReply {
@@ -36,7 +40,8 @@ message CreateDatabaseReply {
     DatabaseCreationResult database_creation = 1;
     InvalidDatabaseNameError invalid_database_name_error = 2;
     DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
-    InternalServerError internal_server_error = 4;
+    DatabaseTopicCreationError database_topic_creation_error = 4;
+    InternalServerError internal_server_error = 5;
   }
 }
 
@@ -45,7 +50,8 @@ message DeleteDatabaseReply {
     DatabaseDeletionResult database_deletion = 1;
     InvalidDatabaseNameError invalid_database_name_error = 2;
     DatabaseNotFoundError database_not_found_error = 3;
-    InternalServerError internal_server_error = 4;
+    DatabaseTopicDeletionError database_topic_deletion_error = 4;
+    InternalServerError internal_server_error = 5;
   }
 }
 
@@ -112,9 +118,14 @@ message SubjectStreamRequest {
   string subject = 4;
 }
 
-message StreamEventIdReply {
+message StreamMapEntry {
+  int64 stream_revision = 1;
+  int64 event_id = 2;
+}
+
+message StreamEntryReply {
   oneof result {
-    int64 event_id = 1;
+    StreamMapEntry stream_map_entry = 1;
     StreamNotFoundError stream_not_found = 2;
   }
 }

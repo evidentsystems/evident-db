@@ -141,3 +141,7 @@ repl:
 .PHONY: loc
 loc:
 	tokei adapters app domain perf proto service transactor
+
+.PHONY: install-client
+install-client:
+	$(GRADLE) client:publishToMavenLocal

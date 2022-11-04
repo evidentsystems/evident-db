@@ -115,7 +115,10 @@ interface CommandHandler {
                 databaseReadModel,
                 command.database,
             ).bind()
-            deleteDatabaseTopic(database.name, database.topic).bind()
+            deleteDatabaseTopic(
+                database.name,
+                database.topic
+            ).bind()
             DatabaseDeleted(
                 EnvelopeId.randomUUID(),
                 command.id,

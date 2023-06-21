@@ -1,5 +1,5 @@
 rootProject.name = "evident-db"
-include("test", "domain", "adapters", "service", "transactor", "app", "client", "clojure-repl")
+include("test", "domain", "adapters", "service", "transactor", "app", "client")
 
 dependencyResolutionManagement {
     repositories {
@@ -8,23 +8,23 @@ dependencyResolutionManagement {
 
     versionCatalogs {
         create("libs") {
-            version("kotlin", "1.7.10")
-            version("kafka", "3.2.0")
+            version("kotlin", "1.7.20")
+            version("kafka", "3.5.0")
             version("caffeine", "3.1.1")
-            version("cloudevents", "2.3.0")
-            version("protobuf-java", "3.21.2")
-            version("grpc", "1.46.0")
+            version("cloudevents", "2.5.0")
+            version("protobuf-java", "3.23.3")
+            version("grpc", "1.56.0")
             version("grpckotlin", "1.3.0")
-            version("micronaut", "3.7.2")
-            version("micrometer", "1.9.3")
+            version("micronaut", "3.9.3")
+            version("micrometer", "1.11.1")
             version("slf4j", "1.7.36")
-            version("junit", "5.6.0")
+            version("junit", "5.9.3")
 
-            plugin("protobuf", "com.google.protobuf").version("0.8.18")
+            plugin("protobuf", "com.google.protobuf").version("0.9.3")
             plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").versionRef("kotlin")
-            library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.6.4")
-            library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.6.4")
-            library("arrow-core", "io.arrow-kt", "arrow-core").version("1.0.1")
+            library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.7.1")
+            library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.7.1")
+            library("arrow-core", "io.arrow-kt", "arrow-core").version("1.1.5")
             library("valiktor-core", "org.valiktor", "valiktor-core").version("0.12.0")
             library("kafka-streams", "org.apache.kafka", "kafka-streams").versionRef("kafka")
             library("kafka-streams-test-utils", "org.apache.kafka", "kafka-streams-test-utils").versionRef("kafka")

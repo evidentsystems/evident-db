@@ -3,7 +3,7 @@ syntax = "proto3";
 package com.evidentdb;
 
 import "domain.proto";
-import "spec.proto";
+import "cloudevents.proto";
 
 option csharp_namespace = "EvidentDB.V1";
 option go_package = "evidentdb.com/genproto/v1";

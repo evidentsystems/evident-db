@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package com.evidentdb;
 
-import "spec.proto";
+import "cloudevents.proto";
 import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "EvidentDB.V1";

@@ -340,19 +340,86 @@ data class BatchTransacted(
     override val data: BatchTransactionResult
 ): EventEnvelope, BatchEvent
 
+@JvmInline
+value class ReadModelName private constructor(val value: String) {
+    fun asStreamKeyPrefix() = "$value/"
+
+    companion object {
+        fun build(value: String): ReadModelName =
+            validate(ReadModelName(value)) {
+                validate(ReadModelName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidReadModelNameError, ReadModelName> =
+            valikate { build(value) }.mapLeft { InvalidReadModelNameError(value) }
+    }
+}
+
+@JvmInline
+value class EvolveSymbolName private constructor(val value: String) {
+    fun asStreamKeyPrefix() = "$value/"
+
+    companion object {
+        fun build(value: String): EvolveSymbolName =
+            validate(EvolveSymbolName(value)) {
+                validate(EvolveSymbolName::value).matches(Regex(NAME_PATTERN))
+            }
+
+        fun of(value: String): Validated<InvalidEvolveSymbolNameError, EvolveSymbolName> =
+            valikate { build(value) }.mapLeft { InvalidEvolveSymbolNameError(value) }
+    }
+}
+
+data class ProposedReadModel(
+    val name: ReadModelName,
+    val version: String,
+    val wasm: ByteArray,
+    val evolveSymbol: EvolveSymbolName,
+): CommandBody
+
+data class ReadModel(
+    val name: ReadModelName,
+    val version: String,
+    val wasm: ByteArray,
+    val evolveSymbol: EvolveSymbolName,
+)
+
+data class RegisterReadModel(
+    override val id: EnvelopeId,
+    override val database: DatabaseName,
+    override val data: ProposedReadModel
+): CommandEnvelope
+
+sealed interface ReadModelRegistrationError: ErrorBody
+
+data class ReadModelRegistrationResult(
+    val readModel: ReadModel,
+): EventBody
+
+data class ReadModelRegistered(
+    override val id: EnvelopeId,
+    override val commandId: EnvelopeId,
+    override val database: DatabaseName,
+    override val data: ReadModelRegistrationResult
+): EventEnvelope
+
 // Errors
 
 sealed interface NotFoundError
 
-data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
+data class InvalidDatabaseNameError(val name: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError, ReadModelRegistrationError
 data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError
-data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
+data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError, ReadModelRegistrationError
 data class DatabaseTopicCreationError(val database: String, val topic: TopicName): DatabaseCreationError
 data class DatabaseTopicDeletionError(val database: String, val topic: TopicName): DatabaseDeletionError
 
 data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
-data class StreamNotFoundError(val database: String, val stream: String): NotFoundError
+data class StreamNotFoundError(val database: String, val stream: String): NotFoundError, ReadModelRegistrationError
 data class EventNotFoundError(val database: String, val eventId: EventId): NotFoundError
+
+data class InvalidReadModelNameError(val name: String): ReadModelRegistrationError
+data class InvalidEvolveSymbolNameError(val name: String): ReadModelRegistrationError
+data class DuplicateReadModelVersionError(val proposedReadModel: ProposedReadModel): ReadModelRegistrationError
 
 sealed interface InvalidBatchError: BatchTransactionError
 
@@ -370,4 +437,5 @@ data class InvalidEventsError(val invalidEvents: List<InvalidEvent>): InvalidBat
 data class DuplicateBatchError(val batch: ProposedBatch): BatchTransactionError
 data class StreamStateConflict(val event: ProposedEvent, val streamState: StreamState)
 data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>): BatchTransactionError
-data class InternalServerError(val message: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError
+
+data class InternalServerError(val message: String): DatabaseCreationError, DatabaseDeletionError, BatchTransactionError, ReadModelRegistrationError

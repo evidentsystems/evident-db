@@ -12,6 +12,7 @@
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/client" />
             <option value="$PROJECT_DIR$/domain" />
+            <option value="$PROJECT_DIR$/read-models" />
             <option value="$PROJECT_DIR$/service" />
             <option value="$PROJECT_DIR$/test" />
             <option value="$PROJECT_DIR$/transactor" />

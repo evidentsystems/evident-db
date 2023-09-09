@@ -8,8 +8,8 @@ dependencyResolutionManagement {
 
     versionCatalogs {
         create("libs") {
-            version("kotlin", "1.7.20")
-            version("kafka", "3.5.0")
+            version("kotlin", "1.9.0")
+            version("kafka", "3.5.1")
             version("caffeine", "3.1.1")
             version("cloudevents", "2.5.0")
             version("protobuf-java", "3.23.3")

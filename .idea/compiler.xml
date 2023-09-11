@@ -28,8 +28,8 @@
           <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/javax.validation/validation-api/2.0.1.Final/cb855558e6271b1b32e716d24cb85c7f583ce09e/validation-api-2.0.1.Final.jar" />
           <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/jakarta.inject/jakarta.inject-api/2.0.1/4c28afe1991a941d7702fe1362c365f0a8641d1e/jakarta.inject-api-2.0.1.jar" />
         </processorPath>
-        <module name="evident-db.app.test" />
         <module name="evident-db.app.main" />
+        <module name="evident-db.app.test" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel target="11" />

@@ -11,46 +11,34 @@ CLUSTER_TYPE ?= kafka# or redpanda
 KAFKA_BOOTSTRAP_SERVERS ?= localhost:9092
 PARTITION_COUNT ?= 4
 REPLICATION_FACTOR ?= 1
-COMPRESSION_TYPE ?= uncompressed# snappy
+COMPRESSION_TYPE ?= uncompressed# or snappy
 DOCKER_COMPOSE ?= docker compose
 RPK ?= docker exec -it redpanda-0 rpk
 
-# Load testing
-GHZ ?= ghz --insecure --proto ./proto/service.proto
-LOAD_TEST_GRPC_ENDPOINT ?= localhost:50051
-LOAD_TEST_DB_COUNT ?= 20
-LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
-  \"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
-  \"events\":[\
-    {\
-      \"stream\": \"load-test-stream-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
-      \"stream_state\": 0,\
-      \"event\": {\
-        \"id\": \"will be overwritten\",\
-        \"source\": \"https://localhost:8080/foo/bar\",\
-        \"spec_version\": \"1.0\",\
-        \"type\": \"demo.event\",\
-        \"attributes\": {\"subject\": {\"ce_string\": \"subject-{{randomInt 0 1000}}\"}}\
-      }\
-    }\
-  ]\
-}"
-
-LOAD_TEST_QUERY_REQUEST := "{\"name\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\"}"
-
 default: build
 
-app/build/docker/main/Dockerfile:
+# Server
+
+.PHONY: dockerfile
+dockerfile:
 	$(GRADLE) dockerfile
 
 .PHONY: dockerfile
-dockerfile: app/build/docker/main/Dockerfile
+jar:
+	$(GRADLE) app:assemble
 
-app/build/libs/app-*-all.jar:
-	$(GRADLE) assemble
+.PHONY: dockerfile
+native:
+	$(GRADLE) app:nativeCompile
 
 .PHONY: build
-build: app/build/libs/app-*-all.jar
+build: jar native
+
+# Client
+
+.PHONY: install-client
+install-client:
+	$(GRADLE) client:publishToMavenLocal
 
 # Kafka Cluster
 
@@ -98,6 +86,28 @@ clean-redpanda-topics: clean-kafka-topics
 
 # Testing and Performance
 
+GHZ ?= ghz --insecure --proto ./proto/service.proto
+LOAD_TEST_GRPC_ENDPOINT ?= localhost:50051
+LOAD_TEST_DB_COUNT ?= 20
+LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
+  \"database\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
+  \"events\":[\
+    {\
+      \"stream\": \"load-test-stream-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\",\
+      \"stream_state\": 0,\
+      \"event\": {\
+        \"id\": \"will be overwritten\",\
+        \"source\": \"https://localhost:8080/foo/bar\",\
+        \"spec_version\": \"1.0\",\
+        \"type\": \"demo.event\",\
+        \"attributes\": {\"subject\": {\"ce_string\": \"subject-{{randomInt 0 1000}}\"}}\
+      }\
+    }\
+  ]\
+}"
+
+LOAD_TEST_QUERY_REQUEST := "{\"name\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\"}"
+
 .PHONY: test
 test:
 	$(GRADLE) test
@@ -141,7 +151,3 @@ repl:
 .PHONY: loc
 loc:
 	tokei adapters app domain perf proto service transactor
-
-.PHONY: install-client
-install-client:
-	$(GRADLE) client:publishToMavenLocal

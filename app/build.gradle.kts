@@ -1,6 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("com.google.devtools.ksp") version "1.8.22-1.0.11"
+    id("org.jetbrains.kotlin.kapt")
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("io.micronaut.application") version "4.1.1"
     id("io.micronaut.aot") version "4.1.1"
@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.grpc.kotlin.stub)
 
     implementation("info.picocli:picocli")
+    kapt("info.picocli:picocli-codegen")
     compileOnly("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut:micronaut-jackson-databind") // TODO: decide between Jackson or Micronaut Serde
@@ -45,6 +46,12 @@ kotlin {
                 "${project.properties["java.version"]}"
             )
         )
+    }
+}
+
+kapt {
+    arguments {
+        arg("project", "${project.group}/${project.name}")
     }
 }
 
@@ -78,7 +85,7 @@ micronaut {
 graalvmNative {
     binaries {
         named("main") {
-            imageName = "evident-db"
+            imageName = "evidentdb"
         }
     }
 }

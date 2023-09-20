@@ -1,78 +1,81 @@
 package com.evidentdb.app
 
+import io.micronaut.context.annotation.ConfigurationInject
 import io.micronaut.context.annotation.ConfigurationProperties
 import io.micronaut.core.bind.annotation.Bindable
-import javax.validation.constraints.Max
-import javax.validation.constraints.Min
-import javax.validation.constraints.NotBlank
-import javax.validation.constraints.NotNull
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 
 @ConfigurationProperties("evidentdb")
-interface EvidentDbConfig {
-    @get:NotBlank
-    val tenant: String
-
-    @get:NotNull
+data class EvidentDbConfig
+@ConfigurationInject constructor(
+    @NotBlank
+    val tenant: String,
+    @NotNull
     val topics: TopicsConfig
-
+) {
     @ConfigurationProperties("topics")
-    interface TopicsConfig {
-        @get:NotNull
-        val internalCommands: InternalCommandsConfig
-
-        @get:NotNull
-        val internalEvents: InternalEventsConfig
-
-        @get:NotNull
+    data class TopicsConfig
+    @ConfigurationInject constructor(
+        @NotNull
+        val internalCommands: InternalCommandsConfig,
+        @NotNull
+        val internalEvents: InternalEventsConfig,
+        @NotNull
         val databaseTopics: DatabaseTopicsConfig
-
+    ) {
         @ConfigurationProperties("internal-commands")
-        interface InternalCommandsConfig {
-            @get:NotBlank
-            val name: String
+        data class InternalCommandsConfig
+        @ConfigurationInject constructor(
+            @NotBlank
+            val name: String,
 
-            @get:Bindable(defaultValue = "4")
-            @get:Min(1)
-            @get:Max(24)
-            val partitions: Int
+            @Bindable(defaultValue = "4")
+            @Min(1)
+            @Max(24)
+            val partitions: Int,
 
-            @get:Bindable(defaultValue = "3")
-            @get:Min(1)
-            val replication: Int
+            @Bindable(defaultValue = "3")
+            @Min(1)
+            val replication: Int,
 
-            @get:Bindable(defaultValue = "uncompressed")
-            @get:NotBlank
+            @Bindable(defaultValue = "uncompressed")
+            @NotBlank
             val compressionType: String
-        }
+        )
 
         @ConfigurationProperties("internal-events")
-        interface InternalEventsConfig {
-            @get:NotBlank
-            val name: String
+        data class InternalEventsConfig
+        @ConfigurationInject constructor(
+            @NotBlank
+            val name: String,
 
-            @get:Bindable(defaultValue = "4")
-            @get:Min(1)
-            @get:Max(24)
-            val partitions: Int
+            @Bindable(defaultValue = "4")
+            @Min(1)
+            @Max(24)
+            val partitions: Int,
 
-            @get:Bindable(defaultValue = "3")
-            @get:Min(1)
-            val replication: Int
+            @Bindable(defaultValue = "3")
+            @Min(1)
+            val replication: Int,
 
-            @get:Bindable(defaultValue = "uncompressed")
-            @get:NotBlank
+            @Bindable(defaultValue = "uncompressed")
+            @NotBlank
             val compressionType: String
-        }
+        )
 
         @ConfigurationProperties("database-topics")
-        interface DatabaseTopicsConfig {
-            @get:Bindable(defaultValue = "3")
-            @get:Min(1)
-            val replication: Int
+        data class DatabaseTopicsConfig
+        @ConfigurationInject constructor(
+            @Bindable(defaultValue = "3")
+            @Min(1)
+            val replication: Int,
 
-            @get:Bindable(defaultValue = "uncompressed")
-            @get:NotBlank
+            @Bindable(defaultValue = "uncompressed")
+            @NotBlank
             val compressionType: String
-        }
+        )
     }
 }

@@ -1,5 +1,5 @@
 rootProject.name = "evident-db"
-include("test", "domain", "adapters", "service", "transactor", "app", "client")
+include("test", "domain", "adapters", "service", "transactor", "app", "client", "examples:autonomo")
 
 dependencyResolutionManagement {
     repositories {
@@ -8,20 +8,21 @@ dependencyResolutionManagement {
 
     versionCatalogs {
         create("libs") {
-            version("kotlin", "1.9.0")
+            version("kotlin", "1.8.22")
             version("kafka", "3.5.1")
             version("caffeine", "3.1.1")
             version("cloudevents", "2.5.0")
             version("protobuf-java", "3.23.3")
             version("grpc", "1.56.0")
             version("grpckotlin", "1.3.0")
-            version("micronaut", "3.9.3")
+            version("micronaut", "4.1.1")
             version("micrometer", "1.11.1")
             version("slf4j", "1.7.36")
             version("junit", "5.9.3")
 
             plugin("protobuf", "com.google.protobuf").version("0.9.3")
             plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").versionRef("kotlin")
+            plugin("kotlin-plugin-allopen", "org.jetbrains.kotlin.plugin.allopen").versionRef("kotlin")
             library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.7.1")
             library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.7.1")
             library("arrow-core", "io.arrow-kt", "arrow-core").version("1.1.5")

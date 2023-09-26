@@ -134,8 +134,8 @@ class KafkaProducerCommandManager(
 
     fun start() = scope.launch {
         eventChannel.consumeEach { event ->
-            LOGGER.info("Event received on response channel: ${event.id}")
-            LOGGER.debug("Received response event data: $event")
+            LOGGER.info("Event received on response channel: {}", event.id)
+            LOGGER.debug("Received response event data: {}", event)
             val commandId = event.commandId
             inFlight.remove(commandId)?.complete(event)
             samples.remove(commandId)?.stop(

@@ -10,7 +10,7 @@ import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
 
 fun main(args: Array<String>) {
-    CommandLine(Cli::class.java).execute(*args)
+    CommandLine(Cli()).execute(*args)
 }
 
 @CommandLine.Command(

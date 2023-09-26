@@ -24,9 +24,9 @@ dependencies {
     implementation("info.picocli:picocli")
     kapt("info.picocli:picocli-codegen")
     compileOnly("io.micronaut:micronaut-runtime")
+    implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
     implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut:micronaut-jackson-databind") // TODO: decide between Jackson or Micronaut Serde
-    implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
     implementation("jakarta.annotation:jakarta.annotation-api")
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
@@ -60,7 +60,6 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx4g", "-Xms4g")
 }
 
-graalvmNative.toolchainDetection = false
 micronaut {
     version.set(libs.versions.micronaut)
     runtime("netty")
@@ -83,6 +82,7 @@ micronaut {
 }
 
 graalvmNative {
+    toolchainDetection = false
     binaries {
         named("main") {
             imageName = "evidentdb"

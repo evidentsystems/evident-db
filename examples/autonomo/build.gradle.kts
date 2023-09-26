@@ -1,20 +1,21 @@
-import com.google.protobuf.gradle.id
+import com.google.protobuf.gradle.*
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.protobuf)
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("io.micronaut.application") version "4.1.1"
     // id("gg.jte.gradle") version "1.12.1"
-    id("com.google.protobuf") version "0.9.3"
 }
 
 version = "0.1.0-alpha-SNAPSHOT"
 group = "com.evidentdb.examples.autonomo"
 
 dependencies {
+    implementation(libs.kotlinx.coroutines)
+
     // EvidentDB Client
     implementation(project(":client"))
-    implementation(libs.kotlinx.coroutines)
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
 
@@ -28,7 +29,6 @@ dependencies {
     implementation("io.micronaut:micronaut-jackson-databind")
 //    implementation("io.micronaut.views:micronaut-views-jte")
     implementation("jakarta.annotation:jakarta.annotation-api")
-    runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("io.micronaut:micronaut-http-server-netty")
     runtimeOnly("org.yaml:snakeyaml")
 
@@ -49,7 +49,7 @@ kotlin {
 application {
     mainClass.set("com.evidentdb.examples.autonomo.ApplicationKt")
 }
-graalvmNative.toolchainDetection = false
+
 micronaut {
     version.set(libs.versions.micronaut)
     runtime("netty")
@@ -57,6 +57,13 @@ micronaut {
     processing {
         incremental(true)
         annotations("com.evidentdb.examples.autonomo.*")
+    }
+}
+
+graalvmNative {
+    toolchainDetection = false
+    metadataRepository {
+        enabled = false
     }
 }
 

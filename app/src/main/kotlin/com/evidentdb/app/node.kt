@@ -25,7 +25,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -60,7 +59,7 @@ class NodeBeans {
 		topicsConfig: EvidentDbConfig.TopicsConfig,
 		@Value("\${kafka.producers.service.linger.ms}")
 		producerLingerMs: Int,
-		commandResponseChannel: ReceiveChannel<EventEnvelope>,
+		commandResponseChannel: ChannelWrapper<EventEnvelope>,
 		meterRegistry: MeterRegistry,
 	): KafkaCommandService {
 		val service = KafkaCommandService(
@@ -86,14 +85,14 @@ class NodeBeans {
 		return mutableSharedFlow.asSharedFlow()
 	}
 
-	@Singleton
-//	@Bean(preDestroy = "close") // TODO: micronaut bug prevents this from closing cf. https://github.com/micronaut-projects/micronaut-core/issues/1272#ref-commit-69e574c
-	fun commandResponseChannel(listener: InternalEventListener): Channel<EventEnvelope> {
+  @Singleton
+  @Bean(preDestroy = "close")
+	fun commandResponseChannel(listener: InternalEventListener): ChannelWrapper<EventEnvelope> {
 		val channel = Channel<EventEnvelope>(BUFFER_SIZE)
 		listener.registerListener("command-responses") { event ->
 			channel.send(event)
 		}
-		return channel
+		return ChannelWrapper(channel)
 	}
 
 	@Singleton
@@ -120,6 +119,11 @@ class NodeBeans {
 			queryService,
 			databaseRevisionFlow
 		)
+}
+
+// Convenience for calling "close()" on Channel when destroying a Bean
+class ChannelWrapper<T>(private val channel: Channel<T>): Channel<T> by channel {
+    fun close() = this.close(null)
 }
 
 @Singleton
@@ -213,8 +217,8 @@ class InternalEventListener {
 
 	@Topic("\${evidentdb.topics.internal-events.name}")
 	fun receive(event: EventEnvelope) {
-		LOGGER.info("Invoking InternalEventListener for event ${event.id}")
-		LOGGER.debug("KafkaListener event data $event, listeners $listeners")
+		LOGGER.info("Invoking InternalEventListener for event {}", event.id)
+		LOGGER.debug("KafkaListener event data {}, listeners {}", event, listeners)
 		for ((_, listener) in listeners) {
 			scope.launch {
 				listener.invoke(event)

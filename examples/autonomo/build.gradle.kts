@@ -1,10 +1,8 @@
 import com.google.protobuf.gradle.*
 
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-    alias(libs.plugins.protobuf)
-    id("com.github.johnrengelman.shadow") version "8.1.1"
-    id("io.micronaut.application") version "4.1.1"
+    id("com.evidentdb.build.micronaut-app")
+    id("com.evidentdb.build.protobuf")
     // id("gg.jte.gradle") version "1.12.1"
 }
 
@@ -15,7 +13,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
 
     // EvidentDB Client
-    implementation(project(":client"))
+    implementation("com.evidentdb:java-client:0.1.0-SNAPSHOT")
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
 
@@ -34,16 +32,6 @@ dependencies {
 
     // Logging
     runtimeOnly("ch.qos.logback:logback-classic")
-}
-
-kotlin {
-    jvmToolchain {
-        languageVersion.set(
-            JavaLanguageVersion.of(
-                "${project.properties["java.version"]}"
-            )
-        )
-    }
 }
 
 application {

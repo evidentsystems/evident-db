@@ -11,5 +11,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "evident-db-build-logic"
+rootProject.name = "build-logic"
 include("kotlin", "kapt", "protobuf", "micronaut-app")

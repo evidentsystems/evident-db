@@ -6,7 +6,7 @@
         <compositeConfiguration>
           <compositeBuild compositeDefinitionSource="SCRIPT">
             <builds>
-              <build path="$PROJECT_DIR$/build-logic" name="evident-db-build-logic">
+              <build path="$PROJECT_DIR$/build-logic" name="build-logic">
                 <projects>
                   <project path="$PROJECT_DIR$/build-logic" />
                   <project path="$PROJECT_DIR$/build-logic/kapt" />
@@ -15,19 +15,19 @@
                   <project path="$PROJECT_DIR$/build-logic/protobuf" />
                 </projects>
               </build>
-              <build path="$PROJECT_DIR$/clients" name="evident-db-clients">
+              <build path="$PROJECT_DIR$/clients" name="clients">
                 <projects>
                   <project path="$PROJECT_DIR$/clients" />
                   <project path="$PROJECT_DIR$/clients/jvm" />
                 </projects>
               </build>
-              <build path="$PROJECT_DIR$/examples" name="evident-db-examples">
+              <build path="$PROJECT_DIR$/examples" name="examples">
                 <projects>
                   <project path="$PROJECT_DIR$/examples" />
                   <project path="$PROJECT_DIR$/examples/autonomo" />
                 </projects>
               </build>
-              <build path="$PROJECT_DIR$/server" name="evident-db">
+              <build path="$PROJECT_DIR$/server" name="server">
                 <projects>
                   <project path="$PROJECT_DIR$/server" />
                   <project path="$PROJECT_DIR$/server/adapters" />

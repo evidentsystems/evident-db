@@ -35,6 +35,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "evident-db-clients"
+rootProject.name = "clients"
 include(":jvm")
 project(":jvm").name = "client"

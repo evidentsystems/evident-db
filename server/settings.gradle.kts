@@ -43,5 +43,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "evident-db"
+rootProject.name = "server"
 include("test", "domain", "adapters", "service", "transactor", "app")

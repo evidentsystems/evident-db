@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/build-logic" name="evident-db-build-logic">
+                <projects>
+                  <project path="$PROJECT_DIR$/build-logic" />
+                  <project path="$PROJECT_DIR$/build-logic/kapt" />
+                  <project path="$PROJECT_DIR$/build-logic/kotlin" />
+                  <project path="$PROJECT_DIR$/build-logic/micronaut-app" />
+                  <project path="$PROJECT_DIR$/build-logic/protobuf" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/clients" name="evident-db-clients">
+                <projects>
+                  <project path="$PROJECT_DIR$/clients" />
+                  <project path="$PROJECT_DIR$/clients/jvm" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/examples" name="evident-db-examples">
+                <projects>
+                  <project path="$PROJECT_DIR$/examples" />
+                  <project path="$PROJECT_DIR$/examples/autonomo" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/server" name="evident-db">
+                <projects>
+                  <project path="$PROJECT_DIR$/server" />
+                  <project path="$PROJECT_DIR$/server/adapters" />
+                  <project path="$PROJECT_DIR$/server/app" />
+                  <project path="$PROJECT_DIR$/server/domain" />
+                  <project path="$PROJECT_DIR$/server/service" />
+                  <project path="$PROJECT_DIR$/server/test" />
+                  <project path="$PROJECT_DIR$/server/transactor" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/build-logic" />
+            <option value="$PROJECT_DIR$/build-logic/kapt" />
+            <option value="$PROJECT_DIR$/build-logic/kotlin" />
+            <option value="$PROJECT_DIR$/build-logic/micronaut-app" />
+            <option value="$PROJECT_DIR$/build-logic/protobuf" />
+            <option value="$PROJECT_DIR$/clients" />
+            <option value="$PROJECT_DIR$/clients/jvm" />
+            <option value="$PROJECT_DIR$/examples" />
+            <option value="$PROJECT_DIR$/examples/autonomo" />
+            <option value="$PROJECT_DIR$/server" />
+            <option value="$PROJECT_DIR$/server/adapters" />
+            <option value="$PROJECT_DIR$/server/app" />
+            <option value="$PROJECT_DIR$/server/domain" />
+            <option value="$PROJECT_DIR$/server/service" />
+            <option value="$PROJECT_DIR$/server/test" />
+            <option value="$PROJECT_DIR$/server/transactor" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>

@@ -26,4 +26,4 @@ dependencyResolutionManagement {
 includeBuild("../clients")
 
 rootProject.name = "evident-db-examples" // the component name
-include("autonomo")
+include("autonomo") //, "clojure-repl")

@@ -38,7 +38,7 @@ build: jar native
 
 .PHONY: install-java-client
 install-java-client:
-	cd clients && ../$(GRADLE) java:publishToMavenLocal
+	cd clients && ../$(GRADLE) client:publishToMavenLocal
 
 # Kafka Cluster
 

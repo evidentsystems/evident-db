@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.evidentdb"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0-alpha-SNAPSHOT"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -61,7 +61,6 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            artifactId = "java-client"
         }
     }
 }

@@ -16,23 +16,41 @@ EvidentDB uses Gradle as its build system, with some tasks
 orchestrated in the top-level Makefile.
 
 ``` bash
-make            # builds an application JAR and native-executable binaries
+make            # builds an application uber-JAR and native-executable binaries
 make run        # Runs local kafka cluster, creates topics, and runs application
-make perf       # Runs the external perf/correctness tests via Rust application in perf/
+make perf       # Runs a quick and dirty perf test
 make clean      # Cleans the build artifacts
 make clean-all  # Cleans up all Kafka cluster and Streams state
 ```
 
 ## Building & installing the Java/Kotlin client JAR
 
-To use the EvidentDB [JVM client](./client), you'll need to build it and install to your local Maven repo:
+To use the EvidentDB [JVM client](./clients/jvm), you'll need to build it and install to your local Maven repo:
 
 ``` bash
 make install-client
 ```
 
+Then include the dependency in your build config.
+
+Gradle:
+
+``` kotlin
+implementation("com.evidentdb:client:0.1.0-alpha-SNAPSHOT")
+```
+
+Maven:
+
+``` xml
+<dependency>
+    <groupId>com.evidentdb</groupId>
+    <artifactId>client</artifactId>
+    <version>0.1.0-alpha-SNAPSHOT</version>
+</dependency>
+```
+
 For more information on client usage, see the [JVM client
-README](./client/README.md).
+README](./clients/jvm/README.md).
 
 ## License & Copyright
 

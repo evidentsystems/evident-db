@@ -13,7 +13,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
 
     // EvidentDB Client
-    implementation("com.evidentdb:java-client:0.1.0-SNAPSHOT")
+    implementation("com.evidentdb:client")
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
 

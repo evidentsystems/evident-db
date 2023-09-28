@@ -48,8 +48,8 @@ internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
  * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
  * When a program is finished communicating with an EvidentDB server (e.g.
  * at program termination), the client can be cleanly [shutdown] (shutting down
- * and removing all cached [Connection]s after awaiting in-flight requests to complete),
- * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
+ * and removing all cached [ConnectionKt]s after awaiting in-flight requests to complete),
+ * or urgently [shutdownNow] (shutting down and removing all cached [ConnectionKt]s
  * but not awaiting in-flight requests to complete). Subsequent API method calls will
  * throw [ClientClosedException].
  *
@@ -59,9 +59,9 @@ internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
  * @constructor Main entry point for creating EvidentDB clients
  */
 @ThreadSafe
-class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
+class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDbKt {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
-    private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
+    private val connections = ConcurrentHashMap<DatabaseName, ConnectionKt>(10)
     private val cacheSizeReference = AtomicLong(DEFAULT_CACHE_SIZE)
     private val active = AtomicBoolean(true)
 
@@ -74,7 +74,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             cacheSizeReference.set(value)
         }
 
-    override suspend fun createDatabase(name: DatabaseName): Boolean =
+    override fun createDatabase(name: DatabaseName): Boolean =
+        runBlocking { createDatabaseAsync(name) }
+
+    override suspend fun createDatabaseAsync(name: DatabaseName): Boolean =
         if (!isActive)
             throw ClientClosedException(this)
         else {
@@ -107,7 +110,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
 
-    override suspend fun deleteDatabase(name: DatabaseName): Boolean =
+    override fun deleteDatabase(name: DatabaseName): Boolean =
+        runBlocking { deleteDatabaseAsync(name) }
+
+    override suspend fun deleteDatabaseAsync(name: DatabaseName): Boolean =
         if (!isActive)
             throw ClientClosedException(this)
         else {
@@ -142,7 +148,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
 
-    override fun catalog(): Flow<DatabaseSummary> =
+    override fun fetchCatalog(): CloseableIterator<DatabaseSummary> =
+        fetchCatalogAsync().asIterator()
+
+    override fun fetchCatalogAsync(): Flow<DatabaseSummary> =
         if (!isActive)
             throw ClientClosedException(this)
         else
@@ -150,14 +159,14 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 .catalog(CatalogRequest.getDefaultInstance())
                 .map { reply -> reply.database.toDomain() }
 
-    override fun connectDatabase(name: DatabaseName): Connection =
+    override fun connectDatabase(name: DatabaseName): ConnectionKt =
         if (!isActive)
             throw ClientClosedException(this)
         else {
             connections[name]?.let {
                 return it
             }
-            val newConnection = ConnectionImpl(name, cacheSize)
+            val newConnection = ConnectionKtImpl(name, cacheSize)
             newConnection.start()
             connections[name] = newConnection
             newConnection
@@ -182,10 +191,10 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
     private fun removeConnection(database: DatabaseName) =
         connections.remove(database)
 
-    private inner class ConnectionImpl(
+    private inner class ConnectionKtImpl(
         override val database: DatabaseName,
         eventCacheSize: Long,
-    ) : Connection {
+    ) : ConnectionKt {
         private val connectionScope = CoroutineScope(Dispatchers.Default)
         private val latestRevision: AtomicReference<DatabaseSummary> = AtomicReference()
 
@@ -232,7 +241,11 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
             }
         }
 
-        override suspend fun transact(events: List<EventProposal>): Batch =
+        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun transactAsync(events: List<EventProposal>): Batch =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {
@@ -289,12 +302,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 }
             }
 
-        override fun db(): Database =
+        override fun db(): DatabaseKt =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
                 latestRevision.get().let { summary ->
-                    DatabaseImpl(
+                    DatabaseKtImpl(
                         summary.name,
                         summary.topic,
                         summary.created,
@@ -302,10 +315,14 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     )
                 }
 
+        override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<Database> {
+            TODO("Not yet implemented")
+        }
+
         // TODO: validate revision > 0, and ensure
         //  all valid revisions return a valid database
         //  event fuzzy (currently throws NPE if not an exact match?)
-        override suspend fun sync(revision: DatabaseRevision): Database =
+        override suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): DatabaseKt =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {
@@ -316,7 +333,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         summary
                     }
                 }.await()
-                DatabaseImpl(
+                DatabaseKtImpl(
                     summary.name,
                     summary.topic,
                     summary.created,
@@ -324,14 +341,18 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 )
             }
 
-        override suspend fun sync(): Database =
+        override fun fetchLatestDb(): CompletableFuture<Database> {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun fetchLatestDbAsync(): DatabaseKt =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
                 loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
                         setLatestRevision(summary)
                         dbCache.get(summary.revision) { _ -> summary }
-                        DatabaseImpl(
+                        DatabaseKtImpl(
                             summary.name,
                             summary.topic,
                             summary.created,
@@ -339,7 +360,11 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                         )
                     }
 
-        override fun log(): Flow<Batch> =
+        override fun fetchLog(): CloseableIterator<Batch> {
+            TODO("Not yet implemented")
+        }
+
+        override fun fetchLogFlow(): Flow<Batch> =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
@@ -376,7 +401,6 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                             throw SerializationError("Result not set")
                     }
                 }
-
 
         fun databaseCacheStats(): CacheStats = dbCache.synchronous().stats()
         fun eventCacheStats(): CacheStats = eventCache.synchronous().stats()
@@ -423,12 +447,12 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
         private suspend fun getCachedEvent(eventId: EventId): CloudEvent? =
             eventCache[eventId].await()
 
-        private inner class DatabaseImpl(
+        private inner class DatabaseKtImpl(
             override val name: DatabaseName,
             override val topic: TopicName,
             override val created: Instant,
             override val streamRevisions: Map<StreamName, StreamRevision>,
-        ) : Database {
+        ) : DatabaseKt {
             private val streams = ConcurrentHashMap<StreamName, List<EventId>>(streamRevisions.size)
 
             override val revision: DatabaseRevision
@@ -436,9 +460,13 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     acc + v
                 }
 
-            override fun stream(streamName: StreamName): Flow<CloudEvent> =
+            override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> {
+                TODO("Not yet implemented")
+            }
+
+            override fun fetchStreamAsync(streamName: StreamName): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
+                    throw ConnectionClosedException(this@ConnectionKtImpl)
                 else {
                     val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
@@ -453,12 +481,19 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                     )
                 }
 
-            override fun subjectStream(
+            override fun fetchSubjectStream(
+                streamName: StreamName,
+                subjectName: StreamSubject
+            ): CloseableIterator<CloudEvent> {
+                TODO("Not yet implemented")
+            }
+
+            override fun fetchSubjectStreamAsync(
                 streamName: StreamName,
                 subjectName: StreamSubject
             ): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
+                    throw ConnectionClosedException(this@ConnectionKtImpl)
                 else {
                     val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
@@ -496,9 +531,13 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 }
 
 
-            override suspend fun event(eventId: EventId): CloudEvent? =
+            override fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?> {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun fetchEventAsync(eventId: EventId): CloudEvent? =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
+                    throw ConnectionClosedException(this@ConnectionKtImpl)
                 else
                     getCachedEvent(eventId)
 
@@ -511,7 +550,7 @@ class EvidentDB(private val channelBuilder: ManagedChannelBuilder<*>) : Client {
                 if (this === other) return true
                 if (javaClass != other?.javaClass) return false
 
-                other as DatabaseImpl
+                other as DatabaseKtImpl
 
                 if (name != other.name) return false
                 if (created != other.created) return false

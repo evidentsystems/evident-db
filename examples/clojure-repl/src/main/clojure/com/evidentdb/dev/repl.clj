@@ -43,7 +43,7 @@
   (def database-name "clojure-repl")
 
   (def catalog
-    (eagerize (.catalog client)))
+    (eagerize (.fetchCatalog client)))
 
   (.createDatabase client database-name)
 
@@ -66,17 +66,17 @@
 
   (def batch-result @(.transact conn batch))
 
-  (def db2 @(.sync conn (.getRevision batch-result)))
+  (def db2 @(.fetchDbAsOf conn (.getRevision batch-result)))
 
-  (def db3 @(.sync conn))
+  (def db3 @(.fetchLatestDb conn))
 
   (= db2 db3)
 
-  (time (eagerize (.stream db1 "stream-1")))
+  (time (eagerize (.fetchStream db1 "stream-1")))
 
-  (time (eagerize (.subjectStream db1 "stream-1" "foo-2")))
+  (time (eagerize (.fetchSubjectStream db1 "stream-1" "foo-2")))
 
-  (time (eagerize (.log conn)))
+  (time (eagerize (.fetchLog conn)))
 
   (.deleteDatabase client database-name)
 

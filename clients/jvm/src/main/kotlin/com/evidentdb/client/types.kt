@@ -138,7 +138,7 @@ data class InternalServerError(val error: String):
 data class SerializationError(val error: String):
     RuntimeException("Serialization error: $error")
 
-data class ClientClosedException(val client: GrpcLifecycle):
+data class ClientClosedException(val client: Lifecycle):
     RuntimeException("This client is closed: $client")
-data class ConnectionClosedException(val connection: GrpcLifecycle):
+data class ConnectionClosedException(val connection: Lifecycle):
     RuntimeException("This connection is closed: $connection")

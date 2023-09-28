@@ -1,8 +1,10 @@
 package com.evidentdb.client.java
 
 import com.evidentdb.client.*
+import com.evidentdb.client.kotlin.Connection as ConnectionKt
+import com.evidentdb.client.kotlin.Database as DatabaseKt
 import io.cloudevents.CloudEvent
-import com.evidentdb.client.kotlin.GrpcClientKt as EvidentDBKt
+import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future

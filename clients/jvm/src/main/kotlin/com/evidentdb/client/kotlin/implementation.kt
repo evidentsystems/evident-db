@@ -2,6 +2,7 @@ package com.evidentdb.client.kotlin
 
 import arrow.core.foldLeft
 import com.evidentdb.client.*
+import com.evidentdb.client.java.Database as DatabaseJava
 import com.evidentdb.client.dto.protobuf.toDomain
 import com.evidentdb.client.dto.protobuf.toInstant
 import com.evidentdb.client.dto.protobuf.toProto
@@ -48,8 +49,8 @@ internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
  * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
  * When a program is finished communicating with an EvidentDB server (e.g.
  * at program termination), the client can be cleanly [shutdown] (shutting down
- * and removing all cached [ConnectionKt]s after awaiting in-flight requests to complete),
- * or urgently [shutdownNow] (shutting down and removing all cached [ConnectionKt]s
+ * and removing all cached [Connection]s after awaiting in-flight requests to complete),
+ * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
  * but not awaiting in-flight requests to complete). Subsequent API method calls will
  * throw [ClientClosedException].
  *
@@ -59,9 +60,9 @@ internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
  * @constructor Main entry point for creating EvidentDB clients
  */
 @ThreadSafe
-class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDbKt {
+class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDbKt {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
-    private val connections = ConcurrentHashMap<DatabaseName, ConnectionKt>(10)
+    private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
     private val cacheSizeReference = AtomicLong(DEFAULT_CACHE_SIZE)
     private val active = AtomicBoolean(true)
 
@@ -159,14 +160,14 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                 .catalog(CatalogRequest.getDefaultInstance())
                 .map { reply -> reply.database.toDomain() }
 
-    override fun connectDatabase(name: DatabaseName): ConnectionKt =
-        if (!isActive)
+    override fun connectDatabase(name: DatabaseName): Connection =
+        if (!isActive) {
             throw ClientClosedException(this)
-        else {
+        } else {
             connections[name]?.let {
-                return it
+                return@connectDatabase it
             }
-            val newConnection = ConnectionKtImpl(name, cacheSize)
+            val newConnection = ConnectionImpl(name, cacheSize)
             newConnection.start()
             connections[name] = newConnection
             newConnection
@@ -191,10 +192,10 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
     private fun removeConnection(database: DatabaseName) =
         connections.remove(database)
 
-    private inner class ConnectionKtImpl(
+    private inner class ConnectionImpl(
         override val database: DatabaseName,
         eventCacheSize: Long,
-    ) : ConnectionKt {
+    ) : Connection {
         private val connectionScope = CoroutineScope(Dispatchers.Default)
         private val latestRevision: AtomicReference<DatabaseSummary> = AtomicReference()
 
@@ -241,9 +242,8 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
             }
         }
 
-        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> {
-            TODO("Not yet implemented")
-        }
+        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
+            connectionScope.future { transactAsync(events) }
 
         override suspend fun transactAsync(events: List<EventProposal>): Batch =
             if (!connectionScope.isActive)
@@ -302,12 +302,12 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                 }
             }
 
-        override fun db(): DatabaseKt =
+        override fun db(): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
                 latestRevision.get().let { summary ->
-                    DatabaseKtImpl(
+                    DatabaseImpl(
                         summary.name,
                         summary.topic,
                         summary.created,
@@ -315,14 +315,15 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                     )
                 }
 
-        override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<Database> {
-            TODO("Not yet implemented")
-        }
+        override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<DatabaseJava> =
+            connectionScope.future {
+                fetchDbAsOfAsync(revision)
+            }
 
         // TODO: validate revision > 0, and ensure
         //  all valid revisions return a valid database
         //  event fuzzy (currently throws NPE if not an exact match?)
-        override suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): DatabaseKt =
+        override suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {
@@ -333,7 +334,7 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                         summary
                     }
                 }.await()
-                DatabaseKtImpl(
+                DatabaseImpl(
                     summary.name,
                     summary.topic,
                     summary.created,
@@ -341,18 +342,19 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                 )
             }
 
-        override fun fetchLatestDb(): CompletableFuture<Database> {
-            TODO("Not yet implemented")
-        }
+        override fun fetchLatestDb(): CompletableFuture<DatabaseJava> =
+            connectionScope.future {
+                fetchLatestDbAsync()
+            }
 
-        override suspend fun fetchLatestDbAsync(): DatabaseKt =
+        override suspend fun fetchLatestDbAsync(): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
                 loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
                         setLatestRevision(summary)
                         dbCache.get(summary.revision) { _ -> summary }
-                        DatabaseKtImpl(
+                        DatabaseImpl(
                             summary.name,
                             summary.topic,
                             summary.created,
@@ -360,9 +362,8 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                         )
                     }
 
-        override fun fetchLog(): CloseableIterator<Batch> {
-            TODO("Not yet implemented")
-        }
+        override fun fetchLog(): CloseableIterator<Batch> =
+            fetchLogFlow().asIterator()
 
         override fun fetchLogFlow(): Flow<Batch> =
             if (!connectionScope.isActive)
@@ -447,12 +448,12 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
         private suspend fun getCachedEvent(eventId: EventId): CloudEvent? =
             eventCache[eventId].await()
 
-        private inner class DatabaseKtImpl(
+        private inner class DatabaseImpl(
             override val name: DatabaseName,
             override val topic: TopicName,
             override val created: Instant,
             override val streamRevisions: Map<StreamName, StreamRevision>,
-        ) : DatabaseKt {
+        ) : Database {
             private val streams = ConcurrentHashMap<StreamName, List<EventId>>(streamRevisions.size)
 
             override val revision: DatabaseRevision
@@ -460,13 +461,12 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                     acc + v
                 }
 
-            override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> {
-                TODO("Not yet implemented")
-            }
+            override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> =
+                fetchStreamAsync(streamName).asIterator()
 
             override fun fetchStreamAsync(streamName: StreamName): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionKtImpl)
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
@@ -484,16 +484,15 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
             override fun fetchSubjectStream(
                 streamName: StreamName,
                 subjectName: StreamSubject
-            ): CloseableIterator<CloudEvent> {
-                TODO("Not yet implemented")
-            }
+            ): CloseableIterator<CloudEvent> =
+                fetchSubjectStreamAsync(streamName, subjectName).asIterator()
 
             override fun fetchSubjectStreamAsync(
                 streamName: StreamName,
                 subjectName: StreamSubject
             ): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionKtImpl)
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     val maxRevision = streamRevisions[streamName]
                         ?: throw StreamNotFoundError(database, streamName)
@@ -531,13 +530,12 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                 }
 
 
-            override fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?> {
-                TODO("Not yet implemented")
-            }
+            override fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?> =
+                runBlocking { future { fetchEventAsync(eventId) } }
 
             override suspend fun fetchEventAsync(eventId: EventId): CloudEvent? =
                 if (!connectionScope.isActive)
-                    throw ConnectionClosedException(this@ConnectionKtImpl)
+                    throw ConnectionClosedException(this@ConnectionImpl)
                 else
                     getCachedEvent(eventId)
 
@@ -550,7 +548,7 @@ class GrpcClientKt(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
                 if (this === other) return true
                 if (javaClass != other?.javaClass) return false
 
-                other as DatabaseKtImpl
+                other as DatabaseImpl
 
                 if (name != other.name) return false
                 if (created != other.created) return false

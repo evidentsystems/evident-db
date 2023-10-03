@@ -1,7 +1,6 @@
 package com.evidentdb.examples.autonomo
 
 import com.evidentdb.client.kotlin.Connection
-import com.evidentdb.client.kotlin.Database
 import com.evidentdb.examples.autonomo.transfer.AddVehicle
 import com.evidentdb.examples.autonomo.transfer.CancelRide
 import com.evidentdb.examples.autonomo.transfer.ConfirmPickup
@@ -15,9 +14,6 @@ import com.evidentdb.examples.autonomo.transfer.VehicleReadModel
 import java.util.UUID
 
 interface QueryService {
-//    fun projectRideEvents()
-//    fun projectVehicleEvents()
-
     // Rides
     fun getRideById(rideId: UUID): RideReadModel?
 
@@ -28,9 +24,6 @@ interface QueryService {
 }
 
 interface CommandService: QueryService {
-//    fun decideAsOfLatest(evidentDB: Client, command: Command)
-//    fun decideAsOfRevision(evidentDB: Client, command: Command, revision: Long)
-
     fun requestRide(command: RequestRide): Result<RideReadModel>
     fun cancelRide(command: CancelRide): Result<RideReadModel>
     fun confirmRidePickup(command: ConfirmPickup): Result<RideReadModel>
@@ -44,7 +37,6 @@ interface CommandService: QueryService {
 
 class EvidentDbService(
     private val conn: Connection,
-    private val startDatabase: Database = conn.db()
 ): CommandService {
     override fun getRideById(rideId: UUID): RideReadModel? {
         TODO("Not yet implemented")

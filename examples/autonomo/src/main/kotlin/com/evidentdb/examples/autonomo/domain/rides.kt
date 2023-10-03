@@ -18,11 +18,11 @@ data class RequestRide(
 ): RideCommand {
     override val ride = null
     override fun decide(state: Ride): List<RideEvent> = when(state) {
-            InitialRideState -> listOf(
-                RideRequested(RideId.randomUUID(), rider, origin, destination, pickupTime, Instant.now())
-            )
-            else -> throw RideCommandError(this, state, "Ride already exists")
-        }
+        InitialRideState -> listOf(
+            RideRequested(RideId.randomUUID(), rider, origin, destination, pickupTime, Instant.now())
+        )
+        else -> throw RideCommandError(this, state, "Ride already exists")
+    }
 }
 
 data class ScheduleRide(

@@ -7,9 +7,9 @@ import java.util.*
 typealias RideId = UUID
 typealias UserId = UUID
 
-@JvmInline
-value class GeoCoordinates private constructor (
-    val latLong: Pair<Double, Double>
+data class GeoCoordinates private constructor (
+    val latitude: Double,
+    val longitude: Double
 ) {
     companion object {
         const val MIN_LATITUDE = -90.0
@@ -25,7 +25,7 @@ value class GeoCoordinates private constructor (
             if (longitude < MIN_LONGITUDE || longitude > MAX_LONGITUDE) {
                 throw InvalidLongitude(longitude)
             }
-            return GeoCoordinates(Pair(latitude, longitude))
+            return GeoCoordinates(latitude, longitude)
         }
     }
 }
@@ -45,7 +45,7 @@ value class Vin private constructor(val value: String) {
     companion object {
         private val VIN_PATTERN = Regex("^(?=.*[0-9])(?=.*[A-z])[0-9A-z-]{17}\$")
 
-        operator fun invoke(value: String): Vin =
+        fun build(value: String): Vin =
             if (value.matches(VIN_PATTERN)) {
                 Vin(value)
             } else {

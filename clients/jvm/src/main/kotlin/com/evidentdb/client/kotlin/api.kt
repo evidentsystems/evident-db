@@ -5,6 +5,7 @@ import com.evidentdb.client.java.Connection as ConnectionJava
 import com.evidentdb.client.java.Database as DatabaseJava
 import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
+import java.util.concurrent.CompletableFuture
 
 /**
  * A connection to a specific database, used to [transactAsync]
@@ -51,6 +52,24 @@ interface Connection: ConnectionJava {
     override fun db(): Database
 
     /**
+     * Returns a completable future bearing the next database revision
+     * greater than or equal to the given revision. Getting the database from
+     * the returned future may block indefinitely if revision is greater
+     * than the latest available on server, so callers should use timeouts or
+     * similar when getting the value of the returned future.
+     *
+     * @param revision a DatabaseRevision (Long). Future will not complete until
+     *  this revision is available on the server.
+     * @return a [CompletableFuture] bearing the [Database] at the given revision
+     * @throws DatabaseNotFoundError conveyed by the [CompletableFuture] when this
+     *  connection's database is no longer present on the server
+     *  (callers should [shutdown] the connection in this case)
+     * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
+     *  of client-server serialization issues
+     * */
+    override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<out Database>
+
+    /**
      * Returns the next database revision greater than or equal to the given revision.
      * This function may suspend indefinitely if revision is greater than the latest
      * available on server, so callers should manage with timeouts or similar.
@@ -63,7 +82,20 @@ interface Connection: ConnectionJava {
      *  (callers should [shutdown] the connection in this case)
      * @throws SerializationError in rare cases of client-server serialization issues
      * */
-    suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): com.evidentdb.client.kotlin.Database
+    suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): Database
+
+    /**
+     * Returns a completable future bearing the latest database available on the
+     * server as of this request's arrival.
+     *
+     * @return a [CompletableFuture] bearing the latest [Database] available on the server.
+     * @throws DatabaseNotFoundError conveyed by the [CompletableFuture] when this
+     *  connection's database is no longer present on the server
+     *  (callers should [shutdown] the connection in this case)
+     * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
+     *  of client-server serialization issues
+     */
+    override fun fetchLatestDb(): CompletableFuture<out Database>
 
     /**
      * Returns the latest database available on the server as of this request's arrival.
@@ -74,7 +106,7 @@ interface Connection: ConnectionJava {
      *  (callers should [shutdown] the connection in this case)
      * @throws SerializationError in rare cases of client-server serialization issues
      */
-    suspend fun fetchLatestDbAsync(): com.evidentdb.client.kotlin.Database
+    suspend fun fetchLatestDbAsync(): Database
 
     /**
      * Returns the transaction log of this database as a [Flow]

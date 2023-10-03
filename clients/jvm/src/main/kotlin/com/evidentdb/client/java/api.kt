@@ -42,7 +42,7 @@ interface Connection: Lifecycle {
      * @throws RuntimeException subtypes [InternalServerError] and [SerializationError]
      *  in rare cases of server-side or client-server serialization issues respectively
      * */
-    fun transact(events: List<EventProposal>): CompletableFuture<Batch>
+    fun transact(events: List<EventProposal>): CompletableFuture<out Batch>
 
     /**
      * Immediately returns the latest database value available locally.
@@ -67,7 +67,7 @@ interface Connection: Lifecycle {
      * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
      *  of client-server serialization issues
      * */
-    fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<Database>
+    fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<out Database>
 
     /**
      * Returns a completable future bearing the latest database available on the
@@ -80,7 +80,7 @@ interface Connection: Lifecycle {
      * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
      *  of client-server serialization issues
      */
-    fun fetchLatestDb(): CompletableFuture<Database>
+    fun fetchLatestDb(): CompletableFuture<out Database>
 
     /**
      * Returns the transaction log of this database as a [CloseableIterator]
@@ -154,5 +154,5 @@ interface Database {
      *
      * @return a [CompletableFuture] bearing the [CloudEvent]? if it exists w/in this database.
      */
-    fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?>
+    fun fetchEvent(eventId: EventId): CompletableFuture<out CloudEvent?>
 }

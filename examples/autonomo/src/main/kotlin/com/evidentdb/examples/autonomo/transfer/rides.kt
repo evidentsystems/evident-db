@@ -1,14 +1,10 @@
-@file:UseSerializers(InstantSerializer::class, UUIDSerializer::class)
-
 package com.evidentdb.examples.autonomo.transfer
 
 import com.evidentdb.examples.autonomo.domain.*
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.UseSerializers
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import io.micronaut.serde.annotation.Serdeable
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.*
@@ -26,7 +22,7 @@ import com.evidentdb.examples.autonomo.domain.ScheduledRideCancelled as DomainSc
 
 // ***** Commands *****
 
-@Serializable
+@Serdeable
 data class RequestRide(
     val rider: UserId,
     val origin: GeoCoordinates,
@@ -38,7 +34,7 @@ data class RequestRide(
     )
 }
 
-@Serializable
+@Serdeable
 data class ConfirmPickup(
     val vin: String,
     val rider: UserId,
@@ -49,7 +45,7 @@ data class ConfirmPickup(
     )
 }
 
-@Serializable
+@Serdeable
 data class EndRide(
     val dropOffLocation: GeoCoordinates
 ) {
@@ -69,7 +65,7 @@ sealed interface RideEvent {
             .withId(UUID.randomUUID().toString())
             .withSubject(ride.toString())
             .withType(this::class.simpleName)
-            .withData(Json.encodeToString(this).toByteArray())
+            .withData(ObjectMapper().writeValueAsBytes(this))
 
     companion object {
         fun fromDomain(event: DomainRideEvent): RideEvent = when (event) {
@@ -106,23 +102,24 @@ sealed interface RideEvent {
         }
 
         fun fromCloudEvent(event: CloudEvent): RideEvent {
+            val objectMapper = ObjectMapper()
             val data = event.data!!
                 .toBytes()
                 .toString(StandardCharsets.UTF_8)
             return when (event.type) {
-                "RideRequested" -> Json.decodeFromString<RideRequested>(data)
-                "RequestedRideCancelled" -> Json.decodeFromString<RequestedRideCancelled>(data)
-                "RideScheduled" -> Json.decodeFromString<RideScheduled>(data)
-                "ScheduledRideCancelled" -> Json.decodeFromString<ScheduledRideCancelled>(data)
-                "RiderPickedUp" -> Json.decodeFromString<RiderPickedUp>(data)
-                "RiderDroppedOff" -> Json.decodeFromString<RiderDroppedOff>(data)
+                "RideRequested" -> objectMapper.readValue(data, RideRequested::class.java)
+                "RequestedRideCancelled" -> objectMapper.readValue(data, RequestedRideCancelled::class.java)
+                "RideScheduled" -> objectMapper.readValue(data, RideScheduled::class.java)
+                "ScheduledRideCancelled" -> objectMapper.readValue(data, RequestedRideCancelled::class.java)
+                "RiderPickedUp" -> objectMapper.readValue(data, RiderPickedUp::class.java)
+                "RiderDroppedOff" -> objectMapper.readValue(data, RiderDroppedOff::class.java)
                 else -> throw IllegalArgumentException("Unknown event type: ${event.type}")
             }
         }
     }
 }
 
-@Serializable
+@Serdeable
 data class RideRequested(
     override val ride: UUID,
     val rider: UUID,
@@ -136,7 +133,7 @@ data class RideRequested(
     )
 }
 
-@Serializable
+@Serdeable
 data class RideScheduled(
     override val ride: UUID,
     val vin: String,
@@ -148,7 +145,7 @@ data class RideScheduled(
     )
 }
 
-@Serializable
+@Serdeable
 data class RequestedRideCancelled(
     override val ride: UUID,
     val cancelledAt: Instant
@@ -156,7 +153,7 @@ data class RequestedRideCancelled(
     override fun toDomain() = DomainRequestedRideCancelled(ride, cancelledAt)
 }
 
-@Serializable
+@Serdeable
 data class ScheduledRideCancelled(
     override val ride: UUID,
     val vin: String,
@@ -167,7 +164,7 @@ data class ScheduledRideCancelled(
     )
 }
 
-@Serializable
+@Serdeable
 data class RiderPickedUp(
     override val ride: UUID,
     val rider: UUID,
@@ -180,7 +177,7 @@ data class RiderPickedUp(
     )
 }
 
-@Serializable
+@Serdeable
 data class RiderDroppedOff(
     override val ride: UUID,
     val vin: String,
@@ -192,7 +189,7 @@ data class RiderDroppedOff(
     )
 }
 
-@Serializable
+@Serdeable
 data class RideError(
     override val ride: UUID,
     val message: String,
@@ -209,12 +206,12 @@ fun CloudEvent.toRideEvent(): RideEvent = RideEvent.fromCloudEvent(this)
 
 // ***** Read Models *****
 
-@Serializable
+@Serdeable
 enum class RideStatus {
     REQUESTED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
 }
 
-@Serializable
+@Serdeable
 data class Ride(
     val id: UUID,
     val rider: UUID,

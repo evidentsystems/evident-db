@@ -15,17 +15,18 @@ dependencies {
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
 
-    // Serialization
-    implementation(libs.kotlin.serialization.json)
-
     // Micronaut App Framework
     compileOnly("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
     implementation("io.micronaut:micronaut-jackson-databind")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
 //    implementation("io.micronaut.views:micronaut-views-jte")
+    annotationProcessor("io.micronaut:micronaut-http-validation")
     implementation("jakarta.annotation:jakarta.annotation-api")
     implementation("io.micronaut:micronaut-http-server-netty")
     runtimeOnly("org.yaml:snakeyaml")
+    testImplementation("io.micronaut:micronaut-http-client")
 
     // Logging
     runtimeOnly("ch.qos.logback:logback-classic")
@@ -46,9 +47,9 @@ micronaut {
 }
 
 graalvmNative {
-    toolchainDetection = false
+    toolchainDetection.set(false)
     metadataRepository {
-        enabled = false
+        enabled.set(false)
     }
 }
 

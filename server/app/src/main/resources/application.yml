@@ -1,4 +1,6 @@
 micronaut:
+  server:
+    port: 50050
   application:
     name: evidentdb-${evidentdb.tenant}
 evidentdb:

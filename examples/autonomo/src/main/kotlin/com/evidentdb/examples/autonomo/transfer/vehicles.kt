@@ -1,16 +1,12 @@
-@file:UseSerializers(InstantSerializer::class, UUIDSerializer::class)
-
 package com.evidentdb.examples.autonomo.transfer
 
 import java.time.Instant
 import java.util.UUID
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.UseSerializers
 import com.evidentdb.examples.autonomo.domain.*
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import io.micronaut.serde.annotation.Serdeable
 import java.nio.charset.StandardCharsets
 import com.evidentdb.examples.autonomo.domain.VehicleEvent as DomainVehicleEvent
 import com.evidentdb.examples.autonomo.domain.VehicleAdded as DomainVehicleAdded
@@ -35,7 +31,7 @@ sealed interface VehicleEvent {
             .withId(UUID.randomUUID().toString())
             .withSubject(vin)
             .withType(this::class.simpleName)
-            .withData(Json.encodeToString(this).toByteArray())
+            .withData(ObjectMapper().writeValueAsBytes(this))
 
     companion object {
         fun fromDomain(event: DomainVehicleEvent): VehicleEvent = when (event) {
@@ -49,59 +45,60 @@ sealed interface VehicleEvent {
         }
 
         fun fromCloudEvent(event: CloudEvent): VehicleEvent {
+            val objectMapper = ObjectMapper()
             val data = event.data!!
                 .toBytes()
                 .toString(StandardCharsets.UTF_8)
             return when (event.type) {
-                "VehicleAdded" -> Json.decodeFromString<VehicleAdded>(data)
-                "VehicleAvailable" -> Json.decodeFromString<VehicleAvailable>(data)
-                "VehicleOccupied" -> Json.decodeFromString<VehicleOccupied>(data)
-                "VehicleReturnRequested" -> Json.decodeFromString<VehicleReturnRequested>(data)
-                "VehicleReturning" -> Json.decodeFromString<VehicleReturning>(data)
-                "VehicleReturned" -> Json.decodeFromString<VehicleReturned>(data)
-                "VehicleRemoved" -> Json.decodeFromString<VehicleRemoved>(data)
+                "VehicleAdded" -> objectMapper.readValue(data, VehicleAdded::class.java)
+                "VehicleAvailable" -> objectMapper.readValue(data, VehicleAvailable::class.java)
+                "VehicleOccupied" -> objectMapper.readValue(data, VehicleOccupied::class.java)
+                "VehicleReturnRequested" -> objectMapper.readValue(data, VehicleReturnRequested::class.java)
+                "VehicleReturning" -> objectMapper.readValue(data, VehicleReturning::class.java)
+                "VehicleReturned" -> objectMapper.readValue(data, VehicleReturned::class.java)
+                "VehicleRemoved" -> objectMapper.readValue(data, VehicleRemoved::class.java)
                 else -> throw IllegalArgumentException("Unknown event type: ${event.type}")
             }
         }
     }
 }
 
-@Serializable
+@Serdeable
 data class VehicleAdded(val owner: UUID, override val vin: String): VehicleEvent {
     override fun toDomain() = DomainVehicleAdded(owner, Vin.build(vin))
 }
 
-@Serializable
+@Serdeable
 data class VehicleAvailable(override val vin: String, val availableAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleAvailable(Vin.build(vin), availableAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleOccupied(override val vin: String, val occupiedAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleOccupied(Vin.build(vin), occupiedAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleReturnRequested(override val vin: String, val returnRequestedAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleReturnRequested(Vin.build(vin), returnRequestedAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleReturning(override val vin: String, val returningAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleReturning(Vin.build(vin), returningAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleReturned(override val vin: String, val returnedAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleReturned(Vin.build(vin), returnedAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleRemoved(val owner: UUID, override val vin: String, val removedAt: Instant): VehicleEvent {
     override fun toDomain() = DomainVehicleRemoved(owner, Vin.build(vin), removedAt)
 }
 
-@Serializable
+@Serdeable
 data class VehicleError(override val vin: String, val message: String): VehicleEvent {
     override fun toDomain(): DomainVehicleEvent {
         TODO("Not yet implemented")
@@ -115,12 +112,12 @@ fun CloudEvent.toVehicleEvent(): VehicleEvent = VehicleEvent.fromCloudEvent(this
 
 // ***** Read Models *****
 
-@Serializable
+@Serdeable
 enum class VehicleStatus {
     IN_INVENTORY, AVAILABLE, OCCUPIED, OCCUPIED_RETURNING, RETURNING
 }
 
-@Serializable
+@Serdeable
 data class Vehicle(
     val vin: String,
     val owner: UUID,

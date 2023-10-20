@@ -1,18 +1,6 @@
 package com.evidentdb.examples.autonomo
 
 import com.evidentdb.examples.autonomo.domain.*
-import com.evidentdb.examples.autonomo.domain.CancelRide
-import com.evidentdb.examples.autonomo.domain.GeoCoordinates
-import com.evidentdb.examples.autonomo.domain.InitialRideState
-import com.evidentdb.examples.autonomo.domain.MakeVehicleAvailable
-import com.evidentdb.examples.autonomo.domain.MarkVehicleUnoccupied
-import com.evidentdb.examples.autonomo.domain.RequestRide
-import com.evidentdb.examples.autonomo.domain.RideId
-import com.evidentdb.examples.autonomo.domain.RideRequested
-import com.evidentdb.examples.autonomo.domain.VehicleAvailable
-import com.evidentdb.examples.autonomo.domain.VehicleReturnRequested
-import com.evidentdb.examples.autonomo.domain.VehicleReturning
-import com.evidentdb.examples.autonomo.transfer.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -168,38 +156,5 @@ class DomainFunctionsTests {
         val occupiedVehicle = OccupiedVehicle(VALID_VIN, ownerId)
         val occupiedVehicleResult = occupiedVehicle.evolve(vehicleReturnRequested)
         Assertions.assertInstanceOf(OccupiedReturningVehicle::class.java, occupiedVehicleResult)
-    }
-
-    @Test
-    fun `decide Domain Function for Rides`() {
-        val command = rideCommand {
-            requestRide = requestRide {  }
-        }
-        val state = rideReadModel { initial = com.evidentdb.examples.autonomo.transfer.InitialRideState.getDefaultInstance() }
-
-        Assertions.assertDoesNotThrow {
-            decide(command, state)
-        }
-    }
-
-    @Test
-    fun `evolve Domain Function for Vehicles`() {
-        val state = vehicleReadModel {
-            vehicle = vehicle {
-                vin = VALID_VIN.value
-                owner = ownerId.toString()
-                status = VehicleStatus.IN_INVENTORY
-            }
-        }
-        val event = vehicleEvent {
-            vehicleAvailable = vehicleAvailable {
-                vin = VALID_VIN.value
-                availableAt = Instant.now().toTimestamp()
-            }
-        }
-
-        Assertions.assertDoesNotThrow {
-            evolve(state, event)
-        }
     }
 }

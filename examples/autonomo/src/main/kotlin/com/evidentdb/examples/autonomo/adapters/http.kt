@@ -21,7 +21,7 @@ class RidesController(
             ?.let { HttpResponse.ok(it) }
             ?: HttpResponse.notFound()
 
-    @Post(value = "/request", consumes = [MediaType.APPLICATION_JSON])
+    @Post(value = "/", consumes = [MediaType.APPLICATION_JSON])
     suspend fun requestRide(@Body command: RequestRide): HttpResponse<Ride> =
         service.requestRide(command.toDomain()).fold(
             { ride ->

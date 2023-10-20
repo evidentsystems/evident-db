@@ -44,13 +44,3 @@ class Beans {
 		return EvidentDb.kotlinClient(builder)
 	}
 }
-
-@Bean
-class VehicleEventSourcingDecisionExecutor(
-	override val domainLogic: Decide<VehicleCommand, Vehicle, VehicleEvent>
-): EventSourcingDecisionExecutor<VehicleCommand, Vehicle, VehicleEvent>
-
-@Bean
-class RideEventSourcingDecisionExecutor(
-	override val domainLogic: Decide<RideCommand, Ride, RideEvent>
-): EventSourcingDecisionExecutor<RideCommand, Ride, RideEvent>

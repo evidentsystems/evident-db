@@ -188,7 +188,7 @@ class DomainFunctionsTests {
             vehicle = vehicle {
                 vin = VALID_VIN.value
                 owner = ownerId.toString()
-                status = VehicleStatus.InInventory
+                status = VehicleStatus.IN_INVENTORY
             }
         }
         val event = vehicleEvent {

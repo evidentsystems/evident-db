@@ -4,24 +4,23 @@ import com.evidentdb.client.EventProposal
 import com.evidentdb.client.StreamState
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.client.kotlin.Database
-import com.evidentdb.examples.autonomo.IEventRepository
+import com.evidentdb.examples.autonomo.EventRepository
 import com.evidentdb.examples.autonomo.domain.RideEvent
 import com.evidentdb.examples.autonomo.domain.RideId
 import com.evidentdb.examples.autonomo.domain.VehicleEvent
 import com.evidentdb.examples.autonomo.domain.Vin
+import com.evidentdb.examples.autonomo.transfer.toRideEvent
 import com.evidentdb.examples.autonomo.transfer.toTransfer
+import com.evidentdb.examples.autonomo.transfer.toVehicleEvent
 import io.cloudevents.CloudEvent
-import io.cloudevents.core.builder.CloudEventBuilder
-import io.cloudevents.protobuf.toCloudEventData
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import java.util.UUID
 
 class VehiclesEventRepository(
     private val connection: Connection,
     private val asOf: Long? = null
-): IEventRepository<VehicleEvent> {
+): EventRepository<VehicleEvent> {
     private val db: Database = if (asOf == null) {
         connection.db()
     } else {
@@ -53,22 +52,15 @@ class VehiclesEventRepository(
 
     fun forEntity(vin: Vin) = VehicleEventRepository(vin)
 
-    private fun cloudEventToVehicleEvent(event: CloudEvent): VehicleEvent {
-        TODO()
-    }
-    private fun vehicleEventToCloudEvent(event: VehicleEvent): CloudEvent {
-        val transfer = event.toTransfer()
-        return CloudEventBuilder.v1()
-            .withId(UUID.randomUUID().toString())
-            .withSubject(event.vin.toString())
-            .withType(event.type)
-            .withData(transfer.toCloudEventData())
-            .build()
-    }
+    private fun cloudEventToVehicleEvent(event: CloudEvent) =
+        event.toVehicleEvent().toDomain()
+
+    private fun vehicleEventToCloudEvent(event: VehicleEvent) =
+        event.toTransfer().toCloudEvent()
 
     inner class VehicleEventRepository(
         val vin: Vin
-    ): IEventRepository<VehicleEvent> {
+    ): EventRepository<VehicleEvent> {
         override fun events(): Flow<VehicleEvent> =
             db.fetchSubjectStreamAsync(STREAM, vin.value).map(::cloudEventToVehicleEvent)
 
@@ -93,7 +85,7 @@ class VehiclesEventRepository(
 class RidesEventRepository(
     private val connection: Connection,
     private val asOf: Long? = null
-): IEventRepository<RideEvent> {
+): EventRepository<RideEvent> {
     private val db: Database = if (asOf == null) {
         connection.db()
     } else {
@@ -125,12 +117,15 @@ class RidesEventRepository(
 
     fun forEntity(rideId: RideId) = RideEventRepository(rideId)
 
-    private fun cloudEventToRideEvent(event: CloudEvent): RideEvent = TODO()
-    private fun rideEventToCloudEvent(event: RideEvent): CloudEvent = TODO()
+    private fun cloudEventToRideEvent(event: CloudEvent) =
+        event.toRideEvent().toDomain()
+
+    private fun rideEventToCloudEvent(event: RideEvent) =
+        event.toTransfer().toCloudEvent()
 
     inner class RideEventRepository(
         val rideId: RideId
-    ): IEventRepository<RideEvent> {
+    ): EventRepository<RideEvent> {
         override fun events(): Flow<RideEvent> =
             db.fetchSubjectStreamAsync(STREAM, rideId.toString()).map(::cloudEventToRideEvent)
 

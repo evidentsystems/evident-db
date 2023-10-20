@@ -20,10 +20,6 @@ fun main(args: Array<String>) {
 @Factory
 class Beans {
 	@Singleton
-	fun service(conn: Connection): CommandService =
-		EvidentDbService(conn)
-
-	@Singleton
 	@Bean(preDestroy = "shutdown")
 	fun evidentDbConnection(
 		@Value("\${evident-db.database-name}")
@@ -51,12 +47,10 @@ class Beans {
 
 @Bean
 class VehicleEventSourcingDecisionExecutor(
-	override val repository: IEventRepository<VehicleEvent>,
 	override val domainLogic: Decide<VehicleCommand, Vehicle, VehicleEvent>
 ): EventSourcingDecisionExecutor<VehicleCommand, Vehicle, VehicleEvent>
 
 @Bean
 class RideEventSourcingDecisionExecutor(
-	override val repository: IEventRepository<RideEvent>,
 	override val domainLogic: Decide<RideCommand, Ride, RideEvent>
 ): EventSourcingDecisionExecutor<RideCommand, Ride, RideEvent>

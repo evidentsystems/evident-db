@@ -133,7 +133,7 @@ class TransferTypeConstructors {
                 vehicle = vehicle {
                     vin = VALID_VIN
                     owner = ownerId
-                    status = VehicleStatus.InInventory
+                    status = VehicleStatus.IN_INVENTORY
                 }
             }
         }

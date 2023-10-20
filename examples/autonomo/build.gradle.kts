@@ -1,8 +1,6 @@
-import com.google.protobuf.gradle.*
-
 plugins {
     id("com.evidentdb.build.micronaut-app")
-    id("com.evidentdb.build.protobuf")
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.8.22"
     // id("gg.jte.gradle") version "1.12.1"
 }
 
@@ -18,8 +16,7 @@ dependencies {
     implementation(libs.grpc.netty)
 
     // Serialization
-    implementation("com.google.protobuf:protobuf-kotlin:3.21.12")
-    implementation("com.google.protobuf:protobuf-java-util:3.21.12")
+    implementation(libs.kotlin.serialization.json)
 
     // Micronaut App Framework
     compileOnly("io.micronaut:micronaut-runtime")
@@ -59,17 +56,3 @@ graalvmNative {
 //    sourceDirectory.set(file("src/main/jte").toPath())
 //    generate()
 //}
-
-protobuf {
-    protoc {
-        artifact = "com.google.protobuf:protoc:3.22.2"
-    }
-
-    generateProtoTasks {
-        all().forEach {
-            it.builtins {
-                id("kotlin")
-            }
-        }
-    }
-}

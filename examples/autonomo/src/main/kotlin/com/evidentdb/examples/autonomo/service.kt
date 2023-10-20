@@ -1,88 +1,102 @@
 package com.evidentdb.examples.autonomo
 
 import com.evidentdb.client.kotlin.Connection
-import com.evidentdb.examples.autonomo.transfer.AddVehicle
-import com.evidentdb.examples.autonomo.transfer.CancelRide
-import com.evidentdb.examples.autonomo.transfer.ConfirmPickup
-import com.evidentdb.examples.autonomo.transfer.EndRide
-import com.evidentdb.examples.autonomo.transfer.MakeVehicleAvailable
-import com.evidentdb.examples.autonomo.transfer.RemoveVehicle
-import com.evidentdb.examples.autonomo.transfer.RequestRide
-import com.evidentdb.examples.autonomo.transfer.RequestVehicleReturn
-import com.evidentdb.examples.autonomo.transfer.RideReadModel
-import com.evidentdb.examples.autonomo.transfer.VehicleReadModel
+import com.evidentdb.examples.autonomo.adapters.RidesEventRepository
+import com.evidentdb.examples.autonomo.adapters.VehiclesEventRepository
+import com.evidentdb.examples.autonomo.domain.*
 import java.util.UUID
 
-interface QueryService {
-    // Rides
-    fun getRideById(rideId: UUID): RideReadModel?
 
-    // Vehicles
-    fun getMyVehicles(): List<VehicleReadModel>
-    fun getAvailableVehicles(): List<VehicleReadModel>
-    fun getVehicleByVin(vin: String): VehicleReadModel?
+interface VehicleQueryService: EventSourcingViewProjector<Vehicle, VehicleEvent> {
+    suspend fun getMyVehicles(): List<Vehicle>
+    suspend fun getAvailableVehicles(): List<Vehicle>
+    suspend fun getVehicleByVin(vinString: String): Vehicle
 }
 
-interface CommandService: QueryService {
-    fun requestRide(command: RequestRide): Result<RideReadModel>
-    fun cancelRide(command: CancelRide): Result<RideReadModel>
-    fun confirmRidePickup(command: ConfirmPickup): Result<RideReadModel>
-    fun endRide(command: EndRide): Result<RideReadModel>
-
-    fun addVehicle(command: AddVehicle): Result<VehicleReadModel>
-    fun makeVehicleAvailable(command: MakeVehicleAvailable): Result<VehicleReadModel>
-    fun requestVehicleReturn(command: RequestVehicleReturn): Result<VehicleReadModel>
-    fun removeVehicle(command: RemoveVehicle): Result<VehicleReadModel>
+interface VehicleCommandService:
+    VehicleQueryService,
+    EventSourcingDecisionExecutor<VehicleCommand, Vehicle, VehicleEvent>  {
+    suspend fun addVehicle(user: UserId, vinString: String): Result<Vehicle>
+    suspend fun makeVehicleAvailable(vinString: String): Result<Vehicle>
+    suspend fun requestVehicleReturn(vinString: String): Result<Vehicle>
+    suspend fun removeVehicle(user: UserId, vinString: String): Result<Vehicle>
 }
 
-class EvidentDbService(
+class EvidentDbVehicleService(
     private val conn: Connection,
-): CommandService {
-    override fun getRideById(rideId: UUID): RideReadModel? {
+): VehicleCommandService {
+    override val domainLogic = vehiclesDecider()
+    private val vehiclesEventRepository = VehiclesEventRepository(conn)
+
+    override suspend fun getMyVehicles(): List<Vehicle> {
         TODO("Not yet implemented")
     }
 
-    override fun getMyVehicles(): List<VehicleReadModel> {
+    override suspend fun getAvailableVehicles(): List<Vehicle> {
         TODO("Not yet implemented")
     }
 
-    override fun getAvailableVehicles(): List<VehicleReadModel> {
-        TODO("Not yet implemented")
+    override suspend fun getVehicleByVin(vinString: String): Vehicle = try {
+        val vin = Vin.build(vinString)
+        projectView(vehiclesEventRepository.forEntity(vin))
+    } catch (error: InvalidVinError) {
+        throw IllegalArgumentException(error)
     }
 
-    override fun getVehicleByVin(vin: String): VehicleReadModel? {
-        TODO("Not yet implemented")
+    override suspend fun addVehicle(user: UserId, vinString: String) = try {
+        executeDecision(vehiclesEventRepository, AddVehicle(user, Vin.build(vinString))).map { it }
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
     }
 
-    override fun requestRide(command: RequestRide): Result<RideReadModel> {
-        TODO("Not yet implemented")
+    override suspend fun makeVehicleAvailable(vinString: String) = try {
+        executeDecision(vehiclesEventRepository, MakeVehicleAvailable(Vin.build(vinString))).map { it }
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
     }
 
-    override fun cancelRide(command: CancelRide): Result<RideReadModel> {
-        TODO("Not yet implemented")
+    override suspend fun requestVehicleReturn(vinString: String) = try {
+        executeDecision(vehiclesEventRepository, RequestVehicleReturn(Vin.build(vinString))).map { it }
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
     }
 
-    override fun confirmRidePickup(command: ConfirmPickup): Result<RideReadModel> {
-        TODO("Not yet implemented")
+    override suspend fun removeVehicle(user: UserId, vinString: String) = try {
+        executeDecision(vehiclesEventRepository, RemoveVehicle(user, Vin.build(vinString))).map { it }
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
     }
+}
 
-    override fun endRide(command: EndRide): Result<RideReadModel> {
-        TODO("Not yet implemented")
-    }
+interface RideQueryService: EventSourcingViewProjector<Ride, RideEvent> {
+    suspend fun getRideById(rideId: UUID): Ride
+}
 
-    override fun addVehicle(command: AddVehicle): Result<VehicleReadModel> {
-        TODO("Not yet implemented")
-    }
+interface RideCommandService: RideQueryService, EventSourcingDecisionExecutor<RideCommand, Ride, RideEvent> {
+    suspend fun requestRide(command: RequestRide): Result<Ride>
+    suspend fun cancelRide(ride: RideId): Result<Ride>
+    suspend fun confirmRidePickup(command: ConfirmPickup): Result<Ride>
+    suspend fun endRide(command: EndRide): Result<Ride>
+}
 
-    override fun makeVehicleAvailable(command: MakeVehicleAvailable): Result<VehicleReadModel> {
-        TODO("Not yet implemented")
-    }
+class EvidentDbRideService(
+    conn: Connection,
+): RideCommandService {
+    override val domainLogic = ridesDecider()
+    private val ridesEventRepository = RidesEventRepository(conn)
 
-    override fun requestVehicleReturn(command: RequestVehicleReturn): Result<VehicleReadModel> {
-        TODO("Not yet implemented")
-    }
+    override suspend fun getRideById(rideId: UUID): Ride =
+        projectView(ridesEventRepository.forEntity(rideId))
 
-    override fun removeVehicle(command: RemoveVehicle): Result<VehicleReadModel> {
-        TODO("Not yet implemented")
-    }
+    override suspend fun requestRide(command: RequestRide) =
+        executeDecision(ridesEventRepository, command).map { it }
+
+    override suspend fun cancelRide(ride: RideId) =
+        executeDecision(ridesEventRepository, CancelRide(ride)).map { it }
+
+    override suspend fun confirmRidePickup(command: ConfirmPickup) =
+        executeDecision(ridesEventRepository, command).map { it }
+
+    override suspend fun endRide(command: EndRide): Result<Ride> =
+        executeDecision(ridesEventRepository, command).map { it }
 }

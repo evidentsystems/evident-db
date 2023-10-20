@@ -37,6 +37,17 @@ data class ScheduleRide(
         }
 }
 
+data class CancelRide(
+    override val ride: RideId
+): RideCommand {
+    override fun decide(state: Ride): List<RideEvent> =
+        when(state) {
+            is RequestedRide -> listOf(RequestedRideCancelled(this.ride, Instant.now()))
+            is ScheduledRide -> listOf(ScheduledRideCancelled(this.ride, state.vin, Instant.now()))
+            else -> throw RideCommandError(this, state, "Can only cancel a requested or scheduled ride")
+        }
+}
+
 data class ConfirmPickup(
     override val ride: RideId,
     val vin: Vin,
@@ -45,7 +56,13 @@ data class ConfirmPickup(
 ): RideCommand {
     override fun decide(state: Ride): List<RideEvent> =
         when(state) {
-            is ScheduledRide -> listOf(RiderPickedUp(this.ride, this.vin, this.rider, this.pickupLocation, Instant.now()))
+            is ScheduledRide -> listOf(RiderPickedUp(
+                this.ride,
+                this.rider,
+                this.vin,
+                this.pickupLocation,
+                Instant.now()
+            ))
             else -> throw RideCommandError(this, state, "Can only confirm pickup of a scheduled ride")
         }
 }
@@ -58,17 +75,6 @@ data class EndRide(
         when(state) {
             is InProgressRide -> listOf(RiderDroppedOff(this.ride, state.vin, this.dropOffLocation, Instant.now()))
             else -> throw RideCommandError(this, state, "Can only end a ride already in progress")
-        }
-}
-
-data class CancelRide(
-    override val ride: RideId
-): RideCommand {
-    override fun decide(state: Ride): List<RideEvent> =
-        when(state) {
-            is RequestedRide -> listOf(RequestedRideCancelled(this.ride, Instant.now()))
-            is ScheduledRide -> listOf(ScheduledRideCancelled(this.ride, state.vin, Instant.now()))
-            else -> throw RideCommandError(this, state, "Can only cancel a requested or scheduled ride")
         }
 }
 
@@ -107,8 +113,8 @@ data class ScheduledRideCancelled(
 
 data class RiderPickedUp(
     override val ride: RideId,
-    val vin: Vin,
     val rider: UserId,
+    val vin: Vin,
     val pickupLocation: GeoCoordinates,
     val pickedUpAt: Instant,
 ): RideEvent

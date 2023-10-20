@@ -36,18 +36,18 @@ data class Saga<in Ar, out A>(
 
 // ***** Domain Functions Application *****
 
-interface EventSourcingProjectionExecutor<S, E> {
-    val repository: IEventRepository<E>
+interface EventSourcingViewProjector<S, E> {
     val domainLogic: Evolve<S, E>
 
-    suspend fun executeProjection(): S = repository.events().fold(domainLogic.initialState(), domainLogic.evolve)
+    suspend fun projectView(repository: EventRepository<E>): S =
+        repository.events().fold(domainLogic.initialState(), domainLogic.evolve)
 }
 
-interface EventSourcingDecisionExecutor<in C, S, E>: EventSourcingProjectionExecutor<S, E> {
+interface EventSourcingDecisionExecutor<in C, S, E>: EventSourcingViewProjector<S, E> {
     override val domainLogic: Decide<C, S, E>
 
-    suspend fun executeDecision(command: C): Result<S> {
-        val currentState = executeProjection()
+    suspend fun executeDecision(repository: EventRepository<E>, command: C): Result<S> {
+        val currentState = projectView(repository)
         return domainLogic.decide(command, currentState)
             .mapCatching { events ->
                 val result = repository.store(events)
@@ -63,7 +63,7 @@ interface EventSourcingDecisionExecutor<in C, S, E>: EventSourcingProjectionExec
 
 // ***** Domain Functions Infrastructure Adapters *****
 
-interface IEventRepository<E> {
+interface EventRepository<E> {
     fun events(): Flow<E>
     suspend fun store(events: List<E>): Result<Unit>
 }

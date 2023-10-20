@@ -315,7 +315,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                     )
                 }
 
-        override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<DatabaseJava> =
+        override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<Database> =
             connectionScope.future {
                 fetchDbAsOfAsync(revision)
             }
@@ -342,7 +342,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 )
             }
 
-        override fun fetchLatestDb(): CompletableFuture<DatabaseJava> =
+        override fun fetchLatestDb(): CompletableFuture<Database> =
             connectionScope.future {
                 fetchLatestDbAsync()
             }

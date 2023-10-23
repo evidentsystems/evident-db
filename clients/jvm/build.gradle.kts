@@ -11,23 +11,25 @@ group = "com.evidentdb"
 version = "0.1.0-alpha-SNAPSHOT"
 
 dependencies {
-    implementation(kotlin("stdlib"))
-    implementation(libs.kotlinx.coroutines)
-    implementation(libs.kotlinx.coroutines.jdk8)
-    implementation(libs.arrow.core)
-    implementation(libs.commons.codec)
+    // Platform
+    api(libs.kotlinx.coroutines)
+    api(libs.kotlinx.coroutines.jdk8)
+    api(libs.arrow.core)
+    api(libs.commons.codec)
     compileOnly(libs.slf4j.api)
 
-    implementation(libs.cloudevents.core)
-    implementation(libs.cloudevents.protobuf)
+    // CloudEvents
+    api(libs.cloudevents.core)
+    api(libs.cloudevents.protobuf)
 
-    implementation(libs.protobuf.java)
-    implementation(libs.grpc.protobuf)
-    implementation(libs.grpc.stub)
-    implementation(libs.grpc.kotlin.stub)
+    // gRPC
+    api(libs.protobuf.java)
+    api(libs.grpc.protobuf)
+    api(libs.grpc.stub)
+    api(libs.grpc.kotlin.stub)
 
     // Cache
-    implementation(libs.caffeine)
+    api(libs.caffeine)
 }
 
 protobuf {

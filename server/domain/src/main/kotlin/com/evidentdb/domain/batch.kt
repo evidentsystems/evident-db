@@ -1,7 +1,7 @@
 package com.evidentdb.domain
 
 import arrow.core.*
-import arrow.core.computations.either
+import arrow.core.continuations.either
 import arrow.typeclasses.Semigroup
 import com.evidentdb.cloudevents.EventSequenceExtension
 import io.cloudevents.core.builder.CloudEventBuilder

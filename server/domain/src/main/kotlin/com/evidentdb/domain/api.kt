@@ -1,7 +1,7 @@
 package com.evidentdb.domain
 
 import arrow.core.Either
-import arrow.core.computations.either
+import arrow.core.continuations.either
 import arrow.core.left
 import arrow.core.right
 import arrow.core.rightIfNotNull
@@ -175,17 +175,16 @@ interface StreamReadModel {
     fun stream(
         databaseName: DatabaseName,
         stream: StreamName
-    ): Flow<Pair<StreamRevision, EventId>>
+    ): Flow<Pair<StreamRevision, EventId>>?
     fun subjectStream(
         databaseName: DatabaseName,
         stream: StreamName,
         subject: EventSubject,
-    ): Flow<Pair<StreamRevision, EventId>>
+    ): Flow<Pair<StreamRevision, EventId>>?
 }
 
 interface EventReadModel {
     fun event(database: DatabaseName, id: EventId): CloudEvent?
-    // TODO: event by userspace id?
 }
 
 sealed interface DatabaseOperation {
@@ -319,8 +318,9 @@ interface QueryService {
         val validName = DatabaseName.of(name)
             .mapLeft { DatabaseNotFoundError(name) }
             .bind()
-        lookupDatabaseMaybeAtRevision(validName, revision)
-            .rightIfNotNull { DatabaseNotFoundError(name) }
+        (lookupDatabaseMaybeAtRevision(validName, revision)
+            ?.right()
+            ?: DatabaseNotFoundError(name).left<DatabaseNotFoundError>())
             .bind()
     }
 
@@ -329,22 +329,23 @@ interface QueryService {
         val validName = DatabaseName.of(name)
             .mapLeft { DatabaseNotFoundError(name) }
             .bind()
-        databaseReadModel.log(validName)
-            .rightIfNotNull { DatabaseNotFoundError(name) }
+        (databaseReadModel.log(validName)
+            ?.right()
+            ?: DatabaseNotFoundError(name).left<DatabaseNotFoundError>())
             .bind()
     }
 
     suspend fun getBatch(database: String, batchId: BatchId)
             : Either<BatchNotFoundError, Batch> = either {
+        val notFound = BatchNotFoundError(database, batchId)
         val validName = DatabaseName.of(database)
-            .mapLeft { BatchNotFoundError(database, batchId) }
+            .mapLeft { notFound }
             .bind()
-        databaseReadModel.exists(validName)
-            .rightIfNotNull { BatchNotFoundError(database, batchId) }
-            .bind()
-        batchReadModel.batch(validName, batchId)
-            .rightIfNotNull { BatchNotFoundError(database, batchId) }
-            .bind()
+        if (databaseReadModel.exists(validName)) {
+            (batchReadModel.batch(validName, batchId)?.right() ?: notFound.left()).bind()
+        } else {
+            notFound.left().bind<Batch>()
+        }
     }
 
     suspend fun getEvent(
@@ -355,12 +356,14 @@ interface QueryService {
         val validName = DatabaseName.of(database)
             .mapLeft { error }
             .bind()
-        if (databaseReadModel.exists(validName))
-            eventReadModel.event(validName, eventId)?.let { event ->
-                Pair(eventId, event)
-            }.rightIfNotNull { error }.bind()
-        else
+        if (databaseReadModel.exists(validName)) {
+            (eventReadModel.event(validName, eventId)
+                ?.let { event -> Pair(eventId, event) }
+                ?.right() ?: error.left())
+                .bind()
+        } else {
             error.left().bind<Pair<EventId, CloudEvent>>()
+        }
     }
 
     suspend fun getStream(
@@ -374,8 +377,7 @@ interface QueryService {
         val streamName = StreamName.of(stream)
             .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
-        streamReadModel.stream(databaseName, streamName)
-            .rightIfNotNull { StreamNotFoundError(database, stream) }
+        (streamReadModel.stream(databaseName, streamName)?.right() ?: StreamNotFoundError(database, stream).left())
             .bind()
     }
 
@@ -394,8 +396,9 @@ interface QueryService {
         val subjectName = EventSubject.of(subject)
             .mapLeft { StreamNotFoundError(database, stream) }
             .bind()
-        streamReadModel.subjectStream(databaseName, streamName, subjectName)
-            .rightIfNotNull { StreamNotFoundError(database, stream) }
+        (streamReadModel.subjectStream(databaseName, streamName, subjectName)
+            ?.right()
+            ?: StreamNotFoundError(database, stream).left())
             .bind()
     }
 }

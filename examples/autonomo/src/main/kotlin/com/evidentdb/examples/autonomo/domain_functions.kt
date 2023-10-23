@@ -34,6 +34,37 @@ data class Saga<in Ar, out A>(
     override val react: (Ar) -> List<A>
 ): React<Ar, A>
 
+
+// ***** Vehicles *****
+
+fun vehiclesDecider(): Decide<VehicleCommand, Vehicle, VehicleEvent> = Decider(
+    { InitialVehicleState },
+    { state, event -> state.evolve(event) },
+    { command, state -> runCatching { command.decide(state) } }
+)
+
+// ***** Rides *****
+
+fun ridesDecider(): Decide<RideCommand, Ride, RideEvent> = Decider(
+    { InitialRideState },
+    { state, event -> state.evolve(event) },
+    { command, state -> runCatching { command.decide(state) } }
+)
+
+//fun react(event: RideEvent): List<VehicleCommand> =
+//	when(val domainEvent = event.toDomain()) {
+//		is DomainRideScheduled -> listOf(
+//			DomainMarkVehicleOccupied(domainEvent.vin)
+//		)
+//		is DomainScheduledRideCancelled -> listOf(
+//			DomainMarkVehicleUnoccupied(domainEvent.vin)
+//		)
+//		is DomainRiderDroppedOff -> listOf(
+//			DomainMarkVehicleUnoccupied(domainEvent.vin)
+//		)
+//		else -> emptyList()
+//	}.map(DomainVehicleCommand::toTransfer)
+
 // ***** Domain Functions Application *****
 
 interface EventSourcingViewProjector<S, E> {
@@ -67,34 +98,3 @@ interface EventRepository<E> {
     fun events(): Flow<E>
     suspend fun store(events: List<E>): Result<Unit>
 }
-
-// ***** Vehicles *****
-
-fun vehiclesDecider(): Decide<VehicleCommand, Vehicle, VehicleEvent> = Decider(
-    { InitialVehicleState },
-    { state, event -> state.evolve(event) },
-    { command, state -> runCatching { command.decide(state) } }
-)
-
-// ***** Rides *****
-
-fun ridesDecider(): Decide<RideCommand, Ride, RideEvent> = Decider(
-    { InitialRideState },
-    { state, event -> state.evolve(event) },
-    { command, state -> runCatching { command.decide(state) } }
-)
-
-//fun react(event: RideEvent): List<VehicleCommand> =
-//	when(val domainEvent = event.toDomain()) {
-//		is DomainRideScheduled -> listOf(
-//			DomainMarkVehicleOccupied(domainEvent.vin)
-//		)
-//		is DomainScheduledRideCancelled -> listOf(
-//			DomainMarkVehicleUnoccupied(domainEvent.vin)
-//		)
-//		is DomainRiderDroppedOff -> listOf(
-//			DomainMarkVehicleUnoccupied(domainEvent.vin)
-//		)
-//		else -> emptyList()
-//	}.map(DomainVehicleCommand::toTransfer)
-

@@ -1,7 +1,10 @@
 package com.evidentdb.service
 
 import arrow.core.Either
-import com.evidentdb.domain.*
+import com.evidentdb.application.CommandService
+import com.evidentdb.application.QueryService
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.*
 import com.evidentdb.dto.protobuf.toProto
 import com.evidentdb.dto.protobuf.unvalidatedProposedEventFromProto
 import com.evidentdb.dto.v1.proto.BatchProposal
@@ -15,7 +18,7 @@ import org.slf4j.LoggerFactory
 class EvidentDbEndpoint(
     private val commandService: CommandService,
     private val queryService: QueryService,
-    private val databaseFlow: SharedFlow<Database>,
+    private val databaseFlow: SharedFlow<ActiveDatabaseCommandModel>,
 ) : EvidentDbGrpcKt.EvidentDbCoroutineImplBase() {
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(EvidentDbEndpoint::class.java)
@@ -250,7 +253,7 @@ class EvidentDbEndpoint(
                 is Either.Left -> {
                     replyBuilder.eventNotFoundBuilder
                         .setDatabase(result.value.database)
-                        .setEventId(result.value.eventId)
+                        .setEventId(result.value.eventIndex)
                 }
 
                 is Either.Right -> {

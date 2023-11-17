@@ -4,7 +4,12 @@ import arrow.core.Either
 import arrow.core.computations.either
 import arrow.core.left
 import arrow.core.right
-import com.evidentdb.domain.*
+import com.evidentdb.application.CommandManager
+import com.evidentdb.application.CommandService
+import com.evidentdb.application.QueryService
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.*
+import com.evidentdb.event_model.*
 import com.evidentdb.kafka.*
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
@@ -47,8 +52,8 @@ class DatabaseIdPartitioner: Partitioner {
         cluster: Cluster?
     ): Int =
         when(value) {
-            is CommandEnvelope -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
-            is EventEnvelope   -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
+            is EvidentDbCommand -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
+            is EvidentDbEvent -> partitionByDatabase(value.database, cluster?.partitionCountForTopic(topic)!!)
             else -> 0
         }
 
@@ -61,12 +66,12 @@ class KafkaProducerCommandManager(
     private val internalCommandsTopic: String,
     producerLingerMs: Int,
     private val meterRegistry: MeterRegistry,
-    private val eventChannel: ReceiveChannel<EventEnvelope>
+    private val eventChannel: ReceiveChannel<EvidentDbEvent>
 ) : CommandManager, AutoCloseable {
     private val scope = CoroutineScope(Dispatchers.Default)
-    private val inFlight = ConcurrentHashMap<EnvelopeId, CompletableDeferred<EventEnvelope>>()
+    private val inFlight = ConcurrentHashMap<EnvelopeId, CompletableDeferred<EvidentDbEvent>>()
     private val samples = ConcurrentHashMap<EnvelopeId, Timer.Sample>()
-    private val producer: Producer<EnvelopeId, CommandEnvelope>
+    private val producer: Producer<EnvelopeId, EvidentDbCommand>
     private val producerMetrics: KafkaClientMetrics
 
     companion object {
@@ -95,7 +100,7 @@ class KafkaProducerCommandManager(
         // TODO: flatten this such that DatabaseCreationError is sibling of DatabaseCreated event, and only one `else` branch is need
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseCreated -> result.right()
-            is ErrorEnvelope -> when(val body = result.data){
+            is EvidentDbError -> when(val body = result.data){
                 is DatabaseCreationError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
@@ -109,7 +114,7 @@ class KafkaProducerCommandManager(
 
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseDeleted -> result.right()
-            is ErrorEnvelope -> when(val body = result.data){
+            is EvidentDbError -> when(val body = result.data){
                 is DatabaseDeletionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
@@ -123,7 +128,7 @@ class KafkaProducerCommandManager(
 
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is BatchTransacted -> result.right()
-            is ErrorEnvelope -> when(val body = result.data){
+            is EvidentDbError -> when(val body = result.data){
                 is BatchTransactionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
@@ -150,8 +155,8 @@ class KafkaProducerCommandManager(
         producerMetrics.close()
     }
 
-    private suspend fun publishCommand(command: CommandEnvelope): Either<InternalServerError, CompletableDeferred<EventEnvelope>> {
-        val deferred = CompletableDeferred<EventEnvelope>()
+    private suspend fun publishCommand(command: EvidentDbCommand): Either<InternalServerError, CompletableDeferred<EvidentDbEvent>> {
+        val deferred = CompletableDeferred<EvidentDbEvent>()
         inFlight[command.id] = deferred
         samples[command.id] = Timer.start(meterRegistry)
 
@@ -178,7 +183,7 @@ class KafkaCommandService(
     kafkaBootstrapServers: String,
     internalCommandsTopic: String,
     producerLingerMs: Int,
-    eventChannel: ReceiveChannel<EventEnvelope>,
+    eventChannel: ReceiveChannel<EvidentDbEvent>,
     meterRegistry: MeterRegistry,
 ): CommandService, AutoCloseable {
     override val commandManager = KafkaProducerCommandManager(
@@ -206,10 +211,10 @@ class KafkaQueryService(
     streamStoreName: String,
     eventStoreName: String,
 ): QueryService {
-    override val databaseReadModel: DatabaseReadModelStore
+    override val databaseRepository: DatabaseRepositoryStore
     override val batchReadModel: BatchReadOnlyStore
-    override val streamReadModel: StreamReadOnlyStore
-    override val eventReadModel: EventReadOnlyStore
+    override val streamRepository: StreamReadOnlyStore
+    override val eventRepository: EventReadOnlyStore
 
     init {
         val logStore: DatabaseLogReadOnlyKeyValueStore = kafkaStreams.store(
@@ -219,7 +224,7 @@ class KafkaQueryService(
             )
         )
 
-        databaseReadModel = DatabaseReadModelStore(
+        databaseRepository = DatabaseRepositoryStore(
             kafkaStreams.store(
                 StoreQueryParameters.fromNameAndType(
                     databaseStoreName,
@@ -247,7 +252,7 @@ class KafkaQueryService(
             eventKeyValueStore,
         )
 
-        streamReadModel = StreamReadOnlyStore(
+        streamRepository = StreamReadOnlyStore(
             kafkaStreams.store(
                 StoreQueryParameters.fromNameAndType(
                     streamStoreName,
@@ -256,6 +261,6 @@ class KafkaQueryService(
             )
         )
 
-        eventReadModel = EventReadOnlyStore(eventKeyValueStore)
+        eventRepository = EventReadOnlyStore(eventKeyValueStore)
     }
 }

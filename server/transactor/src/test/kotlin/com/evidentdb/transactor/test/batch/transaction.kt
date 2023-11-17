@@ -1,6 +1,8 @@
 package com.evidentdb.transactor.test.batch
 
-import com.evidentdb.domain.*
+import com.evidentdb.application.StreamKey
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.*
 import com.evidentdb.test.buildTestEvent
 import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverCommandService
@@ -135,7 +137,7 @@ class TransactionTests {
             val driver = driver()
             val batchStore = driver.getKeyValueStore<BatchId, DatabaseLogKey>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventId, CloudEvent>(TransactorTopology.EVENT_STORE)
+            val eventStore = driver.getKeyValueStore<EventIndex, CloudEvent>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverCommandService(driver)
             val databaseName = DatabaseName.build("foo")
             service.createDatabase(databaseName.value)

@@ -23,7 +23,7 @@ dependencyResolutionManagement {
 
             library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.7.1")
             library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.7.1")
-            library("arrow-core", "io.arrow-kt", "arrow-core").version("1.1.5")
+            library("arrow-core", "io.arrow-kt", "arrow-core").version("1.2.1")
             library("valiktor-core", "org.valiktor", "valiktor-core").version("0.12.0")
             library("kafka-streams", "org.apache.kafka", "kafka-streams").versionRef("kafka")
             library("kafka-streams-test-utils", "org.apache.kafka", "kafka-streams-test-utils").versionRef("kafka")

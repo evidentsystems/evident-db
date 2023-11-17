@@ -1,8 +1,8 @@
 package com.evidentdb.transactor.test.database
 
-import com.evidentdb.domain.DatabaseSummary
-import com.evidentdb.domain.DatabaseName
-import com.evidentdb.domain.DatabaseNotFoundError
+import com.evidentdb.domain_model.DatabaseSummary
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.DatabaseNotFoundError
 import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver

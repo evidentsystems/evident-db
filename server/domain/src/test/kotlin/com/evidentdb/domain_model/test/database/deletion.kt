@@ -1,9 +1,9 @@
-package com.evidentdb.domain.test.database
+package com.evidentdb.domain_model.test.database
 
-import com.evidentdb.domain.DatabaseName
-import com.evidentdb.domain.DatabaseNotFoundError
-import com.evidentdb.domain.test.InMemoryCommandService
-import com.evidentdb.domain.test.buildTestDatabase
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.DatabaseNotFoundError
+import com.evidentdb.domain_model.test.InMemoryCommandService
+import com.evidentdb.domain_model.test.buildTestDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test

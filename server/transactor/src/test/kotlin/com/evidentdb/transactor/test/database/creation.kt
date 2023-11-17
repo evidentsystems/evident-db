@@ -1,9 +1,9 @@
 package com.evidentdb.transactor.test.database
 
-import com.evidentdb.domain.DatabaseSummary
-import com.evidentdb.domain.DatabaseName
-import com.evidentdb.domain.DatabaseNameAlreadyExistsError
-import com.evidentdb.domain.InvalidDatabaseNameError
+import com.evidentdb.domain_model.DatabaseSummary
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.DatabaseNameAlreadyExistsError
+import com.evidentdb.domain_model.command.InvalidDatabaseNameError
 import com.evidentdb.transactor.TransactorTopology
 import com.evidentdb.transactor.test.TopologyTestDriverCommandService
 import com.evidentdb.transactor.test.driver

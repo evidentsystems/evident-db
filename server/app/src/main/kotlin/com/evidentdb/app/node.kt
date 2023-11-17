@@ -1,6 +1,10 @@
 package com.evidentdb.app
 
-import com.evidentdb.domain.*
+import com.evidentdb.application.CommandService
+import com.evidentdb.application.QueryService
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.ActiveDatabaseCommandModel
+import com.evidentdb.event_model.EvidentDbEvent
 import com.evidentdb.service.EvidentDbEndpoint
 import com.evidentdb.service.KafkaCommandService
 import com.evidentdb.service.KafkaQueryService
@@ -59,7 +63,7 @@ class NodeBeans {
 		topicsConfig: EvidentDbConfig.TopicsConfig,
 		@Value("\${kafka.producers.service.linger.ms}")
 		producerLingerMs: Int,
-		commandResponseChannel: ChannelWrapper<EventEnvelope>,
+		commandResponseChannel: ChannelWrapper<EvidentDbEvent>,
 		meterRegistry: MeterRegistry,
 	): KafkaCommandService {
 		val service = KafkaCommandService(
@@ -75,8 +79,8 @@ class NodeBeans {
 	}
 
 	@Singleton
-	fun databaseRevisionFlow(listener: InternalEventListener): SharedFlow<Database> {
-		val mutableSharedFlow = MutableSharedFlow<Database>(0, extraBufferCapacity = BUFFER_SIZE)
+	fun databaseRevisionFlow(listener: InternalEventListener): SharedFlow<ActiveDatabaseCommandModel> {
+		val mutableSharedFlow = MutableSharedFlow<ActiveDatabaseCommandModel>(0, extraBufferCapacity = BUFFER_SIZE)
 		listener.registerListener("database-revisions") { event ->
 			databaseRevisionFromEvent(event)?.let {
 				mutableSharedFlow.emit(it)
@@ -87,8 +91,8 @@ class NodeBeans {
 
   @Singleton
   @Bean(preDestroy = "close")
-	fun commandResponseChannel(listener: InternalEventListener): ChannelWrapper<EventEnvelope> {
-		val channel = Channel<EventEnvelope>(BUFFER_SIZE)
+	fun commandResponseChannel(listener: InternalEventListener): ChannelWrapper<EvidentDbEvent> {
+		val channel = Channel<EvidentDbEvent>(BUFFER_SIZE)
 		listener.registerListener("command-responses") { event ->
 			channel.send(event)
 		}
@@ -110,9 +114,9 @@ class NodeBeans {
 
 	@Bean
 	fun endpoint(
-		commandService: CommandService,
-		queryService: QueryService,
-		databaseRevisionFlow: SharedFlow<Database>,
+        commandService: CommandService,
+        queryService: QueryService,
+        databaseRevisionFlow: SharedFlow<ActiveDatabaseCommandModel>,
 	): BindableService =
 		EvidentDbEndpoint(
 			commandService,
@@ -205,9 +209,9 @@ class InternalEventListener {
 		private val LOGGER = LoggerFactory.getLogger(InternalEventListener::class.java)
 	}
 	private val scope = CoroutineScope(Dispatchers.Default)
-	private val listeners = ConcurrentHashMap<String, suspend (EventEnvelope) -> Unit>(2)
+	private val listeners = ConcurrentHashMap<String, suspend (EvidentDbEvent) -> Unit>(2)
 
-	fun registerListener(key: String, listener: suspend (EventEnvelope) -> Unit) {
+	fun registerListener(key: String, listener: suspend (EvidentDbEvent) -> Unit) {
 		listeners[key] = listener
 	}
 
@@ -216,7 +220,7 @@ class InternalEventListener {
 	}
 
 	@Topic("\${evidentdb.topics.internal-events.name}")
-	fun receive(event: EventEnvelope) {
+	fun receive(event: EvidentDbEvent) {
 		LOGGER.info("Invoking InternalEventListener for event {}", event.id)
 		LOGGER.debug("KafkaListener event data {}, listeners {}", event, listeners)
 		for ((_, listener) in listeners) {

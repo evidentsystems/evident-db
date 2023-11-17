@@ -1,6 +1,6 @@
 package com.evidentdb.kafka
 
-import com.evidentdb.domain.DatabaseName
+import com.evidentdb.domain_model.DatabaseName
 import io.cloudevents.CloudEvent
 import org.apache.kafka.common.utils.Utils
 

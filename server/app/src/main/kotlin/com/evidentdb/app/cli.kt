@@ -1,7 +1,7 @@
 package com.evidentdb.app
 
-import com.evidentdb.domain.NAME_PATTERN
-import com.evidentdb.domain.TenantName
+import com.evidentdb.domain_model.NAME_PATTERN
+import com.evidentdb.domain_model.TenantName
 import io.micronaut.context.env.Environment
 import io.micronaut.runtime.Micronaut
 import picocli.CommandLine

@@ -1,8 +1,14 @@
 package com.evidentdb.kafka
 
+import com.evidentdb.application.StreamKey
 import com.evidentdb.cloudevents.CommandIdExtension
-import com.evidentdb.domain.*
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.EvidentDbError
+import com.evidentdb.domain_model.databaseNameFromUri
+import com.evidentdb.domain_model.databaseUri
 import com.evidentdb.dto.protobuf.*
+import com.evidentdb.event_model.*
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.cloudevents.core.message.Encoding
@@ -63,10 +69,10 @@ abstract class EvidentDbDeserializer<T>: Deserializer<T> {
 }
 
 class CommandEnvelopeSerde:
-    Serdes.WrapperSerde<CommandEnvelope>(CommandEnvelopeSerializer(), CommandEnvelopeDeserializer()) {
+    Serdes.WrapperSerde<EvidentDbCommand>(CommandEnvelopeSerializer(), CommandEnvelopeDeserializer()) {
 
-    class CommandEnvelopeSerializer: EvidentDbSerializer<CommandEnvelope>() {
-        override fun toCloudEvent(content: CommandEnvelope): CloudEvent =
+    class CommandEnvelopeSerializer: EvidentDbSerializer<EvidentDbCommand>() {
+        override fun toCloudEvent(content: EvidentDbCommand): CloudEvent =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.database))
@@ -75,8 +81,8 @@ class CommandEnvelopeSerde:
                 .build()
     }
 
-    class CommandEnvelopeDeserializer: EvidentDbDeserializer<CommandEnvelope>() {
-        override fun fromCloudEvent(cloudEvent: CloudEvent): CommandEnvelope {
+    class CommandEnvelopeDeserializer: EvidentDbDeserializer<EvidentDbCommand>() {
+        override fun fromCloudEvent(cloudEvent: CloudEvent): EvidentDbCommand {
             val dataBytes = cloudEvent.data!!.toBytes()
             val commandId = EnvelopeId.fromString(cloudEvent.id)
             val databaseId = databaseNameFromUri(cloudEvent.source)
@@ -103,10 +109,10 @@ class CommandEnvelopeSerde:
 }
 
 class EventEnvelopeSerde:
-    Serdes.WrapperSerde<EventEnvelope>(EventEnvelopeSerializer(), EventEnvelopeDeserializer()) {
+    Serdes.WrapperSerde<EvidentDbEvent>(EventEnvelopeSerializer(), EventEnvelopeDeserializer()) {
 
-    class EventEnvelopeSerializer : EvidentDbSerializer<EventEnvelope>() {
-        override fun toCloudEvent(content: EventEnvelope): CloudEvent  =
+    class EventEnvelopeSerializer : EvidentDbSerializer<EvidentDbEvent>() {
+        override fun toCloudEvent(content: EvidentDbEvent): CloudEvent  =
             CloudEventBuilder.v1()
                 .withId(content.id.toString())
                 .withSource(databaseUri(content.database))
@@ -116,8 +122,8 @@ class EventEnvelopeSerde:
                 .build()
     }
 
-    class EventEnvelopeDeserializer: EvidentDbDeserializer<EventEnvelope>() {
-        override fun fromCloudEvent(cloudEvent: CloudEvent): EventEnvelope {
+    class EventEnvelopeDeserializer: EvidentDbDeserializer<EvidentDbEvent>() {
+        override fun fromCloudEvent(cloudEvent: CloudEvent): EvidentDbEvent {
             val dataBytes = cloudEvent.data!!.toBytes()
             val eventId = EnvelopeId.fromString(cloudEvent.id)
             val databaseId = databaseNameFromUri(cloudEvent.source)
@@ -145,55 +151,55 @@ class EventEnvelopeSerde:
                     batchTransactionResultFromBytes(dataBytes),
                 )
 
-                "InvalidDatabaseNameError" -> ErrorEnvelope(
+                "InvalidDatabaseNameError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     invalidDatabaseNameErrorFromBytes(dataBytes)
                 )
-                "DatabaseNameAlreadyExistsError" -> ErrorEnvelope(
+                "DatabaseNameAlreadyExistsError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseNameAlreadyExistsErrorFromBytes(dataBytes)
                 )
-                "DatabaseNotFoundError" -> ErrorEnvelope(
+                "DatabaseNotFoundError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseNotFoundErrorFromBytes(dataBytes)
                 )
-                "NoEventsProvidedError" -> ErrorEnvelope(
+                "NoEventsProvidedError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     noEventsProvidedErrorFromBytes(dataBytes)
                 )
-                "InvalidEventsError" -> ErrorEnvelope(
+                "InvalidEventsError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     invalidEventsErrorFromBytes(dataBytes)
                 )
-                "DuplicateBatchError" -> ErrorEnvelope(
+                "DuplicateBatchError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     duplicateBatchErrorFromBytes(dataBytes)
                 )
-                "StreamStateConflictsError" -> ErrorEnvelope(
+                "StreamStateConflictsError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )
-                "DatabaseTopicCreationError" -> ErrorEnvelope(
+                "DatabaseTopicCreationError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseTopicCreationErrorFromBytes(dataBytes)
                 )
-                "DatabaseTopicDeletionError" -> ErrorEnvelope(
+                "DatabaseTopicDeletionError" -> EvidentDbError(
                     eventId,
                     commandId,
                     databaseId,
@@ -255,17 +261,17 @@ class EventSerde: Serdes.WrapperSerde<CloudEvent>(EventSerializer(), EventDeseri
     }
 }
 
-class BatchSummarySerde: Serdes.WrapperSerde<BatchSummary>(
+class BatchSummarySerde: Serdes.WrapperSerde<LogBatch>(
     BatchSummarySerializer(),
     BatchSummaryDeserializer(),
 ) {
-    class BatchSummarySerializer : Serializer<BatchSummary> {
-        override fun serialize(topic: String?, data: BatchSummary?): ByteArray? =
+    class BatchSummarySerializer : Serializer<LogBatch> {
+        override fun serialize(topic: String?, data: LogBatch?): ByteArray? =
             data?.toByteArray()
     }
 
-    class BatchSummaryDeserializer : Deserializer<BatchSummary> {
-        override fun deserialize(topic: String?, data: ByteArray?): BatchSummary? =
+    class BatchSummaryDeserializer : Deserializer<LogBatch> {
+        override fun deserialize(topic: String?, data: ByteArray?): LogBatch? =
             data?.let { batchSummaryFromBytes(it) }
     }
 }

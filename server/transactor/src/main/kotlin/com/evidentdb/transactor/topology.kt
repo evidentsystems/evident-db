@@ -1,7 +1,13 @@
 package com.evidentdb.transactor
 
 import arrow.core.getOrHandle
-import com.evidentdb.domain.*
+import com.evidentdb.application.StreamKey
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.BatchKey
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.EventIndex
+import com.evidentdb.domain_model.command.EvidentDbError
+import com.evidentdb.event_model.*
 import com.evidentdb.kafka.*
 import io.cloudevents.CloudEvent
 import io.micrometer.core.instrument.MeterRegistry
@@ -172,8 +178,8 @@ object TransactorTopology {
         return topology
     }
 
-    private class DatabaseStreamPartitioner: StreamPartitioner<UUID, EventEnvelope> {
-        override fun partition(topic: String?, key: UUID?, value: EventEnvelope?, numPartitions: Int): Int =
+    private class DatabaseStreamPartitioner: StreamPartitioner<UUID, EvidentDbEvent> {
+        override fun partition(topic: String?, key: UUID?, value: EvidentDbEvent?, numPartitions: Int): Int =
             partitionByDatabase(value!!.database, numPartitions)
     }
 
@@ -182,14 +188,14 @@ object TransactorTopology {
         val databaseTopicReplication: Short,
         val databaseTopicCompressionType: String,
         val meterRegistry: MeterRegistry
-    ): ContextualProcessor<EnvelopeId, CommandEnvelope, EnvelopeId, EventEnvelope>() {
+    ): ContextualProcessor<EnvelopeId, EvidentDbCommand, EnvelopeId, EvidentDbEvent>() {
         private var transactor = KafkaStreamsCommandHandler(
             adminClient,
             databaseTopicReplication,
             databaseTopicCompressionType
         )
 
-        override fun init(context: ProcessorContext<EnvelopeId, EventEnvelope>?) {
+        override fun init(context: ProcessorContext<EnvelopeId, EvidentDbEvent>?) {
             super.init(context)
             transactor.init(
                 context().getStateStore(DATABASE_STORE),
@@ -207,7 +213,7 @@ object TransactorTopology {
             )
         }
 
-        override fun process(record: Record<EnvelopeId, CommandEnvelope>?): Unit = runBlocking {
+        override fun process(record: Record<EnvelopeId, EvidentDbCommand>?): Unit = runBlocking {
             val sample = Timer.start()
 
             val command = record?.value() ?: throw IllegalStateException()
@@ -216,9 +222,9 @@ object TransactorTopology {
             val event = when (command) {
                 is CreateDatabase -> transactor.handleCreateDatabase(command)
                 is DeleteDatabase -> transactor.handleDeleteDatabase(command)
-                is TransactBatch  -> transactor.handleTransactBatch(command)
+                is TransactBatch -> transactor.handleTransactBatch(command)
             }.getOrHandle { error ->
-                ErrorEnvelope(
+                EvidentDbError(
                     EnvelopeId.randomUUID(),
                     command.id,
                     command.database,
@@ -246,7 +252,7 @@ object TransactorTopology {
     }
 
     private class DatabaseIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, DatabaseName, DatabaseSummary>() {
+        ContextualProcessor<EnvelopeId, EvidentDbEvent, DatabaseName, DatabaseSummary>() {
         lateinit var databaseWriteModel: DatabaseWriteModel
 
         override fun init(context: ProcessorContext<DatabaseName, DatabaseSummary>?) {
@@ -254,7 +260,7 @@ object TransactorTopology {
             this.databaseWriteModel = DatabaseWriteModel(context().getStateStore(DATABASE_STORE))
         }
 
-        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EvidentDbEvent>?) {
             val event = record?.value() ?: throw IllegalStateException()
             val (databaseName, result) = EventHandler.databaseUpdate(event)
             when(result) {
@@ -272,11 +278,11 @@ object TransactorTopology {
     }
 
     private class BatchIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, BatchKey, BatchSummary>() {
+        ContextualProcessor<EnvelopeId, EvidentDbEvent, BatchKey, LogBatch>() {
         lateinit var batchSummaryStore: BatchSummaryStore
         lateinit var databaseLogStore: DatabaseLogStore
 
-        override fun init(context: ProcessorContext<BatchKey, BatchSummary>?) {
+        override fun init(context: ProcessorContext<BatchKey, LogBatch>?) {
             super.init(context)
             val databaseLogKeyValueStore: DatabaseLogKeyValueStore = context().getStateStore(DATABASE_LOG_STORE)
             this.batchSummaryStore = BatchSummaryStore(
@@ -287,12 +293,12 @@ object TransactorTopology {
             this.databaseLogStore = DatabaseLogStore(databaseLogKeyValueStore)
         }
 
-        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EvidentDbEvent>?) {
             val event = record?.value() ?: throw IllegalStateException()
             when(val result = EventHandler.batchUpdate(event)) {
                 is BatchOperation.StoreBatch -> {
-                    batchSummaryStore.addKeyLookup(result.batchSummary)
-                    databaseLogStore.append(result.batchSummary)
+                    batchSummaryStore.addKeyLookup(result.logBatch)
+                    databaseLogStore.append(result.logBatch)
                 }
                 is BatchOperation.DeleteLog -> batchSummaryStore.deleteDatabaseLog(result.database)
                 BatchOperation.DoNothing -> Unit
@@ -308,17 +314,17 @@ object TransactorTopology {
     }
 
     private class StreamIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, StreamKey, EventId>() {
+        ContextualProcessor<EnvelopeId, EvidentDbEvent, StreamKey, EventIndex>() {
         lateinit var streamStore: StreamStore
 
-        override fun init(context: ProcessorContext<StreamKey, EventId>?) {
+        override fun init(context: ProcessorContext<StreamKey, EventIndex>?) {
             super.init(context)
             this.streamStore = StreamStore(
                 context().getStateStore(STREAM_STORE)
             )
         }
 
-        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EvidentDbEvent>?) {
             val event = record?.value() ?: throw IllegalStateException()
             when(val result = EventHandler.streamUpdate(event)) {
                 is StreamOperation.StoreStreams ->
@@ -339,7 +345,7 @@ object TransactorTopology {
     }
 
     private class EventIndexer:
-        ContextualProcessor<EnvelopeId, EventEnvelope, String, CloudEvent>() {
+        ContextualProcessor<EnvelopeId, EvidentDbEvent, String, CloudEvent>() {
         lateinit var eventStore: EventStore
         lateinit var databaseStore: DatabaseReadOnlyKeyValueStore
 
@@ -349,7 +355,7 @@ object TransactorTopology {
             this.databaseStore = context().getStateStore(DATABASE_STORE)
         }
 
-        override fun process(record: Record<EnvelopeId, EventEnvelope>?) {
+        override fun process(record: Record<EnvelopeId, EvidentDbEvent>?) {
             val internalEvent = record?.value() ?: throw IllegalStateException()
             val result = EventHandler.eventsToIndex(internalEvent)
             if (result != null) {

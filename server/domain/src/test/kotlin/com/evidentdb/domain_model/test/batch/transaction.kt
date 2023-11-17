@@ -1,8 +1,9 @@
-package com.evidentdb.domain.test.batch
+package com.evidentdb.domain_model.test.batch
 
-import com.evidentdb.domain.*
-import com.evidentdb.domain.test.InMemoryCommandService
-import com.evidentdb.domain.test.buildTestDatabase
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.*
+import com.evidentdb.domain_model.test.InMemoryCommandService
+import com.evidentdb.domain_model.test.buildTestDatabase
 import com.evidentdb.test.buildTestEvent
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions

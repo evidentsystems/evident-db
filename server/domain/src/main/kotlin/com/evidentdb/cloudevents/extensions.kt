@@ -1,8 +1,8 @@
 package com.evidentdb.cloudevents
 
-import com.evidentdb.domain.EnvelopeId
-import com.evidentdb.domain.base32HexStringToLong
-import com.evidentdb.domain.toBase32HexString
+import com.evidentdb.event_model.EnvelopeId
+import com.evidentdb.application.base32HexStringToLong
+import com.evidentdb.application.toBase32HexString
 import io.cloudevents.CloudEventExtension
 import io.cloudevents.CloudEventExtensions
 import io.cloudevents.core.extensions.impl.ExtensionUtils

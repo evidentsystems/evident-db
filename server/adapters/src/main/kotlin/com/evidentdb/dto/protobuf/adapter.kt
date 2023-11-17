@@ -1,7 +1,9 @@
 package com.evidentdb.dto.protobuf
 
-import com.evidentdb.domain.*
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.command.*
 import com.evidentdb.dto.v1.proto.EventInvalidation
+import com.evidentdb.event_model.*
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.cloudEventFromProto
@@ -144,7 +146,7 @@ fun ProposedEvent.toProto(): ProtoProposedEvent {
 fun ProposedBatch.toProto(): ProtoProposedBatch =
     ProtoProposedBatch.newBuilder()
         .setId(this.id.toString())
-        .setDatabase(this.database.value)
+        .setDatabase(this.databaseName.value)
         .addAllEvents(this.events.map{ it.toProto() })
         .build()
 
@@ -163,6 +165,16 @@ fun Event.toProto(): ProtoEvent {
     return builder.build()
 }
 
+fun streamRevisionsFromDto(
+    streamRevisions: Map<String, StreamRevision>
+): Map<StreamName, StreamRevision> =
+    streamRevisions.mapKeys { StreamName.build(it.key) }
+
+fun streamRevisionsToDto(
+    streamRevisions: Map<StreamName, StreamRevision>
+): Map<String, StreamRevision> =
+    streamRevisions.mapKeys { it.key.value }
+
 fun Batch.toProto(): ProtoBatch =
     ProtoBatch.newBuilder()
         .setId(this.id.toString())
@@ -179,8 +191,8 @@ fun batchFromProto(proto: ProtoBatch): Batch {
         proto.eventsList.map {
             Event(
                 databaseName,
-                cloudEventFromProto(it.event),
                 StreamName.build(it.stream),
+                cloudEventFromProto(it.event),
             )
         },
         streamRevisionsFromDto(proto.streamRevisionsMap),
@@ -191,19 +203,19 @@ fun batchFromProto(proto: ProtoBatch): Batch {
 fun batchFromBytes(bytes: ByteArray): Batch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
 
-fun BatchSummaryEvent.toProto(): ProtoBatchSummaryEvent =
+fun LogBatchEvent.toProto(): ProtoBatchSummaryEvent =
     ProtoBatchSummaryEvent.newBuilder()
         .setId(this.id)
         .setStream(this.stream.value)
         .build()
 
 fun batchSummaryEventFromProto(proto: ProtoBatchSummaryEvent) =
-    BatchSummaryEvent(
+    LogBatchEvent(
         proto.id,
         StreamName.build(proto.stream),
     )
 
-fun BatchSummary.toProto(): ProtoBatchSummary =
+fun LogBatch.toProto(): ProtoBatchSummary =
     ProtoBatchSummary.newBuilder()
         .setId(this.id.toString())
         .setDatabase(this.database.value)
@@ -212,12 +224,12 @@ fun BatchSummary.toProto(): ProtoBatchSummary =
         .setTimestamp(this.timestamp.toTimestamp())
         .build()
 
-fun BatchSummary.toByteArray(): ByteArray =
+fun LogBatch.toByteArray(): ByteArray =
     this.toProto().toByteArray()
 
-fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
+fun batchSummaryFromProto(proto: ProtoBatchSummary): LogBatch {
     val databaseName = DatabaseName.build(proto.database)
-    return BatchSummary(
+    return LogBatch(
         BatchId.fromString(proto.id),
         databaseName,
         proto.eventsList.map(::batchSummaryEventFromProto),
@@ -226,7 +238,7 @@ fun batchSummaryFromProto(proto: ProtoBatchSummary): BatchSummary {
     )
 }
 
-fun batchSummaryFromBytes(bytes: ByteArray): BatchSummary =
+fun batchSummaryFromBytes(bytes: ByteArray): LogBatch =
     batchSummaryFromProto(ProtoBatchSummary.parseFrom(bytes))
 
 fun BatchTransactionResult.toProto(): ProtoBatchTransactionResult =
@@ -470,26 +482,26 @@ fun EventBody.toProto(): Message =
         is DatabaseTopicDeletionError -> this.toProto()
     }
 
-fun Database.toProto(): ProtoDatabase =
+fun ActiveDatabaseCommandModel.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
         .setName(this.name.value)
         .setTopic(this.topic)
         .setCreated(this.created.toTimestamp())
-        .putAllStreamRevisions(streamRevisionsToDto(this.streamRevisions))
+        .putAllStreamRevisions(streamRevisionsToDto(this.clock))
         .build()
 
-fun Database.toByteArray(): ByteArray =
+fun ActiveDatabaseCommandModel.toByteArray(): ByteArray =
     this.toProto().toByteArray()
 
 fun databaseFromProto(proto: ProtoDatabase) =
-    Database(
+    ActiveDatabaseCommandModel(
         DatabaseName.build(proto.name),
         proto.topic,
         proto.created.toInstant(),
         streamRevisionsFromDto(proto.streamRevisionsMap)
     )
 
-fun databaseFromBytes(data: ByteArray): Database =
+fun databaseFromBytes(data: ByteArray): ActiveDatabaseCommandModel =
     databaseFromProto(ProtoDatabase.parseFrom(data))
 
 fun DatabaseSummary.toProto(): ProtoDatabaseSummary =

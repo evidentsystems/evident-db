@@ -3,7 +3,11 @@ package com.evidentdb.transactor
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
-import com.evidentdb.domain.*
+import com.evidentdb.domain_model.*
+import com.evidentdb.domain_model.DatabaseName
+import com.evidentdb.domain_model.command.DatabaseTopicCreationError
+import com.evidentdb.domain_model.command.DatabaseTopicDeletionError
+import com.evidentdb.domain_model.TopicName
 import com.evidentdb.kafka.*
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic
@@ -20,19 +24,19 @@ class KafkaStreamsCommandHandler(
     companion object {
         val LOGGER: Logger = LoggerFactory.getLogger(KafkaStreamsCommandHandler::class.java)
     }
-    override lateinit var databaseReadModel: DatabaseReadModel
-    override lateinit var batchSummaryReadModel: BatchSummaryReadModel
+    override lateinit var databaseRepository: DatabaseRepository
+    override lateinit var batchSummaryRepository: BatchSummaryRepository
 
     fun init(
         databaseStore: DatabaseReadOnlyKeyValueStore,
         logStore: DatabaseLogReadOnlyKeyValueStore,
         batchStore: BatchIndexReadOnlyKeyValueStore,
     ) {
-        this.databaseReadModel = DatabaseReadModelStore(
+        this.databaseRepository = DatabaseRepositoryStore(
             databaseStore,
             logStore,
         )
-        this.batchSummaryReadModel = BatchSummaryReadOnlyStore(batchStore, logStore)
+        this.batchSummaryRepository = BatchSummaryReadOnlyStore(batchStore, logStore)
     }
 
     override suspend fun createDatabaseTopic(

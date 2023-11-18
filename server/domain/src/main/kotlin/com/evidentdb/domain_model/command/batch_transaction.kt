@@ -2,7 +2,6 @@ package com.evidentdb.domain_model.command
 
 import arrow.core.*
 import arrow.core.raise.either
-import com.evidentdb.application.base32HexStringToLong
 import com.evidentdb.cloudevents.EventSequenceExtension
 import com.evidentdb.domain_model.*
 import com.evidentdb.domain_model.StreamState
@@ -18,13 +17,6 @@ import java.net.URI
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.*
-
-fun validateStreamName(name: String)
-        : Either<InvalidStreamName, StreamName> =
-    when (val streamName = StreamName.of(name)) {
-        is Either.Left -> InvalidStreamName(name).left()
-        is Either.Right -> streamName.value.right()
-    }
 
 // TODO: regex validation?
 fun validateEventType(eventType: EventType)
@@ -128,11 +120,6 @@ suspend fun validateProposedEvent(
 
 // Events
 
-typealias EventId = UUID
-typealias EventIndex = Long
-typealias EventKey = String
-typealias EventType = String
-
 @JvmInline
 value class EventSubject private constructor(val value: String) {
     companion object {
@@ -201,22 +188,6 @@ data class ProposedEvent(
     val streamState: ProposedEventStreamConstraint = ProposedEventStreamConstraint.Any,
 )
 
-data class Event(
-    val database: DatabaseName,
-    val stream: StreamName,
-    val event: CloudEvent
-) {
-    val index: EventIndex
-        get() = event.getExtension("sequence").let {
-            when (it) {
-                is String -> base32HexStringToLong(it)
-                else -> throw IllegalStateException("Event Sequence must be a String")
-            }
-        }
-    val id: EventId
-        get() = UUID.fromString(event.id)
-}
-
 typealias BatchId = UUID
 typealias BatchKey = String
 
@@ -225,7 +196,7 @@ data class ProposedBatch(
     val databaseName: DatabaseName,
     val events: List<ProposedEvent>
 ) {
-    suspend fun validate(
+    fun validate(
         database: ActiveDatabaseCommandModel,
     ): Either<BatchTransactionError, Batch> {
         if (batchRepository.batch(database.name, this.id).isRight()) {

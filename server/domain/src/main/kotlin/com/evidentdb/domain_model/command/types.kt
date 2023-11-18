@@ -3,7 +3,6 @@ package com.evidentdb.domain_model.command
 import arrow.core.Either
 import arrow.core.raise.either
 import arrow.core.raise.ensure
-import arrow.core.right
 import com.evidentdb.domain_model.*
 import java.time.Instant
 
@@ -42,17 +41,20 @@ interface CleanDatabaseCommandModel: ActiveDatabaseCommandModel
 sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel {
     val topic: TopicName
     val created: Instant
-    val clock: Map<StreamName, StreamRevision>
+    val clock: DatabaseClock
     val revision: DatabaseRevision
 
-    fun withBatch(batch: Batch): Either<BatchTransactionError, ActiveDatabaseCommandModel> = either {
-        TODO()
-    }
+    fun acceptBatch(proposedBatch: ProposedBatch): Either<BatchTransactionError, DirtyDatabaseCommandModel> =
+        either {
+            val batch = proposedBatch.validate(this@ActiveDatabaseCommandModel).bind()
+            DirtyDatabaseCommandModel(this@ActiveDatabaseCommandModel, batch)
+        }
 
-    fun delete(): Either<DatabaseDeletionError, DatabaseCommandModelAfterDeletion> = either {
-        // TODO: validations?
-        DatabaseCommandModelAfterDeletion(this@ActiveDatabaseCommandModel)
-    }
+    fun deleted(): Either<DatabaseDeletionError, DatabaseCommandModelAfterDeletion> =
+        either {
+            // TODO: validations?
+            DatabaseCommandModelAfterDeletion(this@ActiveDatabaseCommandModel)
+        }
 }
 
 data class NewlyCreatedDatabaseCommandModel(
@@ -62,8 +64,8 @@ data class NewlyCreatedDatabaseCommandModel(
 ): ActiveDatabaseCommandModel {
     override val name: DatabaseName
         get() = basis.name
-    override val clock: Map<StreamName, StreamRevision>
-        get() = mapOf()
+    override val clock
+        get() = DatabaseClock.EMPTY
     override val revision
         get() = 0L
 
@@ -92,18 +94,14 @@ data class NewlyCreatedDatabaseCommandModel(
     }
 }
 
-data class DirtyDatabaseCommandModel(
+data class DirtyDatabaseCommandModel internal constructor(
     private val basis: ActiveDatabaseCommandModel,
     private val batch: Batch,
 ) : ActiveDatabaseCommandModel by basis {
     override val revision: DatabaseRevision = batch.revisionAfter
-    override val clock: Map<StreamName, StreamRevision> =
-        batch.events.fold(basis.clock.toMutableMap()) { newClock, event ->
-            val nextRevision = (newClock[event.stream] ?: 0) + 1
-            newClock[event.stream] = nextRevision
-            newClock
-        }
-    val batches: List<Batch>
+    override val clock = basis.clock.advance(batch.events)
+
+     val batches: List<Batch>
         get() = if (basis is DirtyDatabaseCommandModel) {
             val result = basis.batches.toMutableList()
             result.add(batch)

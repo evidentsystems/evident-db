@@ -30,6 +30,9 @@ dependencies {
 
     // Cache
     api(libs.caffeine)
+
+    // Test dependencies
+    testImplementation("io.micronaut.grpc:micronaut-grpc-client-runtime")
 }
 
 protobuf {

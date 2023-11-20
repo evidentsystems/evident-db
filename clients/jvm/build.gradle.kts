@@ -30,6 +30,9 @@ dependencies {
 
     // Cache
     api(libs.caffeine)
+
+    // Test dependencies
+    testImplementation("io.grpc:grpc-netty:1.59.0")
 }
 
 protobuf {

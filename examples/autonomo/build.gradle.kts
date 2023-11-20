@@ -28,6 +28,8 @@ dependencies {
     runtimeOnly("org.yaml:snakeyaml")
     testImplementation("io.micronaut:micronaut-http-client")
 
+    implementation("io.micronaut.grpc:micronaut-grpc-client-runtime")
+
     // Logging
     runtimeOnly("ch.qos.logback:logback-classic")
 }

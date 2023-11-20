@@ -32,7 +32,7 @@ dependencies {
     api(libs.caffeine)
 
     // Test dependencies
-    testImplementation("io.micronaut.grpc:micronaut-grpc-client-runtime")
+    testImplementation("io.grpc:grpc-netty:1.59.0")
 }
 
 protobuf {

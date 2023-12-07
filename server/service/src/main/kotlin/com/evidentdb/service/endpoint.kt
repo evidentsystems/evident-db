@@ -30,17 +30,17 @@ class EvidentDbEndpoint(
         commandService.createDatabase(request.name).bimap(
             {
                 when(it) {
-                    is DatabaseNameAlreadyExistsError -> {
+                    is DatabaseNameAlreadyExists -> {
                         builder.databaseNameAlreadyExistsError = it.toProto()
                     }
-                    is InvalidDatabaseNameError -> {
+                    is InvalidDatabaseName -> {
                         builder.invalidDatabaseNameError = it.toProto()
                     }
                     is InternalServerError -> {
                         builder.internalServerError = it.toProto()
                     }
 
-                    is DatabaseTopicCreationError -> {
+                    is IllegalDatabaseCreationState -> {
                         builder.databaseTopicCreationError = it.toProto()
                     }
                 }
@@ -59,14 +59,14 @@ class EvidentDbEndpoint(
             .bimap(
                 {
                     when(it) {
-                        is DatabaseNotFoundError -> {
+                        is DatabaseNotFound -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
-                        is InvalidDatabaseNameError -> {
+                        is InvalidDatabaseName -> {
                             builder.invalidDatabaseNameError = it.toProto()
                         }
 
-                        is DatabaseTopicDeletionError -> {
+                        is IllegalDatabaseDeletionState -> {
                             builder.databaseTopicDeletionError = it.toProto()
                         }
 
@@ -92,16 +92,16 @@ class EvidentDbEndpoint(
             .bimap(
                 {
                     when(it) {
-                        is InvalidDatabaseNameError -> {
+                        is InvalidDatabaseName -> {
                             builder.invalidDatabaseNameError = it.toProto()
                         }
-                        is DatabaseNotFoundError -> {
+                        is DatabaseNotFound -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
                         is InvalidEventsError -> {
                             builder.invalidEventsError = it.toProto()
                         }
-                        NoEventsProvidedError -> {
+                        EmptyBatch -> {
                             builder.noEventsProvidedErrorBuilder.build()
                         }
                         is DuplicateBatchError -> {

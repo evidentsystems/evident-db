@@ -13,11 +13,6 @@ option php_namespace = "Com\\EvidentDB\\V1\\Proto";
 option ruby_package = "Com::EvidentDB::V1::Proto";
 option objc_class_prefix = "EDB";
 
-message DatabaseCreationInfo {
-  string name = 1;
-  string topic = 2;
-}
-
 message DatabaseCreationResult {
   Database database = 1;
 }
@@ -32,15 +27,9 @@ message DatabaseDeletionResult {
 
 message Database {
   string name = 1;
-  string topic = 2;
+  string subscription_uri = 2;
   google.protobuf.Timestamp created = 3;
-  map<string, int64> stream_revisions = 4;
-}
-
-message DatabaseSummary {
-  string name = 1;
-  string topic = 2;
-  google.protobuf.Timestamp created = 3;
+  map<string, uint64> stream_revisions = 4;
 }
 
 enum StreamState {
@@ -53,7 +42,7 @@ enum StreamState {
 message ProposedEvent {
   string stream = 1;
   StreamState stream_state = 2;
-  optional int64 at_revision = 3;
+  optional uint64 at_revision = 3;
   io.cloudevents.v1.CloudEvent event = 4;
 }
 
@@ -77,8 +66,8 @@ message Batch {
   string id = 1;
   string database = 2;
   repeated Event events = 3;
-  map<string, int64> stream_revisions = 4;
-  google.protobuf.Timestamp timestamp = 5;
+  google.protobuf.Timestamp timestamp = 4;
+  uint64 revision_before = 5;
 }
 
 message BatchSummaryEvent {
@@ -170,16 +159,6 @@ message DatabaseTopicCreationError {
 message DatabaseTopicDeletionError {
   string database = 1;
   string topic = 2;
-}
-
-message BatchNotFoundError {
-  string database = 1;
-  string batch_id = 2;
-}
-
-message StreamNotFoundError {
-  string database = 1;
-  string stream = 2;
 }
 
 message EventNotFoundError {

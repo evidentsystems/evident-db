@@ -2,7 +2,6 @@ package com.evidentdb.dto.protobuf
 
 import com.evidentdb.domain_model.*
 import com.evidentdb.domain_model.command.*
-import com.evidentdb.dto.v1.proto.EventInvalidation
 import com.evidentdb.event_model.*
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
@@ -96,11 +95,11 @@ fun DatabaseDeletionResult.toProto(): ProtoDatabaseDeletionResult =
         .setDatabase(this.database.toProto())
         .build()
 
-fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
+fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): WellFormedProposedEvent {
     val protoEvent = proposedEvent.event
     val event = cloudEventFromProto(protoEvent)
 
-    return ProposedEvent(
+    return WellFormedProposedEvent(
         event,
         StreamName.build(proposedEvent.stream),
         when(proposedEvent.streamState) {
@@ -115,16 +114,16 @@ fun proposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent {
 }
 
 fun proposedBatchFromProto(proto: ProtoProposedBatch) =
-    ProposedBatch(
+    WellFormedProposedBatch(
         BatchId.fromString(proto.id),
         DatabaseName.build(proto.database),
         proto.eventsList.map { proposedEventFromProto(it) }
     )
 
-fun proposedBatchFromBytes(bytes: ByteArray): ProposedBatch =
+fun proposedBatchFromBytes(bytes: ByteArray): WellFormedProposedBatch =
     proposedBatchFromProto(ProtoProposedBatch.parseFrom(bytes))
 
-fun ProposedEvent.toProto(): ProtoProposedEvent {
+fun WellFormedProposedEvent.toProto(): ProtoProposedEvent {
     val builder = ProtoProposedEvent.newBuilder()
         .setStream(this.stream.value)
     when(this.streamState) {
@@ -143,7 +142,7 @@ fun ProposedEvent.toProto(): ProtoProposedEvent {
     return builder.build()
 }
 
-fun ProposedBatch.toProto(): ProtoProposedBatch =
+fun WellFormedProposedBatch.toProto(): ProtoProposedBatch =
     ProtoProposedBatch.newBuilder()
         .setId(this.id.toString())
         .setDatabase(this.databaseName.value)
@@ -154,7 +153,7 @@ fun CommandBody.toProto(): Message =
     when(this) {
         is DatabaseCreationInfo -> this.toProto()
         is DatabaseDeletionInfo -> this.toProto()
-        is ProposedBatch -> this.toProto()
+        is WellFormedProposedBatch -> this.toProto()
     }
 
 fun Event.toProto(): ProtoEvent {
@@ -175,7 +174,7 @@ fun streamRevisionsToDto(
 ): Map<String, StreamRevision> =
     streamRevisions.mapKeys { it.key.value }
 
-fun Batch.toProto(): ProtoBatch =
+fun AcceptedBatch.toProto(): ProtoBatch =
     ProtoBatch.newBuilder()
         .setId(this.id.toString())
         .setDatabase(this.database.value)
@@ -183,9 +182,9 @@ fun Batch.toProto(): ProtoBatch =
         .putAllStreamRevisions(streamRevisionsToDto(this.streamRevisions))
         .build()
 
-fun batchFromProto(proto: ProtoBatch): Batch {
+fun batchFromProto(proto: ProtoBatch): AcceptedBatch {
     val databaseName = DatabaseName.build(proto.database)
-    return Batch(
+    return AcceptedBatch(
         BatchId.fromString(proto.id),
         databaseName,
         proto.eventsList.map {
@@ -200,7 +199,7 @@ fun batchFromProto(proto: ProtoBatch): Batch {
     )
 }
 
-fun batchFromBytes(bytes: ByteArray): Batch =
+fun batchFromBytes(bytes: ByteArray): AcceptedBatch =
     batchFromProto(ProtoBatch.parseFrom(bytes))
 
 fun LogBatchEvent.toProto(): ProtoBatchSummaryEvent =
@@ -256,50 +255,50 @@ fun batchTransactionResultFromProto(proto: ProtoBatchTransactionResult): BatchTr
 fun batchTransactionResultFromBytes(bytes: ByteArray): BatchTransactionResult =
     batchTransactionResultFromProto(ProtoBatchTransactionResult.parseFrom(bytes))
 
-fun InvalidDatabaseNameError.toProto(): ProtoInvalidDatabaseNameError =
+fun InvalidDatabaseName.toProto(): ProtoInvalidDatabaseNameError =
     ProtoInvalidDatabaseNameError.newBuilder()
         .setName(this.name)
         .build()
 
-fun invalidDatabaseNameErrorFromProto(proto: ProtoInvalidDatabaseNameError): InvalidDatabaseNameError =
-    InvalidDatabaseNameError(proto.name)
+fun invalidDatabaseNameErrorFromProto(proto: ProtoInvalidDatabaseNameError): InvalidDatabaseName =
+    InvalidDatabaseName(proto.name)
 
-fun invalidDatabaseNameErrorFromBytes(bytes: ByteArray): InvalidDatabaseNameError =
+fun invalidDatabaseNameErrorFromBytes(bytes: ByteArray): InvalidDatabaseName =
     invalidDatabaseNameErrorFromProto(ProtoInvalidDatabaseNameError.parseFrom(bytes))
 
-fun DatabaseNameAlreadyExistsError.toProto(): ProtoDatabaseNameAlreadyExistsError =
+fun DatabaseNameAlreadyExists.toProto(): ProtoDatabaseNameAlreadyExistsError =
     ProtoDatabaseNameAlreadyExistsError.newBuilder()
         .setName(this.name.value)
         .build()
 
-fun databaseNameAlreadyExistsErrorFromProto(proto: ProtoDatabaseNameAlreadyExistsError): DatabaseNameAlreadyExistsError =
-    DatabaseNameAlreadyExistsError(DatabaseName.build(proto.name))
+fun databaseNameAlreadyExistsErrorFromProto(proto: ProtoDatabaseNameAlreadyExistsError): DatabaseNameAlreadyExists =
+    DatabaseNameAlreadyExists(DatabaseName.build(proto.name))
 
-fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlreadyExistsError =
+fun databaseNameAlreadyExistsErrorFromBytes(bytes: ByteArray): DatabaseNameAlreadyExists =
     databaseNameAlreadyExistsErrorFromProto(ProtoDatabaseNameAlreadyExistsError.parseFrom(bytes))
 
-fun DatabaseNotFoundError.toProto(): ProtoDatabaseNotFoundError =
+fun DatabaseNotFound.toProto(): ProtoDatabaseNotFoundError =
     ProtoDatabaseNotFoundError.newBuilder()
         .setName(this.name)
         .build()
 
-fun databaseNotFoundErrorFromProto(proto: ProtoDatabaseNotFoundError): DatabaseNotFoundError =
-    DatabaseNotFoundError(proto.name)
+fun databaseNotFoundErrorFromProto(proto: ProtoDatabaseNotFoundError): DatabaseNotFound =
+    DatabaseNotFound(proto.name)
 
-fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFoundError =
+fun databaseNotFoundErrorFromBytes(bytes: ByteArray): DatabaseNotFound =
     databaseNotFoundErrorFromProto(ProtoDatabaseNotFoundError.parseFrom(bytes))
 
-fun NoEventsProvidedError.toProto(): ProtoNoEventsProvidedError =
+fun EmptyBatch.toProto(): ProtoNoEventsProvidedError =
     ProtoNoEventsProvidedError.newBuilder().build()
 
-fun noEventsProvidedErrorFromProto(_proto: ProtoNoEventsProvidedError): NoEventsProvidedError =
-    NoEventsProvidedError
+fun noEventsProvidedErrorFromProto(_proto: ProtoNoEventsProvidedError): EmptyBatch =
+    EmptyBatch
 
-fun noEventsProvidedErrorFromBytes(bytes: ByteArray): NoEventsProvidedError =
+fun noEventsProvidedErrorFromBytes(bytes: ByteArray): EmptyBatch =
     noEventsProvidedErrorFromProto(ProtoNoEventsProvidedError.parseFrom(bytes))
 
 // TODO: DRY this up a bit w/r/t ProposedEvent.toProto()
-fun UnvalidatedProposedEvent.toProto(): ProtoProposedEvent {
+fun ProposedEvent.toProto(): ProtoProposedEvent {
     val builder = ProtoProposedEvent.newBuilder()
         .setStream(this.stream)
     when(this.streamState) {
@@ -319,8 +318,8 @@ fun UnvalidatedProposedEvent.toProto(): ProtoProposedEvent {
     return builder.build()
 }
 
-fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): UnvalidatedProposedEvent =
-    UnvalidatedProposedEvent(
+fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): ProposedEvent =
+    ProposedEvent(
         cloudEventFromProto(proposedEvent.event),
         proposedEvent.stream,
         when(proposedEvent.streamState) {
@@ -426,7 +425,7 @@ fun internalServerErrorFromProto(proto: ProtoInternalServerError): InternalServe
 fun internalServerErrorFromBytes(bytes: ByteArray): InternalServerError =
     internalServerErrorFromProto(ProtoInternalServerError.parseFrom(bytes))
 
-fun DatabaseTopicCreationError.toProto(): ProtoDatabaseTopicCreationError =
+fun IllegalDatabaseCreationState.toProto(): ProtoDatabaseTopicCreationError =
     ProtoDatabaseTopicCreationError.newBuilder()
         .setDatabase(this.database)
         .setTopic(this.topic)
@@ -434,18 +433,17 @@ fun DatabaseTopicCreationError.toProto(): ProtoDatabaseTopicCreationError =
 
 fun databaseTopicCreationErrorFromProto(
     proto: ProtoDatabaseTopicCreationError
-): DatabaseTopicCreationError =
-    DatabaseTopicCreationError(
-        proto.database,
-        proto.topic
+): IllegalDatabaseCreationState =
+    IllegalDatabaseCreationState(
+        proto.database
     )
 
 fun databaseTopicCreationErrorFromBytes(
     bytes: ByteArray
-): DatabaseTopicCreationError =
+): IllegalDatabaseCreationState =
     databaseTopicCreationErrorFromProto(ProtoDatabaseTopicCreationError.parseFrom(bytes))
 
-fun DatabaseTopicDeletionError.toProto(): ProtoDatabaseTopicDeletionError =
+fun IllegalDatabaseDeletionState.toProto(): ProtoDatabaseTopicDeletionError =
     ProtoDatabaseTopicDeletionError.newBuilder()
         .setDatabase(this.database)
         .setTopic(this.topic)
@@ -453,15 +451,14 @@ fun DatabaseTopicDeletionError.toProto(): ProtoDatabaseTopicDeletionError =
 
 fun databaseTopicDeletionErrorFromProto(
     proto: ProtoDatabaseTopicDeletionError
-): DatabaseTopicDeletionError =
-    DatabaseTopicDeletionError(
-        proto.database,
-        proto.topic
+): IllegalDatabaseDeletionState =
+    IllegalDatabaseDeletionState(
+        proto.database
     )
 
 fun databaseTopicDeletionErrorFromBytes(
     bytes: ByteArray
-): DatabaseTopicDeletionError =
+): IllegalDatabaseDeletionState =
     databaseTopicDeletionErrorFromProto(ProtoDatabaseTopicDeletionError.parseFrom(bytes))
 
 fun EventBody.toProto(): Message =
@@ -470,24 +467,24 @@ fun EventBody.toProto(): Message =
         is DatabaseDeletionResult -> this.toProto()
         is BatchTransactionResult -> this.toProto()
 
-        is InvalidDatabaseNameError -> this.toProto()
-        is DatabaseNameAlreadyExistsError -> this.toProto()
-        is DatabaseNotFoundError -> this.toProto()
-        is NoEventsProvidedError -> this.toProto()
+        is InvalidDatabaseName -> this.toProto()
+        is DatabaseNameAlreadyExists -> this.toProto()
+        is DatabaseNotFound -> this.toProto()
+        is EmptyBatch -> this.toProto()
         is InvalidEventsError -> this.toProto()
         is DuplicateBatchError -> this.toProto()
         is StreamStateConflictsError -> this.toProto()
         is InternalServerError -> this.toProto()
-        is DatabaseTopicCreationError -> this.toProto()
-        is DatabaseTopicDeletionError -> this.toProto()
+        is IllegalDatabaseCreationState -> this.toProto()
+        is IllegalDatabaseDeletionState -> this.toProto()
     }
 
 fun ActiveDatabaseCommandModel.toProto(): ProtoDatabase =
     ProtoDatabase.newBuilder()
         .setName(this.name.value)
-        .setTopic(this.topic)
+        .setTopic(this.subscriptionURI)
         .setCreated(this.created.toTimestamp())
-        .putAllStreamRevisions(streamRevisionsToDto(this.clock))
+        .putAllStreamRevisions(streamRevisionsToDto(this.revision))
         .build()
 
 fun ActiveDatabaseCommandModel.toByteArray(): ByteArray =

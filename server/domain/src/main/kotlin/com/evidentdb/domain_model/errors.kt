@@ -1,9 +1,7 @@
 package com.evidentdb.domain_model
 
-import com.evidentdb.domain_model.command.BatchId
-import com.evidentdb.domain_model.command.EventIndex
-
-// Errors
+import arrow.core.NonEmptyList
+import io.cloudevents.CloudEvent
 
 sealed interface EvidentDbError
 
@@ -11,25 +9,38 @@ interface DatabaseCreationError: EvidentDbError
 interface BatchTransactionError: EvidentDbError
 interface DatabaseDeletionError: EvidentDbError
 
-sealed interface NotFoundError
+sealed interface QueryError
 
-data class BatchNotFoundError(val database: String, val batchId: BatchId): NotFoundError
-data class StreamNotFoundError(val database: String, val stream: String): NotFoundError
-data class EventNotFoundError(val database: String, val eventIndex: EventIndex): NotFoundError
+data class DatabaseNotFound(val name: String): DatabaseDeletionError, BatchTransactionError, QueryError
+data class EventNotFound(val database: String, val eventRevision: EventRevision): QueryError
+data class InvalidDatabaseName(val name: String): DatabaseCreationError, QueryError
 
-data class InvalidDatabaseNameError(val name: String):
-    DatabaseCreationError,
-    DatabaseDeletionError,
-    BatchTransactionError
-data class DatabaseNotFoundError(val name: String): DatabaseDeletionError, BatchTransactionError, NotFoundError
-data class DatabaseTopicCreationError(val database: String, val topic: TopicName): DatabaseCreationError
-data class DatabaseTopicDeletionError(val database: String, val topic: TopicName): DatabaseDeletionError
+data class DatabaseNameAlreadyExists(val name: DatabaseName): DatabaseCreationError
+data class IllegalDatabaseCreationState(val database: String): DatabaseCreationError
+data class IllegalBatchTransactionState(val database: String): BatchTransactionError
+data class IllegalDatabaseDeletionState(val database: String): DatabaseDeletionError
+
+sealed interface InvalidBatchError : BatchTransactionError
+
+object EmptyBatch : InvalidBatchError
+
+interface EventInvalidation
+
+data class InvalidEventSource(val eventSource: String) : EventInvalidation, InvalidBatchError
+data class InvalidStreamName(val streamName: String) : EventInvalidation, QueryError
+data class InvalidEventId(val eventId: String) : EventInvalidation, QueryError
+data class DuplicateEventId(val stream: String, val eventId: String) : EventInvalidation
+data class InvalidEventSubject(val eventSubject: String) : EventInvalidation, QueryError
+data class InvalidEventType(val eventType: String) : EventInvalidation, QueryError
+data class InvalidEvent(val event: CloudEvent, val errors: List<EventInvalidation>)
+
+data class InvalidEventsError(val invalidEvents: NonEmptyList<InvalidEvent>) : InvalidBatchError
+
+data class DuplicateBatchError(val batch: WellFormedProposedBatch) : BatchTransactionError
+data class StreamStateConflict(val constraint: BatchConstraint)
+data class StreamStateConflictsError(val conflicts: NonEmptyList<StreamStateConflict>) : BatchTransactionError
 
 data class InternalServerError(val message: String):
     DatabaseCreationError,
     DatabaseDeletionError,
     BatchTransactionError
-
-interface EventInvalidation
-
-data class DatabaseNameAlreadyExistsError(val name: DatabaseName): DatabaseCreationError

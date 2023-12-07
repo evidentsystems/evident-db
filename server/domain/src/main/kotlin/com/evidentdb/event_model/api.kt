@@ -3,8 +3,8 @@ package com.evidentdb.event_model
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.raise.either
+import arrow.core.raise.ensure
 import com.evidentdb.domain_model.*
-import com.evidentdb.domain_model.command.*
 import java.time.Instant
 import java.util.*
 
@@ -33,7 +33,8 @@ sealed interface EvidentDbEvent {
 data class EvidentDbErrorEvent(
     override val id: EnvelopeId,
     override val commandId: EnvelopeId,
-    override val database: DatabaseName
+    override val database: DatabaseName,
+    val error: EvidentDbError,
 ): EvidentDbEvent {
     override val type: EnvelopeType
         get() = "com.evidentdb.error.${this.javaClass.simpleName}"
@@ -46,56 +47,53 @@ data class EvidentDbErrorEvent(
 data class CreateDatabase(
     override val id: EnvelopeId,
     override val database: DatabaseName,
-    val topic: TopicName
+    val subscriptionURI: DatabaseSubscriptionURI
 ): EvidentDbCommand {
     override suspend fun decide(state: DatabaseCommandModel): Either<DatabaseCreationError, DatabaseCreated> =
         when (state) {
             is DatabaseCommandModelBeforeCreation -> either {
-                val availableName = validateDatabaseNameNotTaken(
-                    state,
-                    database,
-                ).bind()
+                ensure(state.databaseNameAvailable(database)) { DatabaseNameAlreadyExists(database) }
+                val newlyCreatedDatabase = state.create(database, subscriptionURI, Instant.now()).bind()
                 DatabaseCreated(
                     EnvelopeId.randomUUID(),
                     id,
-                    availableName,
-                    state.create(
-                        availableName,
-                        topic,
-                        Instant.now(),
-                    ),
+                    database,
+                    newlyCreatedDatabase,
                 )
             }
-            is ActiveDatabaseCommandModel -> DatabaseNameAlreadyExistsError(state.name).left()
-            is DatabaseCommandModelAfterDeletion -> DatabaseNameAlreadyExistsError(state.name).left()
+            is ActiveDatabaseCommandModel -> DatabaseNameAlreadyExists(state.name).left()
+            is DatabaseCommandModelAfterDeletion -> DatabaseNameAlreadyExists(state.name).left()
         }
 }
 
 data class TransactBatch(
     override val id: EnvelopeId,
     override val database: DatabaseName,
-    val proposedBatch: ProposedBatch
+    val proposedBatch: WellFormedProposedBatch
 ): EvidentDbCommand {
-    override suspend fun decide(state: DatabaseCommandModel) = when (state) {
-        is DatabaseCommandModelBeforeCreation -> TODO()
-        is ActiveDatabaseCommandModel -> TODO()
-        is DatabaseCommandModelAfterDeletion -> TODO()
-    }
-
-//    override suspend fun decide(command: EvidentDbCommand): Either<EvidentDbError, EvidentDbEvent> {
-//        TODO("Not yet implemented")
-//    }
+    override suspend fun decide(state: DatabaseCommandModel): Either<BatchTransactionError, BatchTransacted> =
+        when (state) {
+            is ActiveDatabaseCommandModel -> either {
+                val acceptedBatch = proposedBatch.accept(state).bind()
+                BatchTransacted(EnvelopeId.randomUUID(), id, database, acceptedBatch)
+            }
+            is DatabaseCommandModelBeforeCreation -> DatabaseNotFound(database.value).left()
+            is DatabaseCommandModelAfterDeletion -> DatabaseNotFound(database.value).left()
+        }
 }
 
 data class DeleteDatabase(
     override val id: EnvelopeId,
     override val database: DatabaseName,
 ): EvidentDbCommand {
-    override suspend fun decide(state: DatabaseCommandModel): Either<DatabaseDeletionError, EvidentDbEvent> =
+    override suspend fun decide(state: DatabaseCommandModel): Either<DatabaseDeletionError, DatabaseDeleted> =
         when (state) {
-            is DatabaseCommandModelBeforeCreation -> TODO()
-            is ActiveDatabaseCommandModel -> TODO()
-            is DatabaseCommandModelAfterDeletion -> TODO()
+            is DatabaseCommandModelBeforeCreation -> DatabaseNotFound(database.value).left()
+            is DatabaseCommandModelAfterDeletion -> DatabaseNotFound(database.value).left()
+            is ActiveDatabaseCommandModel -> either {
+                state.delete().bind()
+                DatabaseDeleted(EnvelopeId.randomUUID(), id, database, Instant.now())
+            }
         }
 }
 
@@ -118,13 +116,12 @@ data class BatchTransacted(
     override val id: EnvelopeId,
     override val commandId: EnvelopeId,
     override val database: DatabaseName,
-    val batch: Batch,
-    val revisionBefore: DatabaseRevision,
+    val batch: AcceptedBatch
 ): EvidentDbEvent {
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel = when (state) {
-        is DatabaseCommandModelBeforeCreation -> TODO()
-        is ActiveDatabaseCommandModel -> TODO()
-        is DatabaseCommandModelAfterDeletion -> TODO()
+        is DatabaseCommandModelBeforeCreation -> state
+        is DatabaseCommandModelAfterDeletion -> state
+        is ActiveDatabaseCommandModel -> state.acceptBatch(batch)
     }
 
 //    override fun evolve(event: EvidentDbEvent): Database = when (event) {
@@ -182,9 +179,9 @@ data class Saga<in Ar, out A>(
 typealias EvidentDbDecider = Decide<EvidentDbCommand, DatabaseCommandModel, EvidentDbEvent, EvidentDbError>
 
 fun decider(
-    invariants: DatabaseWriteInvariants
+    initial: DatabaseCommandModelBeforeCreation
 ): EvidentDbDecider = Decider(
-    { DatabaseCommandModelBeforeCreation(invariants) },
+    { initial },
     { state, event -> event.evolve(state) },
     { command, state -> command.decide(state).map { listOf(it) } }
 )

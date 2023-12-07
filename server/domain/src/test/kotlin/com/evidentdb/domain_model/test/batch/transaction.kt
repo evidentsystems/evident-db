@@ -16,7 +16,7 @@ class TransactionTests {
             val service = InMemoryCommandService.empty()
             val result = service.transactBatch("foo", listOf())
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
+            result.mapLeft { Assertions.assertTrue(it is EmptyBatch) }
         }
 
     @Test
@@ -24,11 +24,11 @@ class TransactionTests {
         runBlocking {
             val service = InMemoryCommandService.empty()
             val result = service.transactBatch("foo", listOf(
-                UnvalidatedProposedEvent(buildTestEvent("event.valid"), "foo"),
+                ProposedEvent(buildTestEvent("event.valid"), "foo"),
             ))
             println(result)
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
+            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFound) }
         }
 
     @Test
@@ -38,8 +38,8 @@ class TransactionTests {
             val database = buildTestDatabase(databaseName)
             val service = InMemoryCommandService(listOf(database), listOf(), listOf())
             val result = service.transactBatch(databaseName.value, listOf(
-                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
-                UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
+                ProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
+                ProposedEvent(buildTestEvent(""), "event.invalidated.type"),
             ))
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
@@ -57,22 +57,22 @@ class TransactionTests {
             val existingStream = StreamSummary.create(database.name, "my-stream")
             val service = InMemoryCommandService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.does-not-exist-but-should"),
                     "a-new-stream",
                     StreamState.StreamExists
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.exists-but-should-not"),
                     existingStream.name,
                     StreamState.NoStream
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.at-wrong-revision"),
                     existingStream.name,
                     StreamState.AtRevision(100)
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
@@ -96,22 +96,22 @@ class TransactionTests {
             val existingStream = StreamSummary.create(database.name, "my-stream")
             val service = InMemoryCommandService(listOf(database), listOf(existingStream), listOf())
             val batch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-stream"),
                     "a-new-stream",
                     StreamState.NoStream
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.exists"),
                     existingStream.name,
                     StreamState.StreamExists
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.revision"),
                     existingStream.name,
                     StreamState.AtRevision(0)
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),

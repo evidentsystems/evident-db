@@ -17,15 +17,15 @@ option objc_class_prefix = "EDB";
 service EvidentDb {
   // Command
   rpc createDatabase(CreateDatabaseRequest) returns (CreateDatabaseReply) {}
-  rpc deleteDatabase(DatabaseDeletionInfo) returns (DeleteDatabaseReply) {}
-  rpc transactBatch(BatchProposal)         returns (TransactBatchReply)  {}
+  rpc deleteDatabase(DatabaseDeletionInfo)  returns (DeleteDatabaseReply) {}
+  rpc transactBatch(BatchProposal)          returns (TransactBatchReply)  {}
 
   // Query
   rpc catalog(CatalogRequest) returns (stream CatalogReply) {}
   rpc connect(DatabaseRequest) returns (stream DatabaseReply) {}
-  rpc database(DatabaseRequest) returns (DatabaseReply) {}
+  rpc latestDatabase(DatabaseRequest) returns (DatabaseReply) {}
+  rpc databaseAtRevision(DatabaseAtRevisionRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
-  rpc batch(BatchRequest) returns (BatchReply) {}
   rpc stream(StreamRequest) returns (stream StreamEntryReply) {}
   rpc subjectStream(SubjectStreamRequest) returns (stream StreamEntryReply) {}
   rpc events(stream EventRequest) returns (stream EventReply) {}
@@ -75,7 +75,10 @@ message CatalogReply {
 
 message DatabaseRequest {
   string name = 1;
-  int64 revision = 2;
+}
+message DatabaseAtRevisionRequest {
+  string name = 1;
+  uint64 revision = 2;
 }
 message DatabaseReply {
   oneof result {
@@ -86,6 +89,7 @@ message DatabaseReply {
 
 message DatabaseLogRequest {
   string database = 1;
+  uint64 database_revision = 2;
 }
 message DatabaseLogReply {
   oneof result {
@@ -94,55 +98,35 @@ message DatabaseLogReply {
   }
 }
 
-message BatchRequest {
-  string database = 1;
-  string batch_id = 2;
-}
-message BatchReply {
-  oneof result {
-    Batch batch = 1;
-    BatchNotFoundError batch_not_found = 2;
-  }
-}
-
 message StreamRequest {
   string database = 1;
-  int64 database_revision = 2;
+  uint64 database_revision = 2;
   string stream = 3;
 }
 
 message SubjectStreamRequest {
   string database = 1;
-  int64 database_revision = 2;
+  uint64 database_revision = 2;
   string stream = 3;
   string subject = 4;
 }
 
-message StreamMapEntry {
-  int64 stream_revision = 1;
-  int64 event_id = 2;
-}
-
 message StreamEntryReply {
   oneof result {
-    StreamMapEntry stream_map_entry = 1;
-    StreamNotFoundError stream_not_found = 2;
+    uint64 event_id = 1;
+    // TODO: change this to QueryError enum
+    DatabaseNotFoundError database_not_found = 2;
   }
 }
 
 message EventRequest {
   string database = 1;
-  int64 event_id = 2;
-}
-
-message EventMapEntry {
-  int64 event_id = 1;
-  io.cloudevents.v1.CloudEvent event = 2;
+  uint64 event_id = 2;
 }
 
 message EventReply {
   oneof result {
-    EventMapEntry event_map_entry = 1;
+    io.cloudevents.v1.CloudEvent event = 1;
     EventNotFoundError event_not_found = 2;
   }
 }

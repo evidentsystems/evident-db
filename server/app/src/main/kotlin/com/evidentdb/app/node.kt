@@ -3,7 +3,7 @@ package com.evidentdb.app
 import com.evidentdb.application.CommandService
 import com.evidentdb.application.QueryService
 import com.evidentdb.domain_model.*
-import com.evidentdb.domain_model.command.ActiveDatabaseCommandModel
+import com.evidentdb.domain_model.ActiveDatabaseCommandModel
 import com.evidentdb.event_model.EvidentDbEvent
 import com.evidentdb.service.EvidentDbEndpoint
 import com.evidentdb.service.KafkaCommandService

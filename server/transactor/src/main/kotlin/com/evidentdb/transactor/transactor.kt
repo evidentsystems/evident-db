@@ -5,8 +5,6 @@ import arrow.core.left
 import arrow.core.right
 import com.evidentdb.domain_model.*
 import com.evidentdb.domain_model.DatabaseName
-import com.evidentdb.domain_model.command.DatabaseTopicCreationError
-import com.evidentdb.domain_model.command.DatabaseTopicDeletionError
 import com.evidentdb.domain_model.TopicName
 import com.evidentdb.kafka.*
 import org.apache.kafka.clients.admin.AdminClient
@@ -42,7 +40,7 @@ class KafkaStreamsCommandHandler(
     override suspend fun createDatabaseTopic(
         database: DatabaseName,
         topicName: TopicName
-    ): Either<DatabaseTopicCreationError, TopicName> {
+    ): Either<IllegalDatabaseCreationState, TopicName> {
         return try {
             LOGGER.info("Creating database ${database.value} event log topic $topicName...")
             adminClient.createTopics(
@@ -67,9 +65,8 @@ class KafkaStreamsCommandHandler(
                 "Failed to create database $database event log topic $topicName",
                 e
             )
-            DatabaseTopicCreationError(
-                database.value,
-                topicName
+            IllegalDatabaseCreationState(
+                database.value
             ).left()
         }
     }
@@ -77,7 +74,7 @@ class KafkaStreamsCommandHandler(
     override suspend fun deleteDatabaseTopic(
         database: DatabaseName,
         topicName: TopicName
-    ): Either<DatabaseTopicDeletionError, Unit> {
+    ): Either<IllegalDatabaseDeletionState, Unit> {
         return try {
             LOGGER.info("Deleting database ${database.value} event log topic $topicName...")
             adminClient.deleteTopics(listOf(topicName)).all().get()
@@ -88,9 +85,8 @@ class KafkaStreamsCommandHandler(
                 "Failed to delete database $database event log topic $topicName",
                 e
             )
-            DatabaseTopicDeletionError(
-                database.value,
-                topicName
+            IllegalDatabaseDeletionState(
+                database.value
             ).left()
         }
     }

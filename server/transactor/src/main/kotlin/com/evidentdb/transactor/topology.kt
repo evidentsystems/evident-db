@@ -5,8 +5,6 @@ import com.evidentdb.application.StreamKey
 import com.evidentdb.domain_model.*
 import com.evidentdb.domain_model.command.BatchKey
 import com.evidentdb.domain_model.DatabaseName
-import com.evidentdb.domain_model.command.EventIndex
-import com.evidentdb.domain_model.command.EvidentDbError
 import com.evidentdb.event_model.*
 import com.evidentdb.kafka.*
 import io.cloudevents.CloudEvent
@@ -314,10 +312,10 @@ object TransactorTopology {
     }
 
     private class StreamIndexer:
-        ContextualProcessor<EnvelopeId, EvidentDbEvent, StreamKey, EventIndex>() {
+        ContextualProcessor<EnvelopeId, EvidentDbEvent, StreamKey, EventRevision>() {
         lateinit var streamStore: StreamStore
 
-        override fun init(context: ProcessorContext<StreamKey, EventIndex>?) {
+        override fun init(context: ProcessorContext<StreamKey, EventRevision>?) {
             super.init(context)
             this.streamStore = StreamStore(
                 context().getStateStore(STREAM_STORE)

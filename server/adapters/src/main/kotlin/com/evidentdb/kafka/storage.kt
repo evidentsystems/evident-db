@@ -18,8 +18,8 @@ typealias DatabaseLogKeyValueStore = KeyValueStore<DatabaseLogKey, LogBatch>
 typealias DatabaseLogReadOnlyKeyValueStore = ReadOnlyKeyValueStore<DatabaseLogKey, LogBatch>
 typealias BatchIndexKeyValueStore = KeyValueStore<BatchId, DatabaseLogKey>
 typealias BatchIndexReadOnlyKeyValueStore = ReadOnlyKeyValueStore<BatchId, DatabaseLogKey>
-typealias StreamKeyValueStore = KeyValueStore<StreamKey, EventIndex>
-typealias StreamReadOnlyKeyValueStore = ReadOnlyKeyValueStore<StreamKey, EventIndex>
+typealias StreamKeyValueStore = KeyValueStore<StreamKey, EventRevision>
+typealias StreamReadOnlyKeyValueStore = ReadOnlyKeyValueStore<StreamKey, EventRevision>
 typealias EventKeyValueStore = KeyValueStore<EventKey, CloudEvent>
 typealias EventReadOnlyKeyValueStore = ReadOnlyKeyValueStore<EventKey, CloudEvent>
 
@@ -69,7 +69,7 @@ open class DatabaseRepositoryStore(
 ): DatabaseRepository {
     private val logStore = DatabaseLogReadModelStore(logKeyValueStore)
 
-    override fun log(name: DatabaseName): Flow<LogBatch>? =
+    override fun databaseLog(name: DatabaseName): Flow<LogBatch>? =
         if (exists(name))
             logStore.log(name)
         else
@@ -96,7 +96,7 @@ open class DatabaseRepositoryStore(
             )
         }
 
-    override fun catalog(): Flow<ActiveDatabaseCommandModel> = flow {
+    override fun databaseCatalog(): Flow<ActiveDatabaseCommandModel> = flow {
         databaseStore.all().use { databaseIterator ->
             for (kv in databaseIterator) {
                 val databaseSummary = kv.value
@@ -185,10 +185,10 @@ class BatchReadOnlyStore(
     override val databaseLogStore: DatabaseLogReadOnlyKeyValueStore,
     private val eventStore: EventReadOnlyKeyValueStore,
 ): IBatchSummaryReadOnlyStore, BatchRepository {
-    override fun batch(database: DatabaseName, id: BatchId): Batch? =
+    override fun batch(database: DatabaseName, id: BatchId): AcceptedBatch? =
         batchKeyLookup.get(id)?.let { databaseLogKey ->
             databaseLogStore.get(databaseLogKey)?.let { summary ->
-                Batch(
+                AcceptedBatch(
                     summary.id,
                     summary.database,
                     summary.events.map { summaryEvent ->
@@ -216,7 +216,7 @@ interface IStreamReadOnlyStore: StreamRepository {
     override fun stream(
         databaseName: DatabaseName,
         stream: StreamName
-    ): Flow<Pair<StreamRevision, EventIndex>> = flow {
+    ): Flow<Pair<StreamRevision, ULong>> = flow {
         forEachStreamEntryByPrefix(
             BaseStreamKey(databaseName, stream).streamPrefix(),
             ::emit
@@ -227,7 +227,7 @@ interface IStreamReadOnlyStore: StreamRepository {
         databaseName: DatabaseName,
         stream: StreamName,
         subject: EventSubject
-    ): Flow<Pair<StreamRevision, EventIndex>> = flow {
+    ): Flow<Pair<StreamRevision, ULong>> = flow {
         forEachStreamEntryByPrefix(
             SubjectStreamKey(
                 databaseName,
@@ -240,7 +240,7 @@ interface IStreamReadOnlyStore: StreamRepository {
 
     private suspend fun forEachStreamEntryByPrefix(
         streamKeyPrefix: String,
-        process: suspend (Pair<StreamRevision, EventIndex>) -> Unit
+        process: suspend (Pair<StreamRevision, ULong>) -> Unit
     ) = streamStore.prefixScan(
         streamKeyPrefix,
         Serdes.String().serializer(),
@@ -271,7 +271,7 @@ interface IStreamReadOnlyStore: StreamRepository {
 interface IStreamStore: IStreamReadOnlyStore {
     override val streamStore: StreamKeyValueStore
 
-    fun putStreamEventId(streamKey: StreamKey, eventIndex: EventIndex) {
+    fun putStreamEventId(streamKey: StreamKey, eventIndex: ULong) {
         streamStore.putIfAbsent(streamKey, eventIndex)
     }
 
@@ -297,7 +297,7 @@ class StreamReadOnlyStore(
 interface IEventReadOnlyStore: EventRepository {
     val eventStore: EventReadOnlyKeyValueStore
 
-    override fun eventByIndex(database: DatabaseName, index: EventIndex): CloudEvent? =
+    override fun eventByIndex(database: DatabaseName, index: ULong): CloudEvent? =
         eventStore.get(buildEventKey(database, index))
 }
 
@@ -306,7 +306,7 @@ interface IEventStore: IEventReadOnlyStore {
 
     fun putEvent(
         database: DatabaseName,
-        eventIndex: EventIndex,
+        eventIndex: ULong,
         event: CloudEvent
     ) {
         eventStore.putIfAbsent(buildEventKey(database, eventIndex), event)

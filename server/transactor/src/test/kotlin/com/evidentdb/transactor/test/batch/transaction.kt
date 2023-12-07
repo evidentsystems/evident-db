@@ -22,7 +22,7 @@ class TransactionTests {
 
             val result = service.transactBatch(databaseName, listOf())
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is NoEventsProvidedError) }
+            result.mapLeft { Assertions.assertTrue(it is EmptyBatch) }
         }
 
     @Test
@@ -33,10 +33,10 @@ class TransactionTests {
             val databaseName = "foo"
 
             val result = service.transactBatch(databaseName, listOf(
-                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), "foo"),
+                ProposedEvent(buildTestEvent("event.invalidated.stream"), "foo"),
             ))
             Assertions.assertTrue(result.isLeft())
-            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFoundError) }
+            result.mapLeft { Assertions.assertTrue(it is DatabaseNotFound) }
         }
 
     @Test
@@ -48,8 +48,8 @@ class TransactionTests {
             service.createDatabase(databaseName)
 
             val result = service.transactBatch(databaseName, listOf(
-                UnvalidatedProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
-                UnvalidatedProposedEvent(buildTestEvent(""), "event.invalidated.type"),
+                ProposedEvent(buildTestEvent("event.invalidated.stream"), ""),
+                ProposedEvent(buildTestEvent(""), "event.invalidated.type"),
             ))
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
@@ -71,7 +71,7 @@ class TransactionTests {
 
             val existingStreamName = "my-stream"
             val initBatch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.initialize"),
                     existingStreamName,
                     StreamState.NoStream
@@ -82,22 +82,22 @@ class TransactionTests {
             Assertions.assertTrue(initResult.isRight())
 
             val batch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.does-not-exist-but-should"),
                     "a-new-stream",
                     StreamState.StreamExists
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.exists-but-should-not"),
                     existingStreamName,
                     StreamState.NoStream
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.at-wrong-revision"),
                     existingStreamName,
                     StreamState.AtRevision(100)
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),
@@ -137,14 +137,14 @@ class TransactionTests {
             val driver = driver()
             val batchStore = driver.getKeyValueStore<BatchId, DatabaseLogKey>(TransactorTopology.BATCH_STORE)
             val streamStore = driver.getKeyValueStore<StreamKey, Stream>(TransactorTopology.STREAM_STORE)
-            val eventStore = driver.getKeyValueStore<EventIndex, CloudEvent>(TransactorTopology.EVENT_STORE)
+            val eventStore = driver.getKeyValueStore<EventRevision, CloudEvent>(TransactorTopology.EVENT_STORE)
             val service = TopologyTestDriverCommandService(driver)
             val databaseName = DatabaseName.build("foo")
             service.createDatabase(databaseName.value)
 
             val existingStreamName = "my-stream"
             val initBatch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.initialize"),
                     existingStreamName,
                     StreamState.NoStream
@@ -155,22 +155,22 @@ class TransactionTests {
             Assertions.assertTrue(initResult.isRight())
 
             val batch = listOf(
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-stream"),
                     "a-new-stream",
                     StreamState.NoStream
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.exists"),
                     existingStreamName,
                     StreamState.StreamExists
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.revision"),
                     existingStreamName,
                     StreamState.AtRevision(1)
                 ),
-                UnvalidatedProposedEvent(
+                ProposedEvent(
                     buildTestEvent("event.stream.no-error"),
                     "any-stream"
                 ),

@@ -51,7 +51,7 @@ class CommandService(
         ensure(initialState is ActiveDatabaseCommandModel) { DatabaseNotFound(nameStr) }
         val result = execute(initialState, DeleteDatabase(EnvelopeId.randomUUID(), name)).bind()
         ensure(result is DatabaseCommandModelAfterDeletion) { IllegalDatabaseDeletionState(nameStr) }
-        repository.teardownDatabase(name).bind()
+        repository.teardownDatabase(result).bind()
         result
     }
 

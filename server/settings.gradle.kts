@@ -13,6 +13,7 @@ dependencyResolutionManagement {
     versionCatalogs {
         create("libs") {
             version("kafka", "3.5.1")
+            version("arrow", "1.2.1")
             version("cloudevents", "2.5.0")
             version("protobuf-java", "3.23.3")
             version("grpc", "1.56.0")
@@ -23,7 +24,8 @@ dependencyResolutionManagement {
 
             library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.7.1")
             library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.7.1")
-            library("arrow-core", "io.arrow-kt", "arrow-core").version("1.2.1")
+            library("arrow-core", "io.arrow-kt", "arrow-core").versionRef("arrow")
+            library("arrow-resilience", "io.arrow-kt", "arrow-resilience").versionRef("arrow")
             library("kafka-streams", "org.apache.kafka", "kafka-streams").versionRef("kafka")
             library("kafka-streams-test-utils", "org.apache.kafka", "kafka-streams-test-utils").versionRef("kafka")
             library("cloudevents-api", "io.cloudevents", "cloudevents-api").versionRef("cloudevents")

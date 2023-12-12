@@ -315,10 +315,7 @@ interface Event {
 
 // Batch
 
-typealias BatchId = UUID
-
 interface Batch {
-    val id: BatchId
     val database: DatabaseName
     val eventRevisions: NonEmptyList<EventRevision>
     val timestamp: Instant

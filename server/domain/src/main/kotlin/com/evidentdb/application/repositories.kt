@@ -2,14 +2,12 @@ package com.evidentdb.application
 
 import arrow.core.Either
 import com.evidentdb.domain_model.*
-import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
 
 // Repositories
 
 interface DatabaseRepository {
     fun databaseCatalog(): Flow<Database>
-
     fun subscribe(name: DatabaseName): Flow<Either<DatabaseNotFound, Database>>
 
     suspend fun latestDatabase(name: DatabaseName): Either<DatabaseNotFound, DatabaseReadModel>
@@ -18,7 +16,7 @@ interface DatabaseRepository {
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, DatabaseReadModel>
 
-    fun eventsByRevision(name: DatabaseName, revisions: Flow<EventRevision>): Flow<CloudEvent>
+    fun eventsByRevision(name: DatabaseName, revisions: Flow<EventRevision>): Flow<Event>
 }
 
 interface WritableDatabaseRepository: DatabaseRepository {
@@ -32,14 +30,14 @@ interface WritableDatabaseRepository: DatabaseRepository {
     suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit>
 
     // Database Deletion
-    suspend fun teardownDatabase(name: DatabaseName): Either<DatabaseDeletionError, Unit>
+    suspend fun teardownDatabase(database: DatabaseCommandModelAfterDeletion): Either<DatabaseDeletionError, Unit>
 }
 
 interface DatabaseReadModel: Database {
     fun log(): Flow<Batch>
 
-    // Simple event lookup by user-provided ID
-    suspend fun eventById(id: EventId): Either<EventNotFound, CloudEvent>
+    // Simple event lookup by user-provided ID and stream
+    suspend fun eventById(stream: StreamName, id: EventId): Either<EventNotFound, Event>
 
     // Flows of event revisions from index
     fun stream(stream: StreamName): Flow<EventRevision>

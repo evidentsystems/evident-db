@@ -34,17 +34,23 @@ interface CleanDatabaseCommandModel: ActiveDatabaseCommandModel
 // Domain API
 
 sealed interface BatchConstraint {
-    val stream: StreamName
+    data class StreamExists(val stream: StreamName) : BatchConstraint
+    data class StreamDoesNotExist(val stream: StreamName) : BatchConstraint
+    data class StreamMaxRevision(val stream: StreamName, val revision: StreamRevision) : BatchConstraint
 
-    data class StreamExists(override val stream: StreamName) : BatchConstraint
-    data class StreamDoesNotExist(override val stream: StreamName) : BatchConstraint
-    data class StreamAtRevision(override val stream: StreamName, val revision: StreamRevision) : BatchConstraint
+    data class SubjectExists(val subject: EventSubject) : BatchConstraint
+    data class SubjectDoesNotExist(val subject: EventSubject) : BatchConstraint
+    data class SubjectMaxRevision(
+        val subject: EventSubject,
+        val revision: StreamRevision,
+    ) : BatchConstraint
 
-    data class SubjectExists(override val stream: StreamName, val subject: EventSubject) : BatchConstraint
-    data class SubjectDoesNotExist(override val stream: StreamName, val subject: EventSubject) : BatchConstraint
-    data class SubjectAtRevision(
-        override val stream: StreamName,
-        val subject: EventSubject, val revision: StreamRevision
+    data class SubjectExistsOnStream(val stream: StreamName, val subject: EventSubject) : BatchConstraint
+    data class SubjectDoesNotExistOnStream(val stream: StreamName, val subject: EventSubject) : BatchConstraint
+    data class SubjectMaxRevisionOnStream(
+        val stream: StreamName,
+        val subject: EventSubject,
+        val revision: StreamRevision,
     ) : BatchConstraint
 }
 
@@ -54,9 +60,8 @@ sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
     override val created: Instant
     override val revision: DatabaseRevision
 
-    suspend fun batchIdAvailable(batchId: BatchId): Boolean
     suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean
-    suspend fun satisfiesStreamConstraint(constraint: BatchConstraint): Boolean
+    suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean
 
     fun acceptBatch(batch: AcceptedBatch): DirtyDatabaseCommandModel =
         DirtyDatabaseCommandModel(this@ActiveDatabaseCommandModel, batch)
@@ -73,16 +78,18 @@ data class NewlyCreatedDatabaseCommandModel internal constructor(
 ): ActiveDatabaseCommandModel {
     override val revision: DatabaseRevision = 0uL
 
-    override suspend fun batchIdAvailable(batchId: BatchId) = true
     override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId) = true
-    override suspend fun satisfiesStreamConstraint(constraint: BatchConstraint): Boolean =
+    override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
         when (constraint) {
             is BatchConstraint.StreamExists -> false
             is BatchConstraint.StreamDoesNotExist -> true
-            is BatchConstraint.StreamAtRevision -> false
+            is BatchConstraint.StreamMaxRevision -> constraint.revision == revision
             is BatchConstraint.SubjectExists -> false
             is BatchConstraint.SubjectDoesNotExist -> true
-            is BatchConstraint.SubjectAtRevision -> false
+            is BatchConstraint.SubjectMaxRevision -> constraint.revision == revision
+            is BatchConstraint.SubjectExistsOnStream -> false
+            is BatchConstraint.SubjectDoesNotExistOnStream -> true
+            is BatchConstraint.SubjectMaxRevisionOnStream -> constraint.revision == revision
         }
 }
 
@@ -107,15 +114,30 @@ data class DirtyDatabaseCommandModel internal constructor(
             acc
         }.toMap()
 
-    private val subjectRevision: Map<Pair<StreamName, EventSubject>, StreamRevision> =
-        batch.events.fold(mutableMapOf<Pair<StreamName, EventSubject>, StreamRevision>()) { acc, event ->
-            if (event.subject != null) {
-                val key = Pair(event.stream, event.subject!!)
-                acc[key] = event.revision
+    private val subjectRevision: Map<EventSubject, StreamRevision> =
+        batch.events.fold(mutableMapOf<EventSubject, StreamRevision>()) { acc, event ->
+            val subject = event.subject
+            if (subject != null) {
+                acc[subject] = event.revision
             }
             acc
         }.toMap()
 
+    private val subjectOnStreamRevision: Map<Pair<StreamName, EventSubject>, StreamRevision> =
+        batch.events.fold(mutableMapOf<Pair<StreamName, EventSubject>, StreamRevision>()) { acc, event ->
+            val subject = event.subject
+            if (subject != null) {
+                acc[Pair(event.stream, subject)] = event.revision
+            }
+            acc
+        }.toMap()
+
+    val dirtyRelativeToRevision: DatabaseRevision
+        get() = if (basis is DirtyDatabaseCommandModel) {
+            basis.dirtyRelativeToRevision
+        } else {
+            basis.revision
+        }
     val dirtyBatches: List<AcceptedBatch>
         get() = if (basis is DirtyDatabaseCommandModel) {
             val result = basis.dirtyBatches.toMutableList()
@@ -125,32 +147,39 @@ data class DirtyDatabaseCommandModel internal constructor(
             listOf(batch)
         }
 
-    override suspend fun batchIdAvailable(batchId: BatchId): Boolean =
-        if (batchId == batch.id) false else basis.batchIdAvailable(batchId)
-
     override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =
         if (eventKeys.contains(Pair(streamName, eventId))) false else basis.eventKeyIsUnique(streamName, eventId)
 
-    override suspend fun satisfiesStreamConstraint(constraint: BatchConstraint): Boolean =
+    override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
         when (constraint) {
             is BatchConstraint.StreamExists ->
                 streamRevision[constraint.stream] != null
-                        || basis.satisfiesStreamConstraint(constraint)
+                        || basis.satisfiesBatchConstraint(constraint)
             is BatchConstraint.StreamDoesNotExist ->
                 streamRevision[constraint.stream] == null
-                        && basis.satisfiesStreamConstraint(constraint)
-            is BatchConstraint.StreamAtRevision ->
-                streamRevision[constraint.stream]?.let { it == constraint.revision }
-                    ?: basis.satisfiesStreamConstraint(constraint)
+                        && basis.satisfiesBatchConstraint(constraint)
+            is BatchConstraint.StreamMaxRevision ->
+                streamRevision[constraint.stream]?.let { it <= constraint.revision }
+                    ?: basis.satisfiesBatchConstraint(constraint)
             is BatchConstraint.SubjectExists ->
-                subjectRevision[Pair(constraint.stream, constraint.subject)] != null
-                        || basis.satisfiesStreamConstraint(constraint)
+                subjectRevision[constraint.subject] != null
+                        || basis.satisfiesBatchConstraint(constraint)
             is BatchConstraint.SubjectDoesNotExist ->
-                subjectRevision[Pair(constraint.stream, constraint.subject)] == null
-                        && basis.satisfiesStreamConstraint(constraint)
-            is BatchConstraint.SubjectAtRevision ->
-                subjectRevision[Pair(constraint.stream, constraint.subject)]?.let { it == constraint.revision }
-                    ?: basis.satisfiesStreamConstraint(constraint)
+                subjectRevision[constraint.subject] == null
+                        && basis.satisfiesBatchConstraint(constraint)
+            is BatchConstraint.SubjectMaxRevision ->
+                subjectRevision[constraint.subject]?.let { it <= constraint.revision }
+                    ?: basis.satisfiesBatchConstraint(constraint)
+            is BatchConstraint.SubjectExistsOnStream ->
+                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)] != null
+                        || basis.satisfiesBatchConstraint(constraint)
+            is BatchConstraint.SubjectDoesNotExistOnStream ->
+                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)] == null
+                        && basis.satisfiesBatchConstraint(constraint)
+            is BatchConstraint.SubjectMaxRevisionOnStream ->
+                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)]?.let { it <= constraint.revision }
+                    ?: basis.satisfiesBatchConstraint(constraint)
+
         }
 }
 
@@ -213,7 +242,6 @@ data class ProposedBatch(
 }
 
 data class WellFormedProposedBatch(
-    val id: BatchId,
     val databaseName: DatabaseName,
     val events: NonEmptyList<WellFormedProposedEvent>,
     val constraints: List<BatchConstraint>
@@ -228,7 +256,6 @@ data class WellFormedProposedBatch(
                     it.ensureWellFormed(proposedBatch).bind()
                 }.mapLeft { InvalidEventsError(it) }.bind()
                 WellFormedProposedBatch(
-                    BatchId.randomUUID(),
                     proposedBatch.databasePathEventSourceURI.databaseName,
                     wellFormedEvents,
                     proposedBatch.constraints
@@ -243,7 +270,6 @@ data class WellFormedProposedBatch(
 }
 
 data class AcceptedBatch private constructor(
-    override val id: BatchId,
     override val database: DatabaseName,
     val events: NonEmptyList<AcceptedEvent>,
     override val timestamp: Instant,
@@ -258,12 +284,9 @@ data class AcceptedBatch private constructor(
             database: ActiveDatabaseCommandModel,
         ): Either<BatchTransactionError, AcceptedBatch> = runBlocking { // TODO: handle better
             either {
-                // Ensure uniqueness of BatchId to prevent double-processing a batch
-                ensure(database.batchIdAvailable(wellFormed.id)) { DuplicateBatchError(wellFormed) }
-
                 // Validate stream constraints
                 wellFormed.constraints.mapOrAccumulate {
-                    ensure(database.satisfiesStreamConstraint(it)) { StreamStateConflict(it) }
+                    ensure(database.satisfiesBatchConstraint(it)) { StreamStateConflict(it) }
                 }.mapLeft { StreamStateConflictsError(it) }.bind()
 
                 // Validate constituent events
@@ -273,7 +296,7 @@ data class AcceptedBatch private constructor(
                         .accept(database, eventWithIndex.index.toUInt(), timestamp)
                         .bind()
                 }.mapLeft { InvalidEventsError(it) }.bind().toNonEmptyListOrNull()
-                AcceptedBatch(wellFormed.id, wellFormed.databaseName, events!!, timestamp, database.revision)
+                AcceptedBatch(wellFormed.databaseName, events!!, timestamp, database.revision)
             }
         }
     }

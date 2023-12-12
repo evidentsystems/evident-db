@@ -427,7 +427,7 @@ fun internalServerErrorFromBytes(bytes: ByteArray): InternalServerError =
 
 fun IllegalDatabaseCreationState.toProto(): ProtoDatabaseTopicCreationError =
     ProtoDatabaseTopicCreationError.newBuilder()
-        .setDatabase(this.database)
+        .setDatabase(this.message)
         .setTopic(this.topic)
         .build()
 
@@ -445,7 +445,7 @@ fun databaseTopicCreationErrorFromBytes(
 
 fun IllegalDatabaseDeletionState.toProto(): ProtoDatabaseTopicDeletionError =
     ProtoDatabaseTopicDeletionError.newBuilder()
-        .setDatabase(this.database)
+        .setDatabase(this.message)
         .setTopic(this.topic)
         .build()
 

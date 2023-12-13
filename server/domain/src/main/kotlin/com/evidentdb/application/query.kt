@@ -16,21 +16,7 @@ interface DatabaseRepository {
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, DatabaseReadModel>
 
-    fun eventsByRevision(name: DatabaseName, revisions: Flow<EventRevision>): Flow<Event>
-}
-
-interface WritableDatabaseRepository: DatabaseRepository {
-    suspend fun databaseCommandModel(name: DatabaseName): DatabaseCommandModel
-
-    // Database Creation
-    suspend fun setupDatabase(name: DatabaseName): Either<DatabaseCreationError, DatabaseSubscriptionURI>
-    suspend fun addDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit>
-
-    // Batch Transaction
-    suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit>
-
-    // Database Deletion
-    suspend fun teardownDatabase(database: DatabaseCommandModelAfterDeletion): Either<DatabaseDeletionError, Unit>
+    fun eventsByRevision(name: DatabaseName, revisions: Flow<EventRevision>): Flow<Either<QueryError, Event>>
 }
 
 interface DatabaseReadModel: Database {

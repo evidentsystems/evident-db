@@ -65,3 +65,17 @@ class CommandService(
         }
     }
 }
+
+interface WritableDatabaseRepository: DatabaseRepository {
+    suspend fun databaseCommandModel(name: DatabaseName): DatabaseCommandModel
+
+    // Database Creation
+    suspend fun setupDatabase(name: DatabaseName): Either<DatabaseCreationError, DatabaseSubscriptionURI>
+    suspend fun addDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit>
+
+    // Batch Transaction
+    suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit>
+
+    // Database Deletion
+    suspend fun teardownDatabase(database: DatabaseCommandModelAfterDeletion): Either<DatabaseDeletionError, Unit>
+}

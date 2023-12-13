@@ -12,6 +12,7 @@ import com.evidentdb.application.WritableDatabaseRepository
 import com.evidentdb.domain_model.*
 import com.evidentdb.event_model.decider
 import kotlinx.coroutines.flow.*
+import java.lang.IndexOutOfBoundsException
 import java.net.URI
 import java.time.Instant
 import java.util.*
@@ -92,14 +93,22 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
         database.databaseAtRevision(revision).bind()
     }
 
-    // TODO: should this be Flow<Either<EventNotFound, Event>>?
     override fun eventsByRevision(
         name: DatabaseName,
         revisions: Flow<EventRevision>
-    ): Flow<Event> {
-        val database = storage[name]!!
-        return revisions.mapNotNull {
-            database.eventByRevision(it)
+    ): Flow<Either<QueryError, Event>> = flow {
+        val database = storage[name]
+        if (database == null) {
+            emit(DatabaseNotFound(name.value).left())
+        } else {
+            revisions.collect {
+                val event = database.eventByRevision(it)
+                if (event == null) {
+                    emit(EventNotFound("Event with revision $it not found in database $name").left())
+                } else {
+                    emit(event.right())
+                }
+            }
         }
     }
 }
@@ -140,7 +149,7 @@ private class InMemoryDatabaseRepository(
 
     fun eventByRevision(
         revision: DatabaseRevision
-    ): Event = storage.floorEntry(BatchKey(revision)).let {
+    ): Event? = storage.floorEntry(BatchKey(revision)).let {
         val batch = it.value
         if (batch is BatchValue) {
             batch.getEventByAbsoluteRevision(revision)
@@ -359,8 +368,12 @@ private class InMemoryDatabaseRepository(
         override val eventRevisions: NonEmptyList<EventRevision>
             get() = events.map { it.revision }
 
-        fun getEventByAbsoluteRevision(revision: Revision) =
-            events[(revision - previousRevision).toInt() - 1]
+        fun getEventByAbsoluteRevision(revision: Revision): Event? =
+            try {
+                events[(revision - previousRevision).toInt() - 1]
+            } catch (e: IndexOutOfBoundsException) {
+                null
+            }
     }
 
     inner class InMemoryDatabase(
@@ -436,7 +449,9 @@ private class InMemoryDatabaseRepository(
             val notFound = EventNotFound("No event with id=$id and stream=$stream found in database: ${name.value}")
             ensureNotNull(indexValue) { notFound }
             ensure(indexValue is EventIdIndexValue) { notFound }
-            eventByRevision(indexValue.revision)
+            val result = eventByRevision(indexValue.revision)
+            ensureNotNull(result) { notFound }
+            result
         }
 
         override fun stream(stream: StreamName): Flow<EventRevision> =

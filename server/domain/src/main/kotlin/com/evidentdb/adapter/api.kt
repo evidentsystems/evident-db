@@ -207,9 +207,7 @@ interface EvidentDbAdapter {
         when (val databaseName = DatabaseName(databaseNameStr)) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> emitAll(
-                repository
-                    .eventsByRevision(databaseName.value, revisions)
-                    .map { it.right() }
+                repository.eventsByRevision(databaseName.value, revisions)
             )
         }
     }

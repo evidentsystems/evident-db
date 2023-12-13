@@ -11,7 +11,6 @@ import java.net.URI
 import java.time.Instant
 import java.util.*
 
-const val NAME_PATTERN = """^[a-zA-Z][a-zA-Z0-9\-_.]{0,127}$"""
 const val DB_URI_SCHEME = "evidentdb"
 
 typealias Revision = ULong
@@ -26,8 +25,10 @@ value class DatabaseSubscriptionURI(val value: URI)
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
     companion object {
+        private val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
+
         operator fun invoke(value: String): Either<InvalidDatabaseName, DatabaseName> = either {
-            ensure(value.matches(Regex(NAME_PATTERN))) { InvalidDatabaseName(value) }
+            ensure(value.matches(PATTERN)) { InvalidDatabaseName(value) }
             DatabaseName(value)
         }
     }
@@ -54,8 +55,10 @@ typealias StreamRevision = Revision
 @JvmInline
 value class StreamName private constructor(val value: String) {
     companion object {
+        private val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
+
         operator fun invoke(value: String): Either<InvalidStreamName, StreamName> = either {
-            ensure(value.matches(Regex(NAME_PATTERN))) { InvalidStreamName(value) }
+            ensure(value.matches(PATTERN)) { InvalidStreamName(value) }
             StreamName(value)
         }
     }
@@ -75,8 +78,28 @@ typealias EventRevision = Revision
 value class EventId private constructor(val value: String) {
     companion object {
         operator fun invoke(value: String): Either<InvalidEventId, EventId> = either {
-            ensure(value.matches(Regex(NAME_PATTERN))) { InvalidEventId(value) }
+            ensure(value.isNotEmpty()) { InvalidEventId(value) }
             EventId(value)
+        }
+    }
+}
+
+@JvmInline
+value class EventType private constructor(val value: String) {
+    companion object {
+        operator fun invoke(value: String): Either<InvalidEventType, EventType> = either {
+            ensure(value.isNotEmpty()) { InvalidEventType(value) }
+            EventType(value)
+        }
+    }
+}
+
+@JvmInline
+value class EventSubject private constructor(val value: String) {
+    companion object {
+        operator fun invoke(value: String): Either<InvalidEventSubject, EventSubject> = either {
+            ensure(value.isNotEmpty()) { InvalidEventSubject(value) }
+            EventSubject(value)
         }
     }
 }
@@ -87,7 +110,6 @@ value class ProposedEventSourceURI private constructor(val value: URI) {
         operator fun invoke(uri: URI): Either<InvalidEventSource, ProposedEventSourceURI> = either {
             val err = InvalidEventSource(uri.toString())
             ensure(!uri.isAbsolute) { err }
-
             StreamName(uri.path).mapLeft { err }.bind()
             ProposedEventSourceURI(uri)
         }
@@ -256,26 +278,6 @@ value class EventSourceURI private constructor(val value: URI) {
                 .mapLeft { InvalidEventSource("base: $base, stream: $streamNameStr") }
                 .bind()
             invoke(base, streamName).bind()
-        }
-    }
-}
-
-@JvmInline
-value class EventType private constructor(val value: String) {
-    companion object {
-        operator fun invoke(value: String): Either<InvalidEventType, EventType> = either {
-            ensure(value.matches(Regex(NAME_PATTERN))) { InvalidEventType(value) }
-            EventType(value)
-        }
-    }
-}
-
-@JvmInline
-value class EventSubject private constructor(val value: String) {
-    companion object {
-        operator fun invoke(value: String): Either<InvalidEventSubject, EventSubject> = either {
-            ensure(value.matches(Regex(NAME_PATTERN))) { InvalidEventSubject(value) }
-            EventSubject(value)
         }
     }
 }

@@ -178,6 +178,7 @@ private class InMemoryDatabaseRepository(
             try {
                 storage.plusAssign(batchAndIndexes)
                 storage[DatabaseRootKey] = nextDatabaseRoot
+                _updates.value = nextDatabaseRoot.right()
             } catch (t: Throwable) {
                 batchAndIndexes.forEach {
                     storage.remove(it.key)

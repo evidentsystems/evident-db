@@ -37,6 +37,7 @@
                   <project path="$PROJECT_DIR$/server/service" />
                   <project path="$PROJECT_DIR$/server/test" />
                   <project path="$PROJECT_DIR$/server/transactor" />
+                  <project path="$PROJECT_DIR$/server/transfer" />
                 </projects>
               </build>
             </builds>
@@ -62,6 +63,7 @@
             <option value="$PROJECT_DIR$/server/service" />
             <option value="$PROJECT_DIR$/server/test" />
             <option value="$PROJECT_DIR$/server/transactor" />
+            <option value="$PROJECT_DIR$/server/transfer" />
           </set>
         </option>
       </GradleProjectSettings>

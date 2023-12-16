@@ -44,7 +44,8 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
                 database.subscriptionURI,
                 database.created,
             )
-            ensure(storage.putIfAbsent(key, value) == value) {
+            // putIfAbsent returns null if no existing key present
+            ensure(storage.putIfAbsent(key, value) == null) {
                 DatabaseNameAlreadyExists(database.name)
             }
         }
@@ -163,7 +164,7 @@ private class InMemoryDatabaseRepository(
             val currentDatabaseRoot = storage[DatabaseRootKey]
             ensure(currentDatabaseRoot is DatabaseRootValue) { DatabaseNotFound(database.name.value) }
             ensure(database.dirtyRelativeToRevision == currentDatabaseRoot.revision) {
-                WriteCollisionError(database.dirtyRelativeToRevision, currentDatabaseRoot.revision)
+                ConcurrentWriteCollision(database.dirtyRelativeToRevision, currentDatabaseRoot.revision)
             }
             val nextDatabaseRoot = DatabaseRootValue(
                 database.name,
@@ -196,7 +197,7 @@ private class InMemoryDatabaseRepository(
             batch.database,
             batch.events,
             batch.timestamp,
-            batch.previousRevision,
+            batch.basisRevision,
         )
         batch.events.forEach { event ->
             val revision = event.revision
@@ -216,7 +217,11 @@ private class InMemoryDatabaseRepository(
     private sealed interface InMemoryRepositoryKey: Comparable<InMemoryRepositoryKey>
 
     private object DatabaseRootKey: InMemoryRepositoryKey {
-        override fun compareTo(other: InMemoryRepositoryKey): Int = Int.MIN_VALUE
+        override fun compareTo(other: InMemoryRepositoryKey): Int =
+            when (other) {
+                DatabaseRootKey -> 0
+                else -> Int.MIN_VALUE
+            }
     }
 
     private data class BatchKey(val revision: DatabaseRevision): InMemoryRepositoryKey {
@@ -364,14 +369,14 @@ private class InMemoryDatabaseRepository(
         override val database: DatabaseName,
         val events: NonEmptyList<Event>,
         override val timestamp: Instant,
-        override val previousRevision: DatabaseRevision,
+        override val basisRevision: DatabaseRevision,
     ): Batch, InMemoryRepositoryValue {
         override val eventRevisions: NonEmptyList<EventRevision>
             get() = events.map { it.revision }
 
         fun getEventByAbsoluteRevision(revision: Revision): Event? =
             try {
-                events[(revision - previousRevision).toInt() - 1]
+                events[(revision - basisRevision).toInt() - 1]
             } catch (e: IndexOutOfBoundsException) {
                 null
             }

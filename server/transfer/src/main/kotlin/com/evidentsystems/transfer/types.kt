@@ -1,40 +1,17 @@
-package com.evidentdb.dto.protobuf
+package com.evidentsystems.transfer
 
 import com.evidentdb.domain_model.*
-import com.evidentdb.domain_model.command.*
-import com.evidentdb.event_model.*
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.cloudEventFromProto
 import io.cloudevents.protobuf.toProto
 import java.time.Instant
 import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
-import com.evidentdb.dto.v1.proto.BatchSummaryEvent as ProtoBatchSummaryEvent
-import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
-import com.evidentdb.dto.v1.proto.BatchTransactionResult as ProtoBatchTransactionResult
 import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
-import com.evidentdb.dto.v1.proto.DatabaseSummary as ProtoDatabaseSummary
-import com.evidentdb.dto.v1.proto.DatabaseCreationInfo as ProtoDatabaseCreationInfo
-import com.evidentdb.dto.v1.proto.DatabaseCreationResult as ProtoDatabaseCreationResult
-import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo as ProtoDatabaseDeletionInfo
-import com.evidentdb.dto.v1.proto.DatabaseDeletionResult as ProtoDatabaseDeletionResult
-import com.evidentdb.dto.v1.proto.DatabaseNameAlreadyExistsError as ProtoDatabaseNameAlreadyExistsError
-import com.evidentdb.dto.v1.proto.DatabaseNotFoundError as ProtoDatabaseNotFoundError
-import com.evidentdb.dto.v1.proto.DuplicateBatchError as ProtoDuplicateBatchError
-import com.evidentdb.dto.v1.proto.Event as ProtoEvent
 import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InternalServerError as ProtoInternalServerError
-import com.evidentdb.dto.v1.proto.DatabaseTopicCreationError as ProtoDatabaseTopicCreationError
-import com.evidentdb.dto.v1.proto.DatabaseTopicDeletionError as ProtoDatabaseTopicDeletionError
-import com.evidentdb.dto.v1.proto.InvalidDatabaseNameError as ProtoInvalidDatabaseNameError
 import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
-import com.evidentdb.dto.v1.proto.InvalidEventsError as ProtoInvalidEventsError
-import com.evidentdb.dto.v1.proto.NoEventsProvidedError as ProtoNoEventsProvidedError
 import com.evidentdb.dto.v1.proto.ProposedBatch as ProtoProposedBatch
-import com.evidentdb.dto.v1.proto.ProposedEvent as ProtoProposedEvent
-import com.evidentdb.dto.v1.proto.StreamState as ProtoStreamState
-import com.evidentdb.dto.v1.proto.StreamStateConflict as ProtoStreamStateConflict
-import com.evidentdb.dto.v1.proto.StreamStateConflictsError as ProtoStreamStateConflictsError
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
@@ -331,7 +308,7 @@ fun unvalidatedProposedEventFromProto(proposedEvent: ProtoProposedEvent): Propos
         }
     )
 
-fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
+fun InvalidEvents.toProto(): ProtoInvalidEventsError =
     ProtoInvalidEventsError.newBuilder()
         .addAllInvalidEvents(this.invalidEvents.map { invalid ->
             ProtoInvalidEvent.newBuilder()
@@ -352,8 +329,8 @@ fun InvalidEventsError.toProto(): ProtoInvalidEventsError =
         })
         .build()
 
-fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsError =
-    InvalidEventsError(
+fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEvents =
+    InvalidEvents(
         proto.invalidEventsList.map { invalidEvent ->
             InvalidEvent(
                 unvalidatedProposedEventFromProto(invalidEvent.event),
@@ -369,7 +346,7 @@ fun invalidEventsErrorFromProto(proto: ProtoInvalidEventsError): InvalidEventsEr
         }
     )
 
-fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEventsError =
+fun invalidEventsErrorFromBytes(bytes: ByteArray): InvalidEvents =
     invalidEventsErrorFromProto(ProtoInvalidEventsError.parseFrom(bytes))
 
 fun DuplicateBatchError.toProto(): ProtoDuplicateBatchError =
@@ -383,9 +360,9 @@ fun duplicateBatchErrorFromProto(proto: ProtoDuplicateBatchError) =
 fun duplicateBatchErrorFromBytes(bytes: ByteArray) =
     duplicateBatchErrorFromProto(ProtoDuplicateBatchError.parseFrom(bytes))
 
-fun StreamStateConflictsError.toProto(): ProtoStreamStateConflictsError =
+fun BatchConstraintViolations.toProto(): ProtoStreamStateConflictsError =
     ProtoStreamStateConflictsError.newBuilder()
-        .addAllConflicts(this.conflicts.map { conflict ->
+        .addAllConflicts(this.violations.map { conflict ->
             val builder = ProtoStreamStateConflict.newBuilder()
                 .setEvent(conflict.event.toProto())
             when(val state = conflict.streamState){
@@ -399,10 +376,11 @@ fun StreamStateConflictsError.toProto(): ProtoStreamStateConflictsError =
         })
         .build()
 
-fun streamStateConflictsErrorFromProto(proto: ProtoStreamStateConflictsError): StreamStateConflictsError =
-    StreamStateConflictsError(
+fun streamStateConflictsErrorFromProto(proto: ProtoStreamStateConflictsError): BatchConstraintViolations =
+    BatchConstraintViolations(
+        ,
         proto.conflictsList.map { conflict ->
-            StreamStateConflict(
+            BatchConstraintViolation(
                 proposedEventFromProto(conflict.event),
                 when(conflict.streamState) {
                     ProtoStreamState.NoStream -> StreamState.NoStream
@@ -410,10 +388,9 @@ fun streamStateConflictsErrorFromProto(proto: ProtoStreamStateConflictsError): S
                     else -> throw IllegalArgumentException("Error parsing stream state error from protobuf")
                 }
             )
-        }
-    )
+        })
 
-fun streamStateConflictsErrorFromBytes(bytes: ByteArray): StreamStateConflictsError =
+fun streamStateConflictsErrorFromBytes(bytes: ByteArray): BatchConstraintViolations =
     streamStateConflictsErrorFromProto(ProtoStreamStateConflictsError.parseFrom(bytes))
 
 fun InternalServerError.toProto(): ProtoInternalServerError =
@@ -471,9 +448,9 @@ fun EventBody.toProto(): Message =
         is DatabaseNameAlreadyExists -> this.toProto()
         is DatabaseNotFound -> this.toProto()
         is EmptyBatch -> this.toProto()
-        is InvalidEventsError -> this.toProto()
+        is InvalidEvents -> this.toProto()
         is DuplicateBatchError -> this.toProto()
-        is StreamStateConflictsError -> this.toProto()
+        is BatchConstraintViolations -> this.toProto()
         is InternalServerError -> this.toProto()
         is IllegalDatabaseCreationState -> this.toProto()
         is IllegalDatabaseDeletionState -> this.toProto()

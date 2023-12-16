@@ -4,7 +4,6 @@ import com.evidentdb.application.StreamKey
 import com.evidentdb.cloudevents.CommandIdExtension
 import com.evidentdb.domain_model.*
 import com.evidentdb.domain_model.DatabaseName
-import com.evidentdb.domain_model.command.EvidentDbError
 import com.evidentdb.domain_model.databaseNameFromUri
 import com.evidentdb.domain_model.databaseUri
 import com.evidentdb.dto.protobuf.*
@@ -151,55 +150,55 @@ class EventEnvelopeSerde:
                     batchTransactionResultFromBytes(dataBytes),
                 )
 
-                "InvalidDatabaseNameError" -> EvidentDbError(
+                "InvalidDatabaseNameError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     invalidDatabaseNameErrorFromBytes(dataBytes)
                 )
-                "DatabaseNameAlreadyExistsError" -> EvidentDbError(
+                "DatabaseNameAlreadyExistsError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseNameAlreadyExistsErrorFromBytes(dataBytes)
                 )
-                "DatabaseNotFoundError" -> EvidentDbError(
+                "DatabaseNotFoundError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseNotFoundErrorFromBytes(dataBytes)
                 )
-                "NoEventsProvidedError" -> EvidentDbError(
+                "NoEventsProvidedError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     noEventsProvidedErrorFromBytes(dataBytes)
                 )
-                "InvalidEventsError" -> EvidentDbError(
+                "InvalidEventsError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     invalidEventsErrorFromBytes(dataBytes)
                 )
-                "DuplicateBatchError" -> EvidentDbError(
+                "DuplicateBatchError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     duplicateBatchErrorFromBytes(dataBytes)
                 )
-                "StreamStateConflictsError" -> EvidentDbError(
+                "StreamStateConflictsError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     streamStateConflictsErrorFromBytes(dataBytes)
                 )
-                "DatabaseTopicCreationError" -> EvidentDbError(
+                "DatabaseTopicCreationError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,
                     databaseTopicCreationErrorFromBytes(dataBytes)
                 )
-                "DatabaseTopicDeletionError" -> EvidentDbError(
+                "DatabaseTopicDeletionError" -> EvidentDbCommandError(
                     eventId,
                     commandId,
                     databaseId,

@@ -98,7 +98,7 @@ class EvidentDbEndpoint(
                         is DatabaseNotFound -> {
                             builder.databaseNotFoundError = it.toProto()
                         }
-                        is InvalidEventsError -> {
+                        is InvalidEvents -> {
                             builder.invalidEventsError = it.toProto()
                         }
                         EmptyBatch -> {
@@ -107,7 +107,7 @@ class EvidentDbEndpoint(
                         is DuplicateBatchError -> {
                             builder.duplicateBatchError = it.toProto()
                         }
-                        is StreamStateConflictsError -> {
+                        is BatchConstraintViolations -> {
                             builder.streamStateConflictError = it.toProto()
                         }
                         is InternalServerError -> {

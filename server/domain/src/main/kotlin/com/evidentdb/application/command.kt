@@ -11,7 +11,7 @@ class CommandService(
     private val repository: WritableDatabaseRepository,
     private val emptyPathEventSourceURI: EmptyPathEventSourceURI,
 ) {
-    suspend fun createDatabase(nameStr: String): Either<EvidentDbError, NewlyCreatedDatabaseCommandModel> = either {
+    suspend fun createDatabase(nameStr: String): Either<EvidentDbCommandError, NewlyCreatedDatabaseCommandModel> = either {
         val name = DatabaseName(nameStr).bind()
         val initialState = repository.databaseCommandModel(name)
         ensure(initialState is DatabaseCommandModelBeforeCreation) { DatabaseNameAlreadyExists(name) }
@@ -26,13 +26,18 @@ class CommandService(
         databaseNameStr: String,
         events: List<ProposedEvent>,
         constraints: List<BatchConstraint>
-    ): Either<EvidentDbError, ActiveDatabaseCommandModel> = either {
+    ): Either<EvidentDbCommandError, ActiveDatabaseCommandModel> = either {
         val databaseName = DatabaseName(databaseNameStr).bind()
         val initialState = repository.databaseCommandModel(databaseName)
         ensure(initialState is ActiveDatabaseCommandModel) { DatabaseNotFound(databaseNameStr) }
         val eventSourceURI = emptyPathEventSourceURI
             .toDatabasePathEventSourceURI(databaseName)
-            .bind()
+            .mapLeft {
+                InternalServerError(
+                    "Invalid database URI from base $emptyPathEventSourceURI " +
+                        "and database $databaseName"
+                )
+            }.bind()
         val batch = ProposedBatch(eventSourceURI, events, constraints)
             .ensureWellFormed()
             .bind()
@@ -40,17 +45,21 @@ class CommandService(
             initialState,
             TransactBatch(EnvelopeId.randomUUID(), databaseName, batch)
         ).bind()
-        ensure(result is DirtyDatabaseCommandModel) { IllegalBatchTransactionState(databaseNameStr) }
+        ensure(result is DirtyDatabaseCommandModel) {
+            InternalServerError("Illegal state when applying batch to $databaseNameStr")
+        }
         repository.saveDatabase(result).bind()
         result
     }
 
-    suspend fun deleteDatabase(nameStr: String): Either<EvidentDbError, DatabaseCommandModelAfterDeletion> = either {
+    suspend fun deleteDatabase(nameStr: String): Either<EvidentDbCommandError, DatabaseCommandModelAfterDeletion> = either {
         val name = DatabaseName(nameStr).bind()
         val initialState = repository.databaseCommandModel(name)
         ensure(initialState is ActiveDatabaseCommandModel) { DatabaseNotFound(nameStr) }
         val result = execute(initialState, DeleteDatabase(EnvelopeId.randomUUID(), name)).bind()
-        ensure(result is DatabaseCommandModelAfterDeletion) { IllegalDatabaseDeletionState(nameStr) }
+        ensure(result is DatabaseCommandModelAfterDeletion) {
+            InternalServerError("Illegal state when deleting $nameStr")
+        }
         repository.teardownDatabase(result).bind()
         result
     }
@@ -58,7 +67,7 @@ class CommandService(
     private suspend fun execute(
         initialState: DatabaseCommandModel,
         command: EvidentDbCommand
-    ): Either<EvidentDbError, DatabaseCommandModel> = either {
+    ): Either<EvidentDbCommandError, DatabaseCommandModel> = either {
         val events = decider.decide(command, initialState).bind()
         events.fold(initialState) { acc, event ->
             decider.evolve(acc, event)

@@ -16,13 +16,13 @@ import kotlinx.coroutines.flow.map
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-private fun isNotWriteCollision(transactionResult: Either<EvidentDbError, Database>) = when (transactionResult) {
-    is Either.Left -> transactionResult.value !is WriteCollisionError
+private fun isNotWriteCollision(transactionResult: Either<EvidentDbCommandError, Database>) = when (transactionResult) {
+    is Either.Left -> transactionResult.value !is ConcurrentWriteCollision
     is Either.Right -> true
 }
 
 private val batchTransactRetrySchedule = Schedule
-    .exponential<Either<EvidentDbError, Database>>(10.milliseconds)
+    .exponential<Either<EvidentDbCommandError, Database>>(10.milliseconds)
     .doUntil { result, duration -> duration > 60.seconds || isNotWriteCollision(result) }
 
 interface EvidentDbAdapter {
@@ -30,7 +30,7 @@ interface EvidentDbAdapter {
     val repository: DatabaseRepository
 
     // Command API
-    suspend fun createDatabase(nameStr: String): Either<EvidentDbError, Database> =
+    suspend fun createDatabase(nameStr: String): Either<EvidentDbCommandError, Database> =
         commandService.createDatabase(nameStr)
 
     /**
@@ -38,25 +38,26 @@ interface EvidentDbAdapter {
      */
     suspend fun transactBatch(
         databaseNameStr: String,
-        events: List<CloudEvent>,
+        events: List<ProposedEvent>,
         constraints: List<BatchConstraint>
-    ): Either<EvidentDbError, Database> {
-        var result: Either<EvidentDbError, Database> = WriteCollisionError(0uL, 0uL).left()
+    ): Either<EvidentDbCommandError, Database> {
+        var result: Either<EvidentDbCommandError, Database> =
+            ConcurrentWriteCollision(0uL, 0uL).left()
         batchTransactRetrySchedule.repeat {
-            result = commandService.transactBatch(databaseNameStr, events.map { ProposedEvent(it) }, constraints)
+            result = commandService.transactBatch(databaseNameStr, events, constraints)
             result
         }
         return result
     }
 
-    suspend fun deleteDatabase(nameStr: String): Either<EvidentDbError, Database> =
+    suspend fun deleteDatabase(nameStr: String): Either<EvidentDbCommandError, Database> =
         commandService.deleteDatabase(nameStr)
 
     // Query API
     suspend fun catalog(): Flow<Database> = repository.databaseCatalog()
 
     fun connect(databaseNameStr: String): Flow<Either<QueryError, Database>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
                 is Either.Left -> emit(database)
@@ -66,7 +67,9 @@ interface EvidentDbAdapter {
     }
 
     suspend fun latestDatabase(databaseNameStr: String): Either<QueryError, Database> = either {
-        val databaseName = DatabaseName(databaseNameStr).bind()
+        val databaseName = DatabaseName(databaseNameStr)
+            .mapLeft { DatabaseNotFound(databaseNameStr) }
+            .bind()
         repository.latestDatabase(databaseName).bind()
     }
 
@@ -74,7 +77,9 @@ interface EvidentDbAdapter {
         databaseNameStr: String,
         revision: DatabaseRevision,
     ): Either<QueryError, Database> = either {
-        val databaseName = DatabaseName(databaseNameStr).bind()
+        val databaseName = DatabaseName(databaseNameStr)
+            .mapLeft { DatabaseNotFound(databaseNameStr) }
+            .bind()
         repository.databaseAtRevision(databaseName, revision).bind()
     }
 
@@ -82,7 +87,7 @@ interface EvidentDbAdapter {
         databaseNameStr: String,
         revision: DatabaseRevision,
     ): Flow<Either<QueryError, Batch>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
                 when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
@@ -93,25 +98,12 @@ interface EvidentDbAdapter {
         }
     }
 
-    suspend fun eventById(
-        databaseNameStr: String,
-        streamNameStr: String,
-        revision: DatabaseRevision,
-        idStr: String,
-    ): Either<QueryError, Event> = either {
-        val databaseName = DatabaseName(databaseNameStr).bind()
-        val streamName = StreamName(streamNameStr).bind()
-        val database = repository.databaseAtRevision(databaseName, revision).bind()
-        val id = EventId(idStr).bind()
-        database.eventById(streamName, id).bind()
-    }
-
     fun stream(
         databaseNameStr: String,
         revision: DatabaseRevision,
         streamNameStr: String,
     ): Flow<Either<QueryError, EventRevision>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
                 when (val streamName = StreamName(streamNameStr)) {
@@ -134,7 +126,7 @@ interface EvidentDbAdapter {
         streamNameStr: String,
         subjectStr: String,
     ): Flow<Either<QueryError, EventRevision>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
                 when (val streamName = StreamName(streamNameStr)) {
@@ -163,7 +155,7 @@ interface EvidentDbAdapter {
         revision: DatabaseRevision,
         subjectStr: String,
     ): Flow<Either<QueryError, EventRevision>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
                 when (val subject = EventSubject(subjectStr)) {
@@ -184,7 +176,7 @@ interface EvidentDbAdapter {
         revision: DatabaseRevision,
         typeStr: String,
     ): Flow<Either<QueryError, EventRevision>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
                 when (val type = EventType(typeStr)) {
@@ -200,11 +192,26 @@ interface EvidentDbAdapter {
         }
     }
 
+    suspend fun eventById(
+        databaseNameStr: String,
+        revision: DatabaseRevision,
+        streamNameStr: String,
+        idStr: String,
+    ): Either<QueryError, Event> = either {
+        val databaseName = DatabaseName(databaseNameStr)
+            .mapLeft { DatabaseNotFound(databaseNameStr) }
+            .bind()
+        val streamName = StreamName(streamNameStr).bind()
+        val database = repository.databaseAtRevision(databaseName, revision).bind()
+        val id = EventId(idStr).bind()
+        database.eventById(streamName, id).bind()
+    }
+
     fun eventsByRevision(
         databaseNameStr: String,
         revisions: Flow<EventRevision>,
     ): Flow<Either<QueryError, Event>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr)) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> emitAll(
                 repository.eventsByRevision(databaseName.value, revisions)

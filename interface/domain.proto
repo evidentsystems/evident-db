@@ -13,155 +13,215 @@ option php_namespace = "Com\\EvidentDB\\V1\\Proto";
 option ruby_package = "Com::EvidentDB::V1::Proto";
 option objc_class_prefix = "EDB";
 
-message DatabaseCreationResult {
-  Database database = 1;
-}
-
-message DatabaseDeletionInfo {
-  string name = 1;
-}
-
-message DatabaseDeletionResult {
-  Database database = 1;
-}
-
 message Database {
   string name = 1;
   string subscription_uri = 2;
   google.protobuf.Timestamp created = 3;
-  map<string, uint64> stream_revisions = 4;
+  uint64 revision = 4;
 }
 
-enum StreamState {
-  Any = 0;
-  StreamExists = 1;
-  NoStream = 2;
-  AtRevision = 3;
-}
+message BatchConstraint {
+  message StreamExists {
+    string stream = 1;
+  }
+  message StreamDoesNotExist {
+    string stream = 1;
+  }
+  message StreamMaxRevision {
+    string stream = 1;
+    uint64 revision = 2;
+  }
 
-message ProposedEvent {
-  string stream = 1;
-  StreamState stream_state = 2;
-  optional uint64 at_revision = 3;
-  io.cloudevents.v1.CloudEvent event = 4;
-}
+  message SubjectExists {
+    string subject = 1;
+  }
+  message SubjectDoesNotExist {
+    string subject = 1;
+  }
+  message SubjectMaxRevision {
+    string subject = 1;
+    uint64 revision = 2;
+  }
 
-message BatchProposal {
-  string database = 1;
-  repeated ProposedEvent events = 2;
+  message SubjectExistsOnStream {
+    string stream = 1;
+    string subject = 2;
+  }
+  message SubjectDoesNotExistOnStream {
+    string stream = 1;
+    string subject = 2;
+  }
+  message SubjectMaxRevisionOnStream {
+    string stream = 1;
+    string subject = 2;
+    uint64 revision = 3;
+  }
+
+  oneof constraint {
+    StreamExists stream_exists = 1;
+    StreamDoesNotExist stream_does_not_exist = 2;
+    StreamMaxRevision stream_max_revision = 3;
+
+    SubjectExists subject_exists = 4;
+    SubjectDoesNotExist subject_does_not_exist = 5;
+    SubjectMaxRevision subject_max_revision = 6;
+
+    SubjectExistsOnStream subject_exists_on_stream = 7;
+    SubjectDoesNotExistOnStream subject_does_not_exist_on_stream = 8;
+    SubjectMaxRevisionOnStream subject_max_revision_on_stream = 9;
+  }
 }
 
 message ProposedBatch {
-  string id = 1;
-  string database = 2;
-  repeated ProposedEvent events = 3;
+  string database = 1;
+  repeated io.cloudevents.v1.CloudEvent events = 2;
+  repeated BatchConstraint constraints = 3;
 }
 
-message Event {
-  io.cloudevents.v1.CloudEvent event = 2;
-  optional string stream = 3;
+message WellFormedProposedBatch {
+  string database = 1;
+  repeated io.cloudevents.v1.CloudEvent events = 2;
+  repeated BatchConstraint constraints = 3;
 }
 
 message Batch {
-  string id = 1;
-  string database = 2;
-  repeated Event events = 3;
-  google.protobuf.Timestamp timestamp = 4;
-  uint64 revision_before = 5;
-}
-
-message BatchSummaryEvent {
-  int64 id = 2;
-  optional string stream = 3;
-}
-
-message BatchSummary {
-  string id = 1;
-  string database = 2;
-  repeated BatchSummaryEvent events = 3;
-  map<string, int64> stream_revisions = 4;
-  google.protobuf.Timestamp timestamp = 5;
-}
-
-message BatchTransactionResult {
-  Batch batch = 1;
-  Database database = 2;
+  string database = 1;
+  repeated uint64 event_revisions = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  uint64 basis_revision = 4;
 }
 
 // Errors
 
-message InvalidDatabaseNameError {
+message EvidentDbCommandError {
+  oneof error {
+    DatabaseCreationError database_creation_error = 1;
+    BatchTransactionError batch_transaction_error = 2;
+    DatabaseDeletionError database_deletion_error = 3;
+  }
+}
+
+message DatabaseCreationError {
+  oneof error {
+    InvalidDatabaseName invalid_database_name = 1;
+    DatabaseNameAlreadyExists database_name_already_exists = 2;
+    InternalServerError internal_server_error = 3;
+  }
+}
+
+message BatchTransactionError {
+  oneof error {
+    DatabaseNotFound database_not_found = 1;
+    InvalidBatchError invalid_batch = 2;
+    BatchConstraintViolations batch_constraint_violations = 3;
+    InternalServerError internal_server_error = 4;
+  }
+}
+
+message DatabaseDeletionError {
+  oneof error {
+    DatabaseNotFound database_not_found = 1;
+    InternalServerError internal_server_error = 2;
+  }
+}
+
+message QueryError {
+  oneof error {
+    InvalidStreamName invalid_stream_name = 1;
+    InvalidEventId invalid_event_id = 2;
+    InvalidEventSubject invalid_event_subject = 3;
+    InvalidEventType invalid_event_type = 4;
+    EventNotFound event_not_found = 5;
+    InternalServerError internal_server_error = 6;
+  }
+}
+
+message InvalidDatabaseName {
   string name = 1;
 }
 
-message DatabaseNameAlreadyExistsError {
+message DatabaseNameAlreadyExists {
   string name = 1;
 }
 
-message DatabaseNotFoundError {
+message DatabaseNotFound {
   string name = 1;
 }
 
-message NoEventsProvidedError {}
+message InvalidBatchError {
+  oneof error {
+    EmptyBatch empty_batch = 1;
+    InvalidEvents invalid_events = 2;
+  }
+}
+
+message EmptyBatch {}
+
+message EventInvalidation {
+  oneof error {
+    InvalidEventSource invalid_event_source = 1;
+    InvalidStreamName invalid_stream_name = 2;
+    InvalidEventId invalid_event_id = 3;
+    DuplicateEventId duplicate_event_id = 4;
+    InvalidEventSubject invalid_event_subject = 5;
+    InvalidEventType invalid_event_type = 6;
+  }
+}
+
+message BatchConstraintInvalidation {
+  oneof error {
+    InvalidStreamName invalid_stream_name = 2;
+    InvalidEventSubject invalid_event_subject = 5;
+  }
+}
+
+message InvalidEventSource {
+  string event_source = 1;
+}
 
 message InvalidStreamName {
   string stream_name = 1;
 }
 
-message InvalidEventType {
-  string event_type = 1;
+message InvalidEventId {
+  string stream = 1;
+  string event_id = 2;
+}
+
+message DuplicateEventId {
+  string event_id = 1;
 }
 
 message InvalidEventSubject {
   string event_subject = 1;
 }
 
-message EventInvalidation {
-  oneof invalidation {
-    InvalidStreamName invalid_stream_name = 1;
-    InvalidEventType invalid_event_type = 2;
-    InvalidEventSubject invalid_event_subject = 3;
-  }
+message InvalidEventType {
+  string event_type = 1;
 }
 
 message InvalidEvent {
-  ProposedEvent event = 1;
-  repeated EventInvalidation invalidations = 2;
+  io.cloudevents.v1.CloudEvent event = 1;
+  repeated EventInvalidation errors = 2;
 }
 
-message InvalidEventsError {
+message InvalidEvents {
   repeated InvalidEvent invalid_events = 1;
 }
 
-message DuplicateBatchError {
-  ProposedBatch batch = 1;
+message InvalidBatchConstraints {
+  repeated BatchConstraintInvalidation errors = 1;
 }
 
-message StreamStateConflict {
-  ProposedEvent event = 1;
-  StreamState stream_state = 2;
-  optional int64 at_revision = 3;
+message BatchConstraintViolations {
+  WellFormedProposedBatch batch = 1;
+  repeated BatchConstraint violations = 2;
 }
 
-message StreamStateConflictsError {
-  repeated StreamStateConflict conflicts = 1;
+message EventNotFound {
+  string message = 1;
 }
 
 message InternalServerError {
   string message = 1;
-}
-
-message DatabaseTopicCreationError {
-  string database = 1;
-  string topic = 2;
-}
-
-message DatabaseTopicDeletionError {
-  string database = 1;
-  string topic = 2;
-}
-
-message EventNotFoundError {
-  string database = 1;
-  int64 event_id = 2;
 }

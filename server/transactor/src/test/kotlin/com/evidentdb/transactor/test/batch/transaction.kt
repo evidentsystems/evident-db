@@ -53,8 +53,8 @@ class TransactionTests {
             ))
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
-                Assertions.assertTrue(it is InvalidEventsError)
-                val err = it as InvalidEventsError
+                Assertions.assertTrue(it is InvalidEvents)
+                val err = it as InvalidEvents
                 Assertions.assertTrue(err.invalidEvents[0].errors[0] is InvalidStreamName)
                 Assertions.assertTrue(err.invalidEvents[1].errors[0] is InvalidEventType)
             }
@@ -105,12 +105,12 @@ class TransactionTests {
             val result = service.transactBatch(databaseName, batch)
             Assertions.assertTrue(result.isLeft())
             result.mapLeft {
-                Assertions.assertTrue(it is StreamStateConflictsError)
-                val err = it as StreamStateConflictsError
-                Assertions.assertEquals(err.conflicts.size, 3)
-                Assertions.assertEquals(err.conflicts[0].event.event.type, batch[0].event.type)
-                Assertions.assertEquals(err.conflicts[1].event.event.type, batch[1].event.type)
-                Assertions.assertEquals(err.conflicts[2].event.event.type, batch[2].event.type)
+                Assertions.assertTrue(it is BatchConstraintViolations)
+                val err = it as BatchConstraintViolations
+                Assertions.assertEquals(err.violations.size, 3)
+                Assertions.assertEquals(err.violations[0].event.event.type, batch[0].event.type)
+                Assertions.assertEquals(err.violations[1].event.event.type, batch[1].event.type)
+                Assertions.assertEquals(err.violations[2].event.event.type, batch[2].event.type)
             }
 
 

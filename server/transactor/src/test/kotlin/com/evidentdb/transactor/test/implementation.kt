@@ -6,10 +6,6 @@ import arrow.core.right
 import com.evidentdb.application.CommandManager
 import com.evidentdb.application.CommandService
 import com.evidentdb.domain_model.*
-import com.evidentdb.domain_model.command.BatchTransactionError
-import com.evidentdb.domain_model.command.DatabaseCreationError
-import com.evidentdb.domain_model.command.DatabaseDeletionError
-import com.evidentdb.domain_model.command.EvidentDbError
 import com.evidentdb.event_model.*
 import com.evidentdb.kafka.CommandEnvelopeSerde
 import com.evidentdb.kafka.EventEnvelopeSerde
@@ -52,7 +48,7 @@ class TopologyTestDriverCommandManager(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseCreated -> event.right()
-            is EvidentDbError -> when(val data = event.data) {
+            is EvidentDbCommandError -> when(val data = event.data) {
                 is DatabaseCreationError -> data.left()
                 else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
             }
@@ -65,7 +61,7 @@ class TopologyTestDriverCommandManager(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is DatabaseDeleted -> event.right()
-            is EvidentDbError -> when(val data = event.data) {
+            is EvidentDbCommandError -> when(val data = event.data) {
                 is DatabaseDeletionError -> data.left()
                 else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
             }
@@ -79,7 +75,7 @@ class TopologyTestDriverCommandManager(
         val eventKV = outputTopic.readKeyValue()
         return when(val event = eventKV.value) {
             is BatchTransacted -> event.right()
-            is EvidentDbError -> when(val data = event.data) {
+            is EvidentDbCommandError -> when(val data = event.data) {
                 is BatchTransactionError -> data.left()
                 else -> throw IllegalStateException("Invalid error returned from renameDatabase $event")
             }

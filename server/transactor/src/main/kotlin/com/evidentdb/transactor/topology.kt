@@ -222,7 +222,7 @@ object TransactorTopology {
                 is DeleteDatabase -> transactor.handleDeleteDatabase(command)
                 is TransactBatch -> transactor.handleTransactBatch(command)
             }.getOrHandle { error ->
-                EvidentDbError(
+                EvidentDbCommandError(
                     EnvelopeId.randomUUID(),
                     command.id,
                     command.database,

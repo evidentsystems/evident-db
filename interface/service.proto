@@ -17,19 +17,24 @@ option objc_class_prefix = "EDB";
 service EvidentDb {
   // Command
   rpc createDatabase(CreateDatabaseRequest) returns (CreateDatabaseReply) {}
-  rpc deleteDatabase(DatabaseDeletionInfo)  returns (DeleteDatabaseReply) {}
-  rpc transactBatch(BatchProposal)          returns (TransactBatchReply)  {}
+  rpc transactBatch(TransactBatchRequest)   returns (TransactBatchReply)  {}
+  rpc deleteDatabase(DeleteDatabaseRequest) returns (DeleteDatabaseReply) {}
 
   // Query
   rpc catalog(CatalogRequest) returns (stream CatalogReply) {}
-  rpc connect(DatabaseRequest) returns (stream DatabaseReply) {}
-  rpc latestDatabase(DatabaseRequest) returns (DatabaseReply) {}
+  rpc connect(ConnectRequest) returns (stream DatabaseReply) {}
+  rpc latestDatabase(LatestDatabaseRequest) returns (DatabaseReply) {}
   rpc databaseAtRevision(DatabaseAtRevisionRequest) returns (DatabaseReply) {}
   rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
-  rpc stream(StreamRequest) returns (stream StreamEntryReply) {}
-  rpc subjectStream(SubjectStreamRequest) returns (stream StreamEntryReply) {}
-  rpc events(stream EventRequest) returns (stream EventReply) {}
+  rpc stream(StreamRequest) returns (stream EventRevisionReply) {}
+  rpc subjectStream(SubjectStreamRequest) returns (stream EventRevisionReply) {}
+  rpc subject(SubjectRequest) returns (stream EventRevisionReply) {}
+  rpc eventType(EventTypeRequest) returns (stream EventRevisionReply) {}
+  rpc eventById(EventByIdRequest) returns (EventReply) {}
+  rpc events(stream EventByRevisionRequest) returns (stream EventReply) {}
 }
+
+// Command API
 
 message CreateDatabaseRequest {
   string name = 1;
@@ -37,43 +42,44 @@ message CreateDatabaseRequest {
 
 message CreateDatabaseReply {
   oneof result {
-    DatabaseCreationResult database_creation = 1;
-    InvalidDatabaseNameError invalid_database_name_error = 2;
-    DatabaseNameAlreadyExistsError database_name_already_exists_error = 3;
-    DatabaseTopicCreationError database_topic_creation_error = 4;
-    InternalServerError internal_server_error = 5;
+    EvidentDbCommandError error = 1;
+    Database database = 2;
   }
 }
 
-message DeleteDatabaseReply {
-  oneof result {
-    DatabaseDeletionResult database_deletion = 1;
-    InvalidDatabaseNameError invalid_database_name_error = 2;
-    DatabaseNotFoundError database_not_found_error = 3;
-    DatabaseTopicDeletionError database_topic_deletion_error = 4;
-    InternalServerError internal_server_error = 5;
-  }
+message TransactBatchRequest {
+  ProposedBatch batch = 1;
 }
 
 message TransactBatchReply {
   oneof result {
-    BatchTransactionResult batch_transaction = 1;
-    InvalidDatabaseNameError invalid_database_name_error = 2;
-    DatabaseNotFoundError database_not_found_error = 3;
-    NoEventsProvidedError no_events_provided_error = 4;
-    InvalidEventsError invalid_events_error = 5;
-    DuplicateBatchError duplicate_batch_error = 6;
-    StreamStateConflictsError stream_state_conflict_error = 7;
-    InternalServerError internal_server_error = 8;
+    EvidentDbCommandError error = 1;
+    Database database = 2;
   }
 }
+
+message DeleteDatabaseRequest {
+  string name = 1;
+}
+
+message DeleteDatabaseReply {
+  oneof result {
+    EvidentDbCommandError error = 1;
+    Database database = 2;
+  }
+}
+
+// Query API
 
 message CatalogRequest {}
 message CatalogReply {
   Database database = 1;
 }
 
-message DatabaseRequest {
+message ConnectRequest {
+  string name = 1;
+}
+message LatestDatabaseRequest {
   string name = 1;
 }
 message DatabaseAtRevisionRequest {
@@ -82,51 +88,69 @@ message DatabaseAtRevisionRequest {
 }
 message DatabaseReply {
   oneof result {
-    Database database = 1;
-    DatabaseNotFoundError not_found = 2;
+    QueryError error = 1;
+    Database database = 2;
   }
 }
 
 message DatabaseLogRequest {
-  string database = 1;
-  uint64 database_revision = 2;
+  string name = 1;
+  uint64 revision = 2;
 }
 message DatabaseLogReply {
   oneof result {
-    BatchSummary batch = 1;
-    DatabaseNotFoundError database_not_found = 2;
+    QueryError error = 1;
+    Batch batch = 2;
   }
 }
 
 message StreamRequest {
   string database = 1;
-  uint64 database_revision = 2;
+  uint64 revision = 2;
   string stream = 3;
 }
 
 message SubjectStreamRequest {
   string database = 1;
-  uint64 database_revision = 2;
+  uint64 revision = 2;
   string stream = 3;
   string subject = 4;
 }
 
-message StreamEntryReply {
+message SubjectRequest {
+  string database = 1;
+  uint64 revision = 2;
+  string subject = 3;
+}
+
+message EventTypeRequest {
+  string database = 1;
+  uint64 revision = 2;
+  string event_type = 3;
+}
+
+message EventRevisionReply {
   oneof result {
-    uint64 event_id = 1;
-    // TODO: change this to QueryError enum
-    DatabaseNotFoundError database_not_found = 2;
+    QueryError error = 1;
+    uint64 revision = 2;
   }
 }
 
-message EventRequest {
+message EventByIdRequest {
   string database = 1;
-  uint64 event_id = 2;
+  uint64 revision = 2;
+  string stream = 3;
+  string event_id = 4;
+}
+
+message EventByRevisionRequest {
+  string database = 1;
+  uint64 event_revision = 2;
 }
 
 message EventReply {
   oneof result {
-    io.cloudevents.v1.CloudEvent event = 1;
-    EventNotFoundError event_not_found = 2;
+    QueryError error = 1;
+    io.cloudevents.v1.CloudEvent event = 2;
   }
 }

@@ -15,11 +15,9 @@ dependencies {
     compileOnly(libs.slf4j.api)
 
     implementation(project(":domain"))
-    implementation(project(":adapters"))
+    implementation(project(":transfer"))
 
-    implementation(libs.kafka.streams)
     implementation(libs.cloudevents.protobuf)
-
     implementation(libs.protobuf.java)
     compileOnly(libs.grpc.stub)
     implementation(libs.grpc.kotlin.stub)

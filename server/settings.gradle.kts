@@ -45,4 +45,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "server"
-include("test", "domain", "adapters", "service", "transactor", "app")
+include("test", "domain", "adapters", "service", "transactor", "transfer", "app")

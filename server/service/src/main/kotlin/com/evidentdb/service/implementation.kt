@@ -100,7 +100,7 @@ class KafkaProducerCommandManager(
         // TODO: flatten this such that DatabaseCreationError is sibling of DatabaseCreated event, and only one `else` branch is need
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseCreated -> result.right()
-            is EvidentDbError -> when(val body = result.data){
+            is EvidentDbCommandError -> when(val body = result.data){
                 is DatabaseCreationError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
@@ -114,7 +114,7 @@ class KafkaProducerCommandManager(
 
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is DatabaseDeleted -> result.right()
-            is EvidentDbError -> when(val body = result.data){
+            is EvidentDbCommandError -> when(val body = result.data){
                 is DatabaseDeletionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }
@@ -128,7 +128,7 @@ class KafkaProducerCommandManager(
 
         when(val result = withTimeoutOrNull(REQUEST_TIMEOUT) { deferred.await() }) {
             is BatchTransacted -> result.right()
-            is EvidentDbError -> when(val body = result.data){
+            is EvidentDbCommandError -> when(val body = result.data){
                 is BatchTransactionError -> body.left()
                 else -> InternalServerError("Invalid result of createDatabase: $result").left()
             }

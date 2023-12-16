@@ -17,7 +17,7 @@ sealed interface EvidentDbCommand {
         get() = "com.evidentdb.command.${this.javaClass.simpleName}"
     val database: DatabaseName
 
-    suspend fun decide(state: DatabaseCommandModel): Either<EvidentDbError, EvidentDbEvent>
+    suspend fun decide(state: DatabaseCommandModel): Either<EvidentDbCommandError, EvidentDbEvent>
 }
 
 sealed interface EvidentDbEvent {
@@ -34,7 +34,7 @@ data class EvidentDbErrorEvent(
     override val id: EnvelopeId,
     override val commandId: EnvelopeId,
     override val database: DatabaseName,
-    val error: EvidentDbError,
+    val error: EvidentDbCommandError,
 ): EvidentDbEvent {
     override val type: EnvelopeType
         get() = "com.evidentdb.error.${this.javaClass.simpleName}"
@@ -123,13 +123,6 @@ data class BatchTransacted(
         is DatabaseCommandModelAfterDeletion -> state
         is ActiveDatabaseCommandModel -> state.acceptBatch(batch)
     }
-
-//    override fun evolve(event: EvidentDbEvent): Database = when (event) {
-//        is DatabaseCreated -> this
-//        is BatchTransacted -> DirtyDatabase(this, event.batch)
-//        is DatabaseDeleted -> DatabaseAfterDeletion(name, topic, created, event.deletedAt)
-//        is EvidentDbErrorEvent -> this
-//    }
 }
 
 data class DatabaseDeleted(
@@ -140,9 +133,9 @@ data class DatabaseDeleted(
 ): EvidentDbEvent {
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel =
         when (state) {
-            is DatabaseCommandModelBeforeCreation -> TODO()
-            is ActiveDatabaseCommandModel -> TODO()
-            is DatabaseCommandModelAfterDeletion -> TODO()
+            is DatabaseCommandModelBeforeCreation -> state
+            is ActiveDatabaseCommandModel -> DatabaseCommandModelAfterDeletion(state)
+            is DatabaseCommandModelAfterDeletion -> state
         }
 }
 
@@ -176,7 +169,7 @@ data class Saga<in Ar, out A>(
     override val react: (Ar) -> List<A>
 ): React<Ar, A>
 
-typealias EvidentDbDecider = Decide<EvidentDbCommand, DatabaseCommandModel, EvidentDbEvent, EvidentDbError>
+typealias EvidentDbDecider = Decide<EvidentDbCommand, DatabaseCommandModel, EvidentDbEvent, EvidentDbCommandError>
 
 fun decider(
     initial: DatabaseCommandModelBeforeCreation

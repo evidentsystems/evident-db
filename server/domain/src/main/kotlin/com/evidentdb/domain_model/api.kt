@@ -259,9 +259,10 @@ data class AcceptedEvent private constructor(override val event: CloudEvent): Ev
 
                     }
                 ) { _, _ ->
-                    val sequence = database.revision + indexInBatch + 1u
+                    val sequenceExtension = SequenceExtension()
+                    sequenceExtension.sequence = database.revision + indexInBatch + 1u
                     val newEvent = CloudEventBuilder.from(wellFormed.event)
-                        .withExtension(SequenceExtension(sequence))
+                        .withExtension(sequenceExtension)
                         .withTime(timestamp.atOffset(ZoneOffset.UTC))
                         .build()
                     AcceptedEvent(newEvent)

@@ -1,29 +1,40 @@
 package com.evidentdb.cloudevents
 
 import com.evidentdb.domain_model.elenDecode
+import com.evidentdb.domain_model.elenEncode
 import io.cloudevents.CloudEventExtension
 import io.cloudevents.CloudEventExtensions
 import io.cloudevents.core.extensions.impl.ExtensionUtils
+import io.cloudevents.core.provider.ExtensionProvider
 import java.time.Instant
 
-data class SequenceExtension(var sequence: ULong): CloudEventExtension {
+class SequenceExtension: CloudEventExtension {
+    var sequence: ULong = 0uL
+
     companion object {
         const val SEQUENCE_KEY = "sequence"
         private val KEY_SET = setOf(SEQUENCE_KEY)
+        init {
+            ExtensionProvider.getInstance()
+                    .registerExtension(
+                            SequenceExtension::class.java,
+                            ::SequenceExtension
+                    )
+        }
     }
 
     override fun readFrom(extensions: CloudEventExtensions) {
         extensions.getExtension(SEQUENCE_KEY)?.let {
             this.sequence = when(it) {
                 is String -> elenDecode(it)
-                else -> throw IllegalArgumentException("Invalid sequence type")
+                else -> throw IllegalArgumentException("Sequence must be an ELEN-encoded string")
             }
         }
     }
 
-    override fun getValue(key: String): ULong =
+    override fun getValue(key: String) =
         when (key) {
-            SEQUENCE_KEY -> sequence
+            SEQUENCE_KEY -> elenEncode(sequence)
             else -> {
                 throw ExtensionUtils.generateInvalidKeyException(this.javaClass, key)
             }
@@ -33,17 +44,26 @@ data class SequenceExtension(var sequence: ULong): CloudEventExtension {
         KEY_SET
 }
 
-data class RecordedTimeExtension(var recordedTime: Instant): CloudEventExtension {
+class RecordedTimeExtension: CloudEventExtension {
+    lateinit var recordedTime: Instant
+
     companion object {
         const val RECORDED_TIME_KEY = "recordedtime"
         private val KEY_SET = setOf(RECORDED_TIME_KEY)
+        init {
+            ExtensionProvider.getInstance()
+                    .registerExtension(
+                            RecordedTimeExtension::class.java,
+                            ::RecordedTimeExtension
+                    )
+        }
     }
 
     override fun readFrom(extensions: CloudEventExtensions) {
         extensions.getExtension(RECORDED_TIME_KEY)?.let {
             this.recordedTime = when(it) {
                 is String -> Instant.parse(it)
-                else -> throw IllegalArgumentException("Invalid timestamp string")
+                else -> throw IllegalArgumentException("Timestamp must be a string")
             }
         }
     }

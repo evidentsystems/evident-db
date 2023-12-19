@@ -34,7 +34,7 @@ class ApplicationTests {
                 CloudEventBuilder.v1()
                     .withSource(URI("my-stream"))
                     .withId("a nice id@foo.com")
-                    .withSubject("")
+                    .withSubject("a nice subject")
                     .withType("com.evidentdb.test-event")
                     .build()
             )

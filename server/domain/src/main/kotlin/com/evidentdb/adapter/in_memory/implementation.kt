@@ -75,7 +75,7 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
     override fun subscribe(name: DatabaseName): Flow<Either<DatabaseNotFound, Database>> = flow {
         when (val database = storage[name]) {
             null -> emit(DatabaseNotFound(name.value).left())
-            else -> emitAll(database.subscribe())
+            else -> emitAll(database.updates)
         }
     }
 
@@ -122,7 +122,7 @@ private class InMemoryDatabaseRepository(
     private val lock = ReentrantLock()
     private val storage: NavigableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>
     private val _updates: MutableStateFlow<Either<DatabaseNotFound, Database>>
-    private val updates: StateFlow<Either<DatabaseNotFound, Database>>
+    val updates: Flow<Either<DatabaseNotFound, Database>>
 
     // Initial database state
     init {
@@ -132,10 +132,6 @@ private class InMemoryDatabaseRepository(
         _updates = MutableStateFlow(initialDatabase.right())
         updates = _updates.asStateFlow()
     }
-
-    fun subscribe(): Flow<Either<DatabaseNotFound, Database>> = flow {
-        emitAll(updates)
-    }.cancellable()
 
     fun latestDatabase(): Either<DatabaseNotFound, InMemoryDatabase> = either {
         val root = storage[DatabaseRootKey]
@@ -179,12 +175,16 @@ private class InMemoryDatabaseRepository(
             try {
                 storage.plusAssign(batchAndIndexes)
                 storage[DatabaseRootKey] = nextDatabaseRoot
-                _updates.value = nextDatabaseRoot.right()
+                val updateSent = _updates.compareAndSet(currentDatabaseRoot.right(), nextDatabaseRoot.right())
+                if (!updateSent) {
+                    throw IllegalStateException("Compare and set to updates state flow failed")
+                }
             } catch (t: Throwable) {
                 batchAndIndexes.forEach {
                     storage.remove(it.key)
                 }
                 storage[DatabaseRootKey] = currentDatabaseRoot
+                _updates.value = currentDatabaseRoot.right() // TODO: is this the right semantic here?
             }
         }
     }

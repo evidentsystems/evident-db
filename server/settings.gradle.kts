@@ -23,6 +23,7 @@ dependencyResolutionManagement {
             version("slf4j", "1.7.36")
 
             library("kotlinx-coroutines", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version("1.7.1")
+            library("kotlinx-coroutines-test", "org.jetbrains.kotlinx", "kotlinx-coroutines-test").version("1.7.1")
             library("kotlinx-coroutines-jdk8", "org.jetbrains.kotlinx", "kotlinx-coroutines-jdk8").version("1.7.1")
             library("arrow-core", "io.arrow-kt", "arrow-core").versionRef("arrow")
             library("arrow-resilience", "io.arrow-kt", "arrow-resilience").versionRef("arrow")

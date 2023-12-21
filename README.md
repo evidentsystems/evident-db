@@ -1,7 +1,7 @@
 # EvidentDB
 
 EvidentDB is an event store for use in event sourcing.  It is written in
-Kotlin and built atop Apache Kafka.
+Kotlin and built atop pluggable backend storage systems, including Apache Kafka.
 
 ## Status
 

@@ -10,8 +10,10 @@ dependencies {
     implementation(libs.arrow.core)
     implementation(libs.arrow.resilience)
     implementation(libs.kotlinx.coroutines)
+    implementation(libs.kotlinx.coroutines.test)
     implementation(libs.cloudevents.core)
     implementation(libs.commons.codec)
+    implementation("org.junit.jupiter:junit-jupiter-api:5.9.3")
 
     testImplementation(project(":test"))
 }

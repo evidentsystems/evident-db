@@ -61,9 +61,11 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
         database: DatabaseCommandModelAfterDeletion
     ): Either<DatabaseDeletionError, Unit> =
         either {
-            ensure(storage.remove(database.name) is InMemoryDatabaseRepository) {
-                DatabaseNotFound(database.name.value)
-            }
+            val err = DatabaseNotFound(database.name.value)
+            val impl = storage.remove(database.name)
+            ensureNotNull(impl) { err }
+            ensure(impl is InMemoryDatabaseRepository) { err }
+            impl.tearDown()
         }
 
     override fun databaseCatalog(): Flow<Database> =
@@ -122,7 +124,7 @@ private class InMemoryDatabaseRepository(
     private val lock = ReentrantLock()
     private val storage: NavigableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>
     private val _updates: MutableStateFlow<Either<DatabaseNotFound, Database>>
-    val updates: Flow<Either<DatabaseNotFound, Database>>
+    val updates: StateFlow<Either<DatabaseNotFound, Database>>
 
     // Initial database state
     init {
@@ -146,7 +148,7 @@ private class InMemoryDatabaseRepository(
 
     fun eventByRevision(
         revision: DatabaseRevision
-    ): Event? = storage.floorEntry(BatchKey(revision)).let {
+    ): Event? = storage.ceilingEntry(BatchKey(revision)).let {
         val batch = it.value
         if (batch is BatchValue) {
             batch.getEventByAbsoluteRevision(revision)
@@ -210,6 +212,10 @@ private class InMemoryDatabaseRepository(
                 transaction[EventSubjectIndexKey(it, revision)] = NullValue
             }
         }
+    }
+
+    fun tearDown() {
+        _updates.value = DatabaseNotFound(name.value).left()
     }
 
     // Let's compare these keys thus: DatabaseRootKey object first, then the others sorted
@@ -493,7 +499,7 @@ private class InMemoryDatabaseRepository(
         override fun eventType(type: EventType): Flow<EventRevision> =
             storage.subMap(
                 EventTypeIndexKey.minEventTypeKey(type), false,
-                EventTypeIndexKey.minEventTypeKey(type), true
+                EventTypeIndexKey.maxEventTypeKey(type), true
             )
                 .keys
                 .filterIsInstance<EventTypeIndexKey>()

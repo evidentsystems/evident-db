@@ -9,10 +9,7 @@ import com.evidentdb.application.CommandService
 import com.evidentdb.application.DatabaseRepository
 import com.evidentdb.domain_model.*
 import io.cloudevents.CloudEvent
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -209,9 +206,11 @@ interface EvidentDbAdapter {
 
     fun eventsByRevision(
         databaseNameStr: String,
-        revisions: Flow<EventRevision>,
+        revisions: List<EventRevision>,
     ): Flow<Either<QueryError, Event>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft {
+            DatabaseNotFound(databaseNameStr)
+        }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> emitAll(
                 repository.eventsByRevision(databaseName.value, revisions)

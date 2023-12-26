@@ -63,7 +63,6 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
         either {
             val err = DatabaseNotFound(database.name.value)
             val impl = storage.remove(database.name)
-            ensureNotNull(impl) { err }
             ensure(impl is InMemoryDatabaseRepository) { err }
             impl.tearDown()
         }
@@ -98,13 +97,13 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
 
     override fun eventsByRevision(
         name: DatabaseName,
-        revisions: Flow<EventRevision>
+        revisions: List<EventRevision>
     ): Flow<Either<QueryError, Event>> = flow {
         val database = storage[name]
         if (database == null) {
             emit(DatabaseNotFound(name.value).left())
         } else {
-            revisions.collect {
+            revisions.forEach {
                 val event = database.eventByRevision(it)
                 if (event == null) {
                     emit(EventNotFound("Event with revision $it not found in database $name").left())

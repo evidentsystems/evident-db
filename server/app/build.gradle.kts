@@ -1,6 +1,5 @@
 plugins {
     id("com.evidentdb.build.micronaut-app")
-    id("com.evidentdb.build.kapt")
 }
 
 version = "0.1.0-alpha-SNAPSHOT"
@@ -10,30 +9,18 @@ dependencies {
     implementation(libs.arrow.core)
     implementation(libs.kotlinx.coroutines)
 
-    implementation(project(":adapters"))
     implementation(project(":domain"))
     implementation(project(":service"))
-    implementation(project(":transactor"))
 
-    implementation(libs.kafka.streams)
     implementation(libs.grpc.kotlin.stub)
 
-    implementation("info.picocli:picocli")
-    kapt("info.picocli:picocli-codegen")
     implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
     implementation("io.micronaut:micronaut-management")
     implementation("io.micronaut:micronaut-http-server-netty")
-    implementation("io.micronaut.kafka:micronaut-kafka")
 
     testImplementation("io.micronaut:micronaut-http-client")
-}
-
-kapt {
-    arguments {
-        arg("project", "${project.group}/${project.name}")
-    }
 }
 
 application {
@@ -41,6 +28,7 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx4g", "-Xms4g")
 }
 
+graalvmNative.toolchainDetection.set(false)
 micronaut {
     version.set(libs.versions.micronaut)
     runtime("netty")

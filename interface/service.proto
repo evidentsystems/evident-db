@@ -31,7 +31,7 @@ service EvidentDb {
   rpc subject(SubjectRequest) returns (stream EventRevisionReply) {}
   rpc eventType(EventTypeRequest) returns (stream EventRevisionReply) {}
   rpc eventById(EventByIdRequest) returns (EventReply) {}
-  rpc events(stream EventByRevisionRequest) returns (stream EventReply) {}
+  rpc events(EventByRevisionRequest) returns (stream EventReply) {}
 }
 
 // Command API
@@ -48,7 +48,9 @@ message CreateDatabaseReply {
 }
 
 message TransactBatchRequest {
-  ProposedBatch batch = 1;
+  string database = 1;
+  repeated io.cloudevents.v1.CloudEvent events = 2;
+  repeated BatchConstraint constraints = 3;
 }
 
 message TransactBatchReply {
@@ -145,7 +147,7 @@ message EventByIdRequest {
 
 message EventByRevisionRequest {
   string database = 1;
-  uint64 event_revision = 2;
+  repeated uint64 event_revisions = 2;
 }
 
 message EventReply {

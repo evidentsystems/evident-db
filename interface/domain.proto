@@ -72,12 +72,6 @@ message BatchConstraint {
   }
 }
 
-message ProposedBatch {
-  string database = 1;
-  repeated io.cloudevents.v1.CloudEvent events = 2;
-  repeated BatchConstraint constraints = 3;
-}
-
 message WellFormedProposedBatch {
   string database = 1;
   repeated io.cloudevents.v1.CloudEvent events = 2;

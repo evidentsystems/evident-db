@@ -16,7 +16,7 @@ interface DatabaseRepository {
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, DatabaseReadModel>
 
-    fun eventsByRevision(name: DatabaseName, revisions: Flow<EventRevision>): Flow<Either<QueryError, Event>>
+    fun eventsByRevision(name: DatabaseName, revisions: List<EventRevision>): Flow<Either<QueryError, Event>>
 }
 
 interface DatabaseReadModel: Database {

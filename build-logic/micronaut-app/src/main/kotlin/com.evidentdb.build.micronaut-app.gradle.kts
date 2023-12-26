@@ -1,18 +1,21 @@
 plugins {
     id("com.evidentdb.build.kotlin")
-    id("com.evidentdb.build.kapt")
+    id("com.google.devtools.ksp")
     id("com.github.johnrengelman.shadow")
     id("io.micronaut.application")
     id("io.micronaut.aot")
 }
 
 dependencies {
-    compileOnly("io.micronaut:micronaut-runtime")
+    ksp("io.micronaut:micronaut-http-validation")
+    ksp("io.micronaut.serde:micronaut-serde-processor")
     implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
-    implementation("io.micronaut:micronaut-jackson-databind")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
     implementation("jakarta.annotation:jakarta.annotation-api")
     runtimeOnly("org.yaml:snakeyaml")
     runtimeOnly("ch.qos.logback:logback-classic")
-    kaptTest("io.micronaut:micronaut-inject-java")
+    runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
+    testImplementation("io.micronaut:micronaut-http-client")
     testImplementation("io.micronaut.test:micronaut-test-junit5")
 }
+

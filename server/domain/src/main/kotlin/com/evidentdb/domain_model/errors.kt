@@ -30,10 +30,19 @@ data class DuplicateEventId(val stream: String, val eventId: String) : EventInva
 data class InvalidEventSubject(val eventSubject: String) : EventInvalidation, BatchConstraintInvalidation, QueryError
 data class InvalidEventType(val eventType: String) : EventInvalidation, QueryError
 
-data class InvalidEvent(val event: CloudEvent, val errors: List<EventInvalidation>)
+data class InvalidEvent(val event: CloudEvent, val errors: NonEmptyList<EventInvalidation>)
 data class InvalidEvents(val invalidEvents: NonEmptyList<InvalidEvent>) : InvalidBatchError
 
-data class InvalidBatchConstraints(val invalidConstraints: NonEmptyList<BatchConstraintInvalidation>): InvalidBatchError
+object EmptyBatchConstraint: BatchConstraintInvalidation
+
+data class InvalidBatchConstraint(
+    val index: Int,
+    val errors: NonEmptyList<BatchConstraintInvalidation>
+)
+
+data class InvalidBatchConstraints(
+    val invalidConstraints: NonEmptyList<InvalidBatchConstraint>
+): InvalidBatchError
 
 data class BatchConstraintViolations(
     val batch: WellFormedProposedBatch,

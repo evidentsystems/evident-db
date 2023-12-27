@@ -121,12 +121,13 @@ message DatabaseDeletionError {
 
 message QueryError {
   oneof error {
-    InvalidStreamName invalid_stream_name = 1;
-    InvalidEventId invalid_event_id = 2;
-    InvalidEventSubject invalid_event_subject = 3;
-    InvalidEventType invalid_event_type = 4;
-    EventNotFound event_not_found = 5;
-    InternalServerError internal_server_error = 6;
+    DatabaseNotFound database_not_found = 1;
+    EventNotFound event_not_found = 2;
+    InternalServerError internal_server_error = 3;
+    InvalidEventId invalid_event_id = 4;
+    InvalidEventSubject invalid_event_subject = 5;
+    InvalidEventType invalid_event_type = 6;
+    InvalidStreamName invalid_stream_name = 7;
   }
 }
 
@@ -146,6 +147,7 @@ message InvalidBatchError {
   oneof error {
     EmptyBatch empty_batch = 1;
     InvalidEvents invalid_events = 2;
+    InvalidBatchConstraints invalid_batch_constraints = 3;
   }
 }
 
@@ -162,10 +164,13 @@ message EventInvalidation {
   }
 }
 
+message EmptyBatchConstraint {}
+
 message BatchConstraintInvalidation {
   oneof error {
-    InvalidStreamName invalid_stream_name = 2;
-    InvalidEventSubject invalid_event_subject = 5;
+    InvalidStreamName invalid_stream_name = 1;
+    InvalidEventSubject invalid_event_subject = 2;
+    EmptyBatchConstraint empty_batch_constraint = 3;
   }
 }
 
@@ -183,7 +188,8 @@ message InvalidEventId {
 }
 
 message DuplicateEventId {
-  string event_id = 1;
+  string stream = 1;
+  string event_id = 2;
 }
 
 message InvalidEventSubject {
@@ -194,17 +200,21 @@ message InvalidEventType {
   string event_type = 1;
 }
 
-message InvalidEvent {
-  io.cloudevents.v1.CloudEvent event = 1;
-  repeated EventInvalidation errors = 2;
-}
-
 message InvalidEvents {
+  message InvalidEvent {
+    io.cloudevents.v1.CloudEvent event = 1;
+    repeated EventInvalidation errors = 2;
+  }
+
   repeated InvalidEvent invalid_events = 1;
 }
 
 message InvalidBatchConstraints {
-  repeated BatchConstraintInvalidation errors = 1;
+  message InvalidBatchConstraint {
+    repeated BatchConstraintInvalidation errors = 2;
+  }
+
+  repeated InvalidBatchConstraint errors = 1;
 }
 
 message BatchConstraintViolations {

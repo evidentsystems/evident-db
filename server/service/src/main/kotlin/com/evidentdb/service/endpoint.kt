@@ -1,6 +1,10 @@
 package com.evidentdb.service
 
 import arrow.core.Either
+import arrow.core.NonEmptyList
+import arrow.core.raise.either
+import arrow.core.raise.mapOrAccumulate
+import arrow.core.recover
 import com.evidentdb.adapter.EvidentDbAdapter
 import com.evidentdb.domain_model.*
 import com.evidentdb.service.v1.*
@@ -33,11 +37,25 @@ class EvidentDbEndpoint(
 
     override suspend fun transactBatch(request: TransactBatchRequest): TransactBatchReply {
         val reply = TransactBatchReply.newBuilder()
-        when (val result = adapter.transactBatch(
-                request.database,
-                request.eventsList.map { ProposedEvent(it.toDomain()) },
-                request.constraintsList.map { it.toDomain() }
-        )) {
+        val constraints = either<NonEmptyList<InvalidBatchConstraint>, List<BatchConstraint>> {
+            mapOrAccumulate(
+                request.constraintsList.withIndex()
+            ) { indexedConstraint ->
+                indexedConstraint.value.toDomain()
+                    .mapLeft { errs ->
+                        InvalidBatchConstraint(indexedConstraint.index, errs)
+                    }.bind()
+            }
+        }.mapLeft { InvalidBatchConstraints(it) }
+        val result: Either<EvidentDbCommandError, Database> =
+            either {
+                adapter.transactBatch(
+                    request.database,
+                    request.eventsList.map { ProposedEvent(it.toDomain()) },
+                    constraints.bind(),
+                ).bind()
+            }
+        when (result) {
             is Either.Left -> reply.error = result.value.toTransfer()
             is Either.Right -> reply.database = result.value.toTransfer()
         }

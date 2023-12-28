@@ -42,6 +42,7 @@ dependencyResolutionManagement {
             library("micrometer-core", "io.micrometer", "micrometer-core").versionRef("micrometer")
             library("commons-codec", "commons-codec", "commons-codec").version("1.15")
             library("slf4j-api", "org.slf4j", "slf4j-api").versionRef("slf4j")
+            library("clikt","com.github.ajalt.clikt", "clikt").version("4.2.1")
         }
     }
 }

@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":service"))
 
     implementation(libs.grpc.kotlin.stub)
+    implementation(libs.clikt)
 
     implementation("io.micronaut.grpc:micronaut-grpc-server-runtime")
     implementation("io.micronaut.validation:micronaut-validation")

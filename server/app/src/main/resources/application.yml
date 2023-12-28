@@ -2,13 +2,7 @@ micronaut:
   server:
     port: 50050
   application:
-    name: evidentdb-${evidentdb.tenant}
-evidentdb:
-  topics:
-    internal-events:
-      name: evidentdb-${evidentdb.tenant}-internal-events
-    internal-commands:
-      name: evidentdb-${evidentdb.tenant}-internal-commands
+    name: evidentdb
 endpoints:
   all:
     port: 8085
@@ -16,11 +10,17 @@ endpoints:
     enabled: true
   metrics:
     enabled: true
-kafka:
-  producers:
-    service:
-      linger.ms: 5
-  streams:
-    transactor:
-      producer.linger.ms: 0
-      state.dir: ./data/transactor
+#kafka:
+#  producers:
+#    service:
+#      linger.ms: 5
+#  streams:
+#    transactor:
+#      producer.linger.ms: 0
+#      state.dir: ./data/transactor
+#evidentdb:
+#  topics:
+#    internal-events:
+#      name: evidentdb-${evidentdb.tenant}-internal-events
+#    internal-commands:
+#      name: evidentdb-${evidentdb.tenant}-internal-commands

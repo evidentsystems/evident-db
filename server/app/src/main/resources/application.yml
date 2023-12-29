@@ -10,6 +10,9 @@ endpoints:
     enabled: true
   metrics:
     enabled: true
+  beans:
+    enabled: true
+    sensitive: false
 #kafka:
 #  producers:
 #    service:

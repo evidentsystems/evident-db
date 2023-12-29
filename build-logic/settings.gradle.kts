@@ -12,4 +12,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "build-logic"
-include("kotlin", "protobuf", "micronaut-app")
+include("kotlin", "protobuf", "micronaut-app", "micronaut-lib")

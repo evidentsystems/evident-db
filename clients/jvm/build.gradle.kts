@@ -13,7 +13,6 @@ version = "0.1.0-alpha-SNAPSHOT"
 dependencies {
     // Platform
     api(libs.kotlinx.coroutines)
-    api(libs.kotlinx.coroutines.jdk8)
     api(libs.arrow.core)
     api(libs.commons.codec)
     compileOnly(libs.slf4j.api)

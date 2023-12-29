@@ -12,7 +12,6 @@ dependencies {
     compileOnly(libs.slf4j.api)
 
     implementation(project(":domain"))
-    implementation(project(":adapters"))
 
     implementation(libs.kafka.streams)
     implementation(libs.cloudevents.api)

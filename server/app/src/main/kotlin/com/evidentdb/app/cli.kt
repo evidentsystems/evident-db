@@ -9,6 +9,7 @@ fun main(args: Array<String>) =
     EvidentDb()
         .subcommands(Init(), Run())
         .main(args)
+
 class EvidentDb : CliktCommand(
     name="evidentdb",
     help="The Event Sourcing, Event Streaming database"
@@ -20,7 +21,6 @@ class Init: CliktCommand(name="", help="") {
     override fun run() {
         echo("Initialing the database")
         Micronaut.build()
-            .eagerInitSingletons(true)
             .properties(mapOf())
             .environments("init")
             .start()

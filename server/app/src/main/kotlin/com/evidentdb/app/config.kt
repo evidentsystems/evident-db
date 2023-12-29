@@ -9,9 +9,6 @@ import jakarta.inject.Singleton
 @Factory
 class Configuration {
     @Singleton
-    fun inMemoryAdapter(): EvidentDbAdapter = InMemoryAdapter()
-
-    @Singleton
     fun endpoint(adapter: EvidentDbAdapter) =
         EvidentDbEndpoint(adapter)
 }

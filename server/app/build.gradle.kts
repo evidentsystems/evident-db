@@ -9,6 +9,7 @@ dependencies {
     implementation(libs.arrow.core)
     implementation(libs.kotlinx.coroutines)
 
+    implementation(project(":adapter-in-memory"))
     implementation(project(":domain"))
     implementation(project(":service"))
 
@@ -20,8 +21,6 @@ dependencies {
     implementation("io.micronaut.micrometer:micronaut-micrometer-registry-prometheus")
     implementation("io.micronaut:micronaut-management")
     implementation("io.micronaut:micronaut-http-server-netty")
-
-    testImplementation("io.micronaut:micronaut-http-client")
 }
 
 application {

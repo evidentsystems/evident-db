@@ -12,6 +12,7 @@
                   <project path="$PROJECT_DIR$/build-logic" />
                   <project path="$PROJECT_DIR$/build-logic/kotlin" />
                   <project path="$PROJECT_DIR$/build-logic/micronaut-app" />
+                  <project path="$PROJECT_DIR$/build-logic/micronaut-lib" />
                   <project path="$PROJECT_DIR$/build-logic/protobuf" />
                 </projects>
               </build>
@@ -30,12 +31,11 @@
               <build path="$PROJECT_DIR$/server" name="server">
                 <projects>
                   <project path="$PROJECT_DIR$/server" />
-                  <project path="$PROJECT_DIR$/server/adapters" />
+                  <project path="$PROJECT_DIR$/server/adapter-in-memory" />
                   <project path="$PROJECT_DIR$/server/app" />
                   <project path="$PROJECT_DIR$/server/domain" />
                   <project path="$PROJECT_DIR$/server/service" />
                   <project path="$PROJECT_DIR$/server/test" />
-                  <project path="$PROJECT_DIR$/server/transactor" />
                   <project path="$PROJECT_DIR$/server/transfer" />
                 </projects>
               </build>
@@ -50,18 +50,18 @@
             <option value="$PROJECT_DIR$/build-logic" />
             <option value="$PROJECT_DIR$/build-logic/kotlin" />
             <option value="$PROJECT_DIR$/build-logic/micronaut-app" />
+            <option value="$PROJECT_DIR$/build-logic/micronaut-lib" />
             <option value="$PROJECT_DIR$/build-logic/protobuf" />
             <option value="$PROJECT_DIR$/clients" />
             <option value="$PROJECT_DIR$/clients/jvm" />
             <option value="$PROJECT_DIR$/examples" />
             <option value="$PROJECT_DIR$/examples/autonomo" />
             <option value="$PROJECT_DIR$/server" />
-            <option value="$PROJECT_DIR$/server/adapters" />
+            <option value="$PROJECT_DIR$/server/adapter-in-memory" />
             <option value="$PROJECT_DIR$/server/app" />
             <option value="$PROJECT_DIR$/server/domain" />
             <option value="$PROJECT_DIR$/server/service" />
             <option value="$PROJECT_DIR$/server/test" />
-            <option value="$PROJECT_DIR$/server/transactor" />
             <option value="$PROJECT_DIR$/server/transfer" />
           </set>
         </option>

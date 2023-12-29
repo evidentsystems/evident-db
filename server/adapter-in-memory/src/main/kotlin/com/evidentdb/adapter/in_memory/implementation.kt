@@ -11,6 +11,7 @@ import com.evidentdb.application.DatabaseRepository
 import com.evidentdb.application.WritableDatabaseRepository
 import com.evidentdb.domain_model.*
 import com.evidentdb.event_model.decider
+import jakarta.inject.Singleton
 import kotlinx.coroutines.flow.*
 import java.lang.IndexOutOfBoundsException
 import java.net.URI
@@ -507,6 +508,7 @@ private class InMemoryDatabaseRepository(
     }
 }
 
+@Singleton
 class InMemoryAdapter: EvidentDbAdapter {
     override val commandService: CommandService
     override val repository: DatabaseRepository

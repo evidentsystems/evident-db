@@ -208,5 +208,23 @@ interface AdapterTests {
         val update = updates.first()
         Assertions.assertTrue(update.isLeft())
         Assertions.assertInstanceOf(DatabaseNotFound::class.java, update.leftOrNull())
+
+        val connectDatabaseNotFound = adapter.connect(databaseName).first()
+        Assertions.assertInstanceOf(
+                DatabaseNotFound::class.java,
+                connectDatabaseNotFound.leftOrNull()
+        )
+
+        // TODO: finish ensuring we get DatabaseNotFound for all relevant command/query operations
+//        adapter.latestDatabase()
+//        adapter.databaseAtRevision()
+//        adapter.catalog()
+//        adapter.databaseLog()
+//        adapter.stream()
+//        adapter.subject()
+//        adapter.subjectStream()
+//        adapter.eventById()
+//        adapter.eventType()
+//        adapter.eventsByRevision()
     }
 }

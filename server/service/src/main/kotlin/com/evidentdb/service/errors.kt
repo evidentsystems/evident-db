@@ -27,7 +27,7 @@ fun EvidentDbCommandError.toRuntimeException(): StatusRuntimeException =
         is BatchConstraintViolations -> this.toRuntimeException()
         is DatabaseNotFound -> this.toRuntimeException()
         is InternalServerError -> this.toRuntimeException()
-        EmptyBatch -> this.toRuntimeException()
+        EmptyBatch -> EmptyBatch.toRuntimeException()
         is InvalidBatchConstraints -> this.toRuntimeException()
         is InvalidEvents -> this.toRuntimeException()
         is DatabaseNameAlreadyExists -> this.toRuntimeException()
@@ -68,13 +68,6 @@ fun DatabaseNotFound.toRuntimeException(): StatusRuntimeException {
         .build()
     return StatusProto.toStatusRuntimeException(status)
 }
-
-fun InvalidBatchError.toRuntimeException(): StatusRuntimeException =
-    when (this) {
-        EmptyBatch -> this.toRuntimeException()
-        is InvalidBatchConstraints -> this.toRuntimeException()
-        is InvalidEvents -> this.toRuntimeException()
-    }
 
 fun EmptyBatch.toRuntimeException(): StatusRuntimeException =
     StatusProto.toStatusRuntimeException(Status.newBuilder()
@@ -228,15 +221,6 @@ fun DuplicateEventId.toTransfer(): ProtoDuplicateEventId {
 fun InvalidEventSource.toTransfer(): ProtoInvalidEventSource {
     val builder = ProtoInvalidEventSource.newBuilder()
     builder.eventSource = eventSource
-    return builder.build()
-}
-
-fun BatchConstraintViolations.toTransfer(): ProtoBatchConstraintViolations {
-    val builder = ProtoBatchConstraintViolations.newBuilder()
-    builder.batch = batch.toTransfer()
-    builder.addAllViolations(violations.map { violation ->
-        violation.toTransfer()
-    })
     return builder.build()
 }
 

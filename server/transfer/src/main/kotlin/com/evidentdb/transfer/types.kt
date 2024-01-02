@@ -36,16 +36,6 @@ fun Batch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
     .setBasisRevision(revision.toLong())
     .build()
 
-fun WellFormedProposedBatch.toTransfer(): ProtoWellFormedProposedBatch {
-    val builder = ProtoWellFormedProposedBatch.newBuilder()
-    builder.database = databaseName.value
-    builder.addAllEvents(events.map { it.toTransfer() })
-    builder.addAllConstraints(constraints.map { it.toTransfer() })
-    return builder.build()
-}
-
-private fun WellFormedProposedEvent.toTransfer(): ProtoCloudEvent = event.toTransfer()
-
 fun Event.toTransfer(): ProtoCloudEvent = event.toTransfer()
 
 fun BatchConstraint.toTransfer(): ProtoBatchConstraint {
@@ -156,4 +146,3 @@ fun ProtoBatchConstraint.toDomain(): Either<NonEmptyList<BatchConstraintInvalida
             null -> throw IllegalArgumentException("constraintCase enum cannot be null")
         }
     }
-

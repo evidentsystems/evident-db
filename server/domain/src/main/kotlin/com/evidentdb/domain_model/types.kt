@@ -23,7 +23,7 @@ value class DatabaseSubscriptionURI(val value: URI)
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
     companion object {
-        private val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
+        val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
 
         operator fun invoke(value: String): Either<InvalidDatabaseName, DatabaseName> = either {
             ensure(value.matches(PATTERN)) { InvalidDatabaseName(value) }
@@ -39,13 +39,6 @@ interface Database {
     val revision: DatabaseRevision
 }
 
-data class DatabaseSummary(
-    override val name: DatabaseName,
-    override val subscriptionURI: DatabaseSubscriptionURI,
-    override val created: Instant,
-    override val revision: DatabaseRevision
-): Database
-
 // Streams
 
 typealias StreamRevision = Revision
@@ -53,7 +46,7 @@ typealias StreamRevision = Revision
 @JvmInline
 value class StreamName private constructor(val value: String) {
     companion object {
-        private val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
+        val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
 
         operator fun invoke(value: String): Either<InvalidStreamName, StreamName> = either {
             ensure(value.matches(PATTERN)) { InvalidStreamName(value) }

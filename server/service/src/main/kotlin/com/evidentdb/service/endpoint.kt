@@ -4,12 +4,11 @@ import arrow.core.Either
 import arrow.core.NonEmptyList
 import arrow.core.raise.either
 import arrow.core.raise.mapOrAccumulate
-import arrow.core.recover
 import com.evidentdb.adapter.EvidentDbAdapter
 import com.evidentdb.domain_model.*
 import com.evidentdb.service.v1.*
-import com.evidentsystems.transfer.toDomain
-import com.evidentsystems.transfer.toTransfer
+import com.evidentdb.transfer.toDomain
+import com.evidentdb.transfer.toTransfer
 import io.cloudevents.protobuf.toDomain
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
@@ -32,7 +31,7 @@ class EvidentDbEndpoint(
         when (val result = adapter.createDatabase(request.name)) {
             is Either.Left -> {
                 LOGGER.warn("createDatabase error: ${request.name}")
-                reply.error = result.value.toTransfer()
+                throw result.value.toRuntimeException()
             }
             is Either.Right -> {
                 LOGGER.info("createDatabase success: ${request.name}")
@@ -66,7 +65,7 @@ class EvidentDbEndpoint(
         when (result) {
             is Either.Left -> {
                 LOGGER.warn("transactBatch error in database: ${request.database}")
-                reply.error = result.value.toTransfer()
+                throw result.value.toRuntimeException()
             }
             is Either.Right -> {
                 LOGGER.info("transactBatch success in database: ${request.database}")
@@ -82,7 +81,7 @@ class EvidentDbEndpoint(
         when (val result = adapter.deleteDatabase(request.name)) {
             is Either.Left -> {
                 LOGGER.warn("deleteDatabase error: ${request.name}")
-                reply.error = result.value.toTransfer()
+                throw result.value.toRuntimeException()
             }
             is Either.Right -> {
                 LOGGER.info("deleteDatabase success: ${request.name}")
@@ -107,7 +106,7 @@ class EvidentDbEndpoint(
         emitAll(adapter.connect(request.name).map {
             val reply = DatabaseReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.database = it.value.toTransfer()
             }
             reply.build()
@@ -118,7 +117,7 @@ class EvidentDbEndpoint(
         LOGGER.info("latestDatabase: ${request.name}")
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.latestDatabase(request.name)) {
-            is Either.Left -> reply.error = result.value.toTransfer()
+            is Either.Left -> throw result.value.toRuntimeException()
             is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
@@ -128,7 +127,7 @@ class EvidentDbEndpoint(
         LOGGER.info("databaseAtRevision: ${request.name}, ${request.revision}")
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.databaseAtRevision(request.name, request.revision.toULong())) {
-            is Either.Left -> reply.error = result.value.toTransfer()
+            is Either.Left -> throw result.value.toRuntimeException()
             is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
@@ -139,7 +138,7 @@ class EvidentDbEndpoint(
         emitAll(adapter.databaseLog(request.name, request.revision.toULong()).map {
             val reply = DatabaseLogReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.batch = it.value.toTransfer()
             }
             reply.build()
@@ -155,7 +154,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -172,7 +171,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -188,7 +187,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -204,7 +203,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -220,7 +219,7 @@ class EvidentDbEndpoint(
             request.stream,
             request.eventId
         )) {
-            is Either.Left -> reply.error = result.value.toTransfer()
+            is Either.Left -> throw result.value.toRuntimeException()
             is Either.Right -> reply.event = result.value.toTransfer()
         }
         return reply.build()
@@ -233,7 +232,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventReply.newBuilder()
             when (it) {
-                is Either.Left -> reply.error = it.value.toTransfer()
+                is Either.Left -> throw it.value.toRuntimeException()
                 is Either.Right -> reply.event = it.value.toTransfer()
             }
             reply.build()

@@ -87,71 +87,10 @@ message Batch {
 
 // Errors
 
-message EvidentDbCommandError {
-  oneof error {
-    DatabaseCreationError database_creation_error = 1;
-    BatchTransactionError batch_transaction_error = 2;
-    DatabaseDeletionError database_deletion_error = 3;
-  }
+message InvalidEvent {
+  io.cloudevents.v1.CloudEvent event = 1;
+  repeated EventInvalidation errors = 2;
 }
-
-message DatabaseCreationError {
-  oneof error {
-    InvalidDatabaseName invalid_database_name = 1;
-    DatabaseNameAlreadyExists database_name_already_exists = 2;
-    InternalServerError internal_server_error = 3;
-  }
-}
-
-message BatchTransactionError {
-  oneof error {
-    DatabaseNotFound database_not_found = 1;
-    InvalidBatchError invalid_batch = 2;
-    BatchConstraintViolations batch_constraint_violations = 3;
-    InternalServerError internal_server_error = 4;
-  }
-}
-
-message DatabaseDeletionError {
-  oneof error {
-    DatabaseNotFound database_not_found = 1;
-    InternalServerError internal_server_error = 2;
-  }
-}
-
-message QueryError {
-  oneof error {
-    DatabaseNotFound database_not_found = 1;
-    EventNotFound event_not_found = 2;
-    InternalServerError internal_server_error = 3;
-    InvalidEventId invalid_event_id = 4;
-    InvalidEventSubject invalid_event_subject = 5;
-    InvalidEventType invalid_event_type = 6;
-    InvalidStreamName invalid_stream_name = 7;
-  }
-}
-
-message InvalidDatabaseName {
-  string name = 1;
-}
-
-message DatabaseNameAlreadyExists {
-  string name = 1;
-}
-
-message DatabaseNotFound {
-  string name = 1;
-}
-
-message InvalidBatchError {
-  oneof error {
-    EmptyBatch empty_batch = 1;
-    InvalidEvents invalid_events = 2;
-    InvalidBatchConstraints invalid_batch_constraints = 3;
-  }
-}
-
-message EmptyBatch {}
 
 message EventInvalidation {
   oneof error {
@@ -164,7 +103,10 @@ message EventInvalidation {
   }
 }
 
-message EmptyBatchConstraint {}
+message InvalidBatchConstraint {
+  uint32 index = 1;
+  repeated BatchConstraintInvalidation errors = 2;
+}
 
 message BatchConstraintInvalidation {
   oneof error {
@@ -173,6 +115,8 @@ message BatchConstraintInvalidation {
     EmptyBatchConstraint empty_batch_constraint = 3;
   }
 }
+
+message EmptyBatchConstraint {}
 
 message InvalidEventSource {
   string event_source = 1;
@@ -200,32 +144,7 @@ message InvalidEventType {
   string event_type = 1;
 }
 
-message InvalidEvents {
-  message InvalidEvent {
-    io.cloudevents.v1.CloudEvent event = 1;
-    repeated EventInvalidation errors = 2;
-  }
-
-  repeated InvalidEvent invalid_events = 1;
-}
-
-message InvalidBatchConstraints {
-  message InvalidBatchConstraint {
-    repeated BatchConstraintInvalidation errors = 2;
-  }
-
-  repeated InvalidBatchConstraint errors = 1;
-}
-
 message BatchConstraintViolations {
   WellFormedProposedBatch batch = 1;
   repeated BatchConstraint violations = 2;
-}
-
-message EventNotFound {
-  string message = 1;
-}
-
-message InternalServerError {
-  string message = 1;
 }

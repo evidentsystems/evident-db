@@ -41,10 +41,7 @@ message CreateDatabaseRequest {
 }
 
 message CreateDatabaseReply {
-  oneof result {
-    EvidentDbCommandError error = 1;
-    Database database = 2;
-  }
+  Database database = 1;
 }
 
 message TransactBatchRequest {
@@ -54,10 +51,7 @@ message TransactBatchRequest {
 }
 
 message TransactBatchReply {
-  oneof result {
-    EvidentDbCommandError error = 1;
-    Database database = 2;
-  }
+  Database database = 1;
 }
 
 message DeleteDatabaseRequest {
@@ -65,10 +59,7 @@ message DeleteDatabaseRequest {
 }
 
 message DeleteDatabaseReply {
-  oneof result {
-    EvidentDbCommandError error = 1;
-    Database database = 2;
-  }
+  Database database = 1;
 }
 
 // Query API
@@ -89,10 +80,7 @@ message DatabaseAtRevisionRequest {
   uint64 revision = 2;
 }
 message DatabaseReply {
-  oneof result {
-    QueryError error = 1;
-    Database database = 2;
-  }
+  Database database = 1;
 }
 
 message DatabaseLogRequest {
@@ -100,10 +88,7 @@ message DatabaseLogRequest {
   uint64 revision = 2;
 }
 message DatabaseLogReply {
-  oneof result {
-    QueryError error = 1;
-    Batch batch = 2;
-  }
+  Batch batch = 1;
 }
 
 message StreamRequest {
@@ -132,10 +117,7 @@ message EventTypeRequest {
 }
 
 message EventRevisionReply {
-  oneof result {
-    QueryError error = 1;
-    uint64 revision = 2;
-  }
+  uint64 revision = 1;
 }
 
 message EventByIdRequest {
@@ -151,8 +133,5 @@ message EventByRevisionRequest {
 }
 
 message EventReply {
-  oneof result {
-    QueryError error = 1;
-    io.cloudevents.v1.CloudEvent event = 2;
-  }
+  io.cloudevents.v1.CloudEvent event = 1;
 }

@@ -1,4 +1,4 @@
-package com.evidentdb.domain_model
+package com.evidentdb.client
 
 import arrow.core.NonEmptyList
 import io.cloudevents.CloudEvent
@@ -44,9 +44,7 @@ data class InvalidBatchConstraints(
     val invalidConstraints: NonEmptyList<InvalidBatchConstraint>
 ): InvalidBatchError
 
-// TODO: capture provided constraint vs. current database state
 data class BatchConstraintViolations(
-    val batch: WellFormedProposedBatch,
     val violations: NonEmptyList<BatchConstraint>
 ) : BatchTransactionError
 
@@ -63,3 +61,8 @@ data class InternalServerError(val message: String):
     DatabaseDeletionError,
     BatchTransactionError,
     QueryError
+
+data class ClientClosedException(val client: Lifecycle):
+    RuntimeException("This client is closed: $client")
+data class ConnectionClosedException(val connection: Lifecycle):
+    RuntimeException("This connection is closed: $connection")

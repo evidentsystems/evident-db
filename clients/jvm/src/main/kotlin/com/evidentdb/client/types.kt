@@ -1,144 +1,97 @@
 package com.evidentdb.client
 
-import arrow.core.foldLeft
+import arrow.core.NonEmptyList
+import com.evidentdb.client.cloudevents.RecordedTimeExtension
+import com.evidentdb.client.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
+import io.cloudevents.core.provider.ExtensionProvider
+import java.net.URI
 import java.time.Instant
-import java.util.*
+
+typealias Revision = ULong
+
+// Database
 
 typealias DatabaseName = String
-typealias DatabaseRevision = Long
-typealias TopicName = String
+typealias DatabaseRevision = Revision
 
-data class DatabaseSummary(
+data class Database(
     val name: DatabaseName,
-    val topic: TopicName,
+    val subscriptionURI: URI,
     val created: Instant,
-    val streamRevisions: Map<StreamName, StreamRevision>,
-) {
-    val revision: DatabaseRevision
-        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
-            acc + v
-        }
-}
-
-typealias EventId = Long
-
-data class EventProposal(
-    val event: CloudEvent,
-    val stream: StreamName,
-    val streamState: ProposedEventStreamState = StreamState.Any,
+    val revision: DatabaseRevision,
 )
 
-data class Event(
-    val event: CloudEvent,
-    val stream: StreamName
-) {
-    val id: EventId
-        get() = event.getExtension("sequence").let {
-            when(it) {
-                is String -> base32HexStringToLong(it)
-                else -> throw IllegalStateException("Event Sequence must be a String")
-            }
-        }
-}
-
-typealias BatchId = UUID
-
-data class Batch(
-    val id: BatchId,
-    val database: DatabaseName,
-    val events: List<Event>,
-    val streamRevisions: Map<StreamName, StreamRevision>,
-    val timestamp: Instant,
-) {
-    val revision: DatabaseRevision
-        get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
-            acc + v
-        }
-}
+// Streams
 
 typealias StreamName = String
-typealias StreamRevision = Long
+typealias StreamRevision = Revision
 typealias StreamSubject = String
 
-sealed interface ProposedEventStreamState
+// Events
 
-sealed interface StreamState {
-    object Any: ProposedEventStreamState
-    object StreamExists: ProposedEventStreamState
-    // TODO: object SubjectStreamExists: ProposedEventStreamState
-    object NoStream: StreamState, ProposedEventStreamState
-    // TODO: object NoSubjectStream: ProposedEventStreamState
-    data class AtRevision(val revision: StreamRevision): StreamState, ProposedEventStreamState
-    // TODO: data class SubjectStreamAtRevision(val revision: StreamRevision): ProposedEventStreamState
+typealias EventId = String
+typealias EventType = String
+typealias EventSubject = String
+typealias EventRevision = Revision
+
+data class Event(val event: CloudEvent) {
+    val database: DatabaseName
+        get() = event.source.path.split('/')[1]
+    val stream: StreamName
+        get() = event.source.path.split('/').last()
+    val id: EventId
+        get() = event.id
+    val type: EventType
+        get() = event.type
+    val subject: EventSubject?
+        get() = event.subject
+    val revision: EventRevision
+        get() = ExtensionProvider.getInstance()
+            .parseExtension(SequenceExtension::class.java, event)!!
+            .sequence
+    val time: Instant?
+        get() = event.time?.toInstant()
+    val recordedTime: Instant
+        get() = ExtensionProvider.getInstance()
+            .parseExtension(RecordedTimeExtension::class.java, event)!!
+            .recordedTime
 }
 
-// Errors
+// Batch
 
-sealed interface DatabaseCreationError
-sealed interface DatabaseDeletionError
-sealed interface BatchTransactionError
-sealed interface NotFoundError
+sealed interface BatchConstraint {
+    data class StreamExists(val stream: StreamName) : BatchConstraint
+    data class StreamDoesNotExist(val stream: StreamName) : BatchConstraint
+    data class StreamMaxRevision(val stream: StreamName, val revision: StreamRevision) : BatchConstraint
 
-data class InvalidDatabaseNameError(val name: String):
-    DatabaseCreationError, DatabaseDeletionError, BatchTransactionError,
-    IllegalArgumentException("Invalid database name: $name")
-data class DatabaseNameAlreadyExistsError(val name: DatabaseName):
-    DatabaseCreationError,
-    IllegalStateException("Database already exists: $name")
-data class DatabaseNotFoundError(val name: String):
-    DatabaseDeletionError, BatchTransactionError, NotFoundError,
-    IllegalStateException("Database not found: $name")
-data class DatabaseTopicCreationError(val database: String, val topic: String): DatabaseCreationError,
-    IllegalStateException("Database $database topic $topic could not be created.")
-data class DatabaseTopicDeletionError(val database: String, val topic: String): DatabaseDeletionError,
-    IllegalStateException("Database $database topic $topic could not be deleted.")
+    data class SubjectExists(val subject: EventSubject) : BatchConstraint
+    data class SubjectDoesNotExist(val subject: EventSubject) : BatchConstraint
+    data class SubjectMaxRevision(
+        val subject: EventSubject,
+        val revision: StreamRevision,
+    ) : BatchConstraint
 
-//data class BatchNotFoundError(val database: String, val batchId: BatchId):
-//    NotFoundError,
-//    IllegalStateException("Batch $batchId not found in database $database")
-data class StreamNotFoundError(val database: String, val stream: StreamName):
-    NotFoundError,
-    IllegalStateException("Stream $stream not found in database $database")
-data class EventNotFoundError(val database: String, val eventId: EventId):
-    NotFoundError,
-    IllegalStateException("Event $eventId not found in database $database")
+    data class SubjectExistsOnStream(val stream: StreamName, val subject: EventSubject) : BatchConstraint
+    data class SubjectDoesNotExistOnStream(val stream: StreamName, val subject: EventSubject) : BatchConstraint
+    data class SubjectMaxRevisionOnStream(
+        val stream: StreamName,
+        val subject: EventSubject,
+        val revision: StreamRevision,
+    ) : BatchConstraint
+}
 
-sealed interface InvalidBatchError: BatchTransactionError
+data class Batch(
+    val database: DatabaseName,
+    val events: NonEmptyList<Event>,
+    val timestamp: Instant,
+    val basisRevision: DatabaseRevision,
+) {
+    val revision: DatabaseRevision
+        get() = basisRevision + events.size.toUInt()
+}
 
-object NoEventsProvidedError:
-    InvalidBatchError,
-    IllegalArgumentException("Cannot transact an empty batch")
-
-sealed interface EventInvalidation
-
-data class InvalidStreamName(val streamName: String):
-    EventInvalidation
-data class InvalidEventSubject(val eventSubject: String)
-    : EventInvalidation
-data class InvalidEventType(val eventType: String):
-    EventInvalidation
-
-data class InvalidEvent(
-    val event: EventProposal,
-    val errors: List<EventInvalidation>
+data class BatchProposal(
+    val events: NonEmptyList<CloudEvent>,
+    val constraints: List<BatchConstraint>,
 )
-data class InvalidEventsError(val invalidEvents: List<InvalidEvent>):
-    InvalidBatchError,
-    IllegalArgumentException("Invalid events: $invalidEvents")
-
-data class StreamStateConflict(val event: EventProposal, val streamState: StreamState)
-data class StreamStateConflictsError(val conflicts: List<StreamStateConflict>):
-    BatchTransactionError,
-    IllegalStateException("Stream state conflicts: $conflicts")
-
-data class InternalServerError(val error: String):
-    DatabaseCreationError, DatabaseDeletionError, BatchTransactionError,
-    RuntimeException("Internal server error: $error")
-data class SerializationError(val error: String):
-    RuntimeException("Serialization error: $error")
-
-data class ClientClosedException(val client: Lifecycle):
-    RuntimeException("This client is closed: $client")
-data class ConnectionClosedException(val connection: Lifecycle):
-    RuntimeException("This connection is closed: $connection")

@@ -26,7 +26,7 @@ class CommandService(
         databaseNameStr: String,
         events: List<ProposedEvent>,
         constraints: List<BatchConstraint>
-    ): Either<EvidentDbCommandError, ActiveDatabaseCommandModel> = either {
+    ): Either<EvidentDbCommandError, AcceptedBatch> = either {
         val databaseName = DatabaseName(databaseNameStr).bind()
         val initialState = repository.databaseCommandModel(databaseName)
         ensure(initialState is ActiveDatabaseCommandModel) { DatabaseNotFound(databaseNameStr) }
@@ -49,7 +49,7 @@ class CommandService(
             InternalServerError("Illegal state when applying batch to $databaseNameStr")
         }
         repository.saveDatabase(result).bind()
-        result
+        result.dirtyBatches.first()
     }
 
     suspend fun deleteDatabase(nameStr: String): Either<EvidentDbCommandError, DatabaseCommandModelAfterDeletion> = either {

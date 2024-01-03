@@ -9,7 +9,6 @@ import io.cloudevents.protobuf.toTransfer
 import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
 import com.evidentdb.dto.v1.proto.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
-import com.evidentdb.dto.v1.proto.BatchConstraintViolations as ProtoBatchConstraintViolations
 import com.evidentdb.dto.v1.proto.DuplicateEventId as ProtoDuplicateEventId
 import com.evidentdb.dto.v1.proto.EmptyBatchConstraint as ProtoEmptyBatchConstraint
 import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation

@@ -72,20 +72,21 @@ message BatchConstraint {
   }
 }
 
-message WellFormedProposedBatch {
-  string database = 1;
-  repeated io.cloudevents.v1.CloudEvent events = 2;
-  repeated BatchConstraint constraints = 3;
-}
-
-message Batch {
+message BatchSummary {
   string database = 1;
   repeated uint64 event_revisions = 2;
   google.protobuf.Timestamp timestamp = 3;
   uint64 basis_revision = 4;
 }
 
-// Errors
+message Batch {
+  string database = 1;
+  repeated io.cloudevents.v1.CloudEvent events = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  uint64 basis_revision = 4;
+}
+
+// Error Details
 
 message InvalidEvent {
   io.cloudevents.v1.CloudEvent event = 1;
@@ -142,9 +143,4 @@ message InvalidEventSubject {
 
 message InvalidEventType {
   string event_type = 1;
-}
-
-message BatchConstraintViolations {
-  WellFormedProposedBatch batch = 1;
-  repeated BatchConstraint violations = 2;
 }

@@ -2,6 +2,7 @@ package com.evidentdb.client.java
 
 import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
+import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
@@ -42,7 +43,7 @@ interface Connection: Lifecycle {
      * @throws RuntimeException subtypes [InternalServerError] and [SerializationError]
      *  in rare cases of server-side or client-server serialization issues respectively
      * */
-    fun transact(events: List<EventProposal>): CompletableFuture<out Batch>
+    fun transact(batch: BatchProposal): CompletableFuture<out Batch>
 
     /**
      * Immediately returns the latest database value available locally.
@@ -105,9 +106,8 @@ interface Connection: Lifecycle {
  * point-in-time queryable basis for querying streams of events. Databases have value
  * semantics, can be compared for equality, etc.
  *
- * Databases have 2 notions of clock state: [streamRevisions] which is the full clock
- * of the revision of each stream, and [revision] which summarizes the stream clock into
- * a monotonically increasing long.
+ * The clock state of a Database is its [revision], a monotonically increasing unsigned long
+ * representing the count of events present in the database.
  *
  * Databases cache their stream state (eventIds) and draw on their connection's event cache.
  * After their parent client or connection is closed, all subsequent API method calls will
@@ -115,10 +115,9 @@ interface Connection: Lifecycle {
  */
 interface Database {
     val name: DatabaseName
-    val topic: TopicName
+    val subscriptionURI: URI
     val created: Instant
     val revision: DatabaseRevision
-    val streamRevisions: Map<StreamName, StreamRevision>
 
     /**
      * Returns a [CloseableIterator] of [CloudEvent]s comprising
@@ -149,10 +148,39 @@ interface Database {
         subjectName: StreamSubject
     ): CloseableIterator<CloudEvent>
 
+
+    /**
+     * Returns a [CloseableIterator] of [CloudEvent]s comprising this subject across all streams as
+     * of this [Database]'s revision.
+     *
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not.
+     *
+     * @return [CloseableIterator] of [CloudEvent]s comprising this subject, if any, in transaction order.
+     */
+    fun fetchSubject(
+        subjectName: StreamSubject
+    ): CloseableIterator<CloudEvent>
+
+    /**
+     * Returns a [CloseableIterator] of [CloudEvent]s having the given event type across all streams
+     * as of this [Database]'s revision.
+     *
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not.
+     *
+     * @return [CloseableIterator] of [CloudEvent]s having the given event type, if any, in transaction order.
+     */
+    fun fetchEventType(
+        eventType: EventType
+    ): CloseableIterator<CloudEvent>
+
     /**
      * Returns a future bearing the [CloudEvent] having the given ID, if it exists.
      *
      * @return a [CompletableFuture] bearing the [CloudEvent]? if it exists w/in this database.
      */
-    fun fetchEvent(eventId: EventId): CompletableFuture<out CloudEvent?>
+    fun fetchEventById(eventId: EventId): CompletableFuture<out CloudEvent?>
 }

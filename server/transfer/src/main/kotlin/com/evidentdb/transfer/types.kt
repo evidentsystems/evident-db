@@ -12,9 +12,9 @@ import java.time.Instant
 import io.cloudevents.v1.proto.CloudEvent as ProtoCloudEvent
 import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
 import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
+import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
 import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
 import com.evidentdb.dto.v1.proto.BatchConstraint.ConstraintCase.*
-import com.evidentdb.dto.v1.proto.WellFormedProposedBatch as ProtoWellFormedProposedBatch
 
 fun Instant.toTimestamp(): Timestamp =
     Timestamp.newBuilder()
@@ -29,7 +29,16 @@ fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
     .setRevision(revision.toLong())
     .build()
 
-fun Batch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
+// For returning AcceptedBatch from transaction
+fun AcceptedBatch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
+    .setDatabase(database.value)
+    .addAllEvents(events.map { it.event.toTransfer() })
+    .setTimestamp(timestamp.toTimestamp())
+    .setBasisRevision(revision.toLong())
+    .build()
+
+// For fetching BatchSummary for log, etc.
+fun Batch.toTransfer(): ProtoBatchSummary = ProtoBatchSummary.newBuilder()
     .setDatabase(database.value)
     .addAllEventRevisions(eventRevisions.map { it.toLong() })
     .setTimestamp(timestamp.toTimestamp())

@@ -48,9 +48,9 @@ interface EvidentDb: Lifecycle {
      * must [CloseableIterator.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not.
      *
-     * @returns a [CloseableIterator] of [DatabaseSummary].
+     * @returns a [CloseableIterator] of [Database].
      */
-    fun fetchCatalog(): CloseableIterator<DatabaseSummary>
+    fun fetchCatalog(): CloseableIterator<Database>
 
     /**
      * Returns a connection to a specific database. This method caches,
@@ -74,31 +74,19 @@ interface EvidentDb: Lifecycle {
             GrpcClientKt(channelBuilder)
 
         @JvmStatic
-        fun eventProposal(
-            event: CloudEvent,
+        fun eventBuilder(
             streamName: StreamName,
-            streamState: ProposedEventStreamState = StreamState.Any,
-        ) = EventProposal(
-            event,
-            streamName,
-            streamState,
-        )
-
-        @JvmStatic
-        fun eventProposal(
+            eventId: String,
             eventType: String,
-            streamName: StreamName,
-            streamState: ProposedEventStreamState = StreamState.Any,
             subject: String? = null,
-            eventId: String? = null,
             data: CloudEventData? = null,
             dataContentType: String? = null,
             dataSchema: URI? = null,
             extensions: List<CloudEventExtension> = listOf(),
-        ): EventProposal {
+        ): CloudEventBuilder {
             val builder = CloudEventBuilder.v1()
                 .withId(eventId ?: UUID.randomUUID().toString())
-                .withSource(URI("edb:client"))
+                .withSource(URI(streamName))
                 .withType(eventType)
                 .withData(data)
                 .withDataContentType(dataContentType)
@@ -106,12 +94,22 @@ interface EvidentDb: Lifecycle {
                 .withSubject(subject)
             for (extension in extensions)
                 builder.withExtension(extension)
-            return EventProposal(
-                builder.build(),
-                streamName,
-                streamState,
-            )
+            return builder
         }
+
+        @JvmStatic
+        fun event(
+            streamName: StreamName,
+            eventId: String,
+            eventType: String,
+            subject: String? = null,
+            data: CloudEventData? = null,
+            dataContentType: String? = null,
+            dataSchema: URI? = null,
+            extensions: List<CloudEventExtension> = listOf(),
+        ): CloudEvent = eventBuilder(
+            streamName, eventId, eventType, subject, data, dataContentType, dataSchema, extensions
+        ).build()
     }
 }
 
@@ -145,9 +143,9 @@ interface EvidentDbKt: EvidentDb {
     /**
      * Returns the catalog of all available databases as a [Flow].
      *
-     * @returns a [Flow] of [DatabaseSummary].
+     * @returns a [Flow] of [Database].
      */
-    fun fetchCatalogAsync(): Flow<DatabaseSummary>
+    fun fetchCatalogAsync(): Flow<Database>
 
     /**
      * Returns a connection to a specific database. This method caches,

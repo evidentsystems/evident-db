@@ -8,6 +8,7 @@ import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future
+import java.net.URI
 import java.time.Instant
 import java.util.concurrent.*
 
@@ -20,7 +21,7 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     override fun deleteDatabase(name: DatabaseName): Boolean =
         runBlocking { kotlinClient.deleteDatabaseAsync(name) }
 
-    override fun fetchCatalog(): CloseableIterator<DatabaseSummary> =
+    override fun fetchCatalog(): CloseableIterator<com.evidentdb.client.Database> =
         kotlinClient.fetchCatalogAsync().asIterator()
 
     override fun connectDatabase(name: DatabaseName): Connection =
@@ -41,9 +42,9 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
             get() = kotlinConnection.database
         private val connectionScope = CoroutineScope(Dispatchers.Default)
 
-        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
+        override fun transact(batch: BatchProposal): CompletableFuture<Batch> =
             connectionScope.future {
-                kotlinConnection.transactAsync(events)
+                kotlinConnection.transactAsync(batch)
             }
 
         override fun db(): Database = DatabaseImpl(kotlinConnection.db())
@@ -73,12 +74,10 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private class DatabaseImpl(private val kotlinDatabase: DatabaseKt): Database {
         override val name: DatabaseName
             get() = kotlinDatabase.name
-        override val topic: TopicName
-            get() = kotlinDatabase.topic
+        override val subscriptionURI: URI
+            get() = kotlinDatabase.subscriptionURI
         override val created: Instant
             get() = kotlinDatabase.created
-        override val streamRevisions: Map<StreamName, StreamRevision>
-            get() = kotlinDatabase.streamRevisions
         override val revision: DatabaseRevision
             get() = kotlinDatabase.revision
 
@@ -93,13 +92,19 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
                 .fetchSubjectStreamAsync(streamName, subjectName)
                 .asIterator()
 
-        override fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?> =
-            runBlocking { future { kotlinDatabase.fetchEventAsync(eventId) } }
+        override fun fetchSubject(subjectName: StreamSubject): CloseableIterator<CloudEvent> =
+            kotlinDatabase.fetchSubjectAsync(subjectName).asIterator()
+
+        override fun fetchEventType(eventType: EventType): CloseableIterator<CloudEvent> =
+            kotlinDatabase.fetchEventTypeAsync(eventType).asIterator()
+
+    override fun fetchEventById(eventId: EventId): CompletableFuture<out CloudEvent?> =
+            runBlocking { future { kotlinDatabase.fetchEventByIdAsync(eventId) } }
 
         // Use as Data Class
         operator fun component1() = name
         operator fun component2() = created
-        operator fun component3() = streamRevisions
+        operator fun component3() = revision
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -109,7 +114,7 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
 
             if (name != other.name) return false
             if (created != other.created) return false
-            if (streamRevisions != other.streamRevisions) return false
+            if (revision != other.revision) return false
 
             return true
         }
@@ -117,12 +122,13 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
         override fun hashCode(): Int {
             var result = name.hashCode()
             result = 31 * result + created.hashCode()
-            result = 31 * result + streamRevisions.hashCode()
+            result = 31 * result + revision.hashCode()
             return result
         }
 
         override fun toString(): String {
-            return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+            return "Database(name='$name', subcriptionURI=$subscriptionURI, " +
+                    "created=$created, revision=$revision)"
         }
     }
 }

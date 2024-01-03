@@ -51,7 +51,7 @@ message TransactBatchRequest {
 }
 
 message TransactBatchReply {
-  Database database = 1;
+  Batch batch = 1;
 }
 
 message DeleteDatabaseRequest {
@@ -87,8 +87,9 @@ message DatabaseLogRequest {
   string name = 1;
   uint64 revision = 2;
 }
+
 message DatabaseLogReply {
-  Batch batch = 1;
+  BatchSummary batch = 1;
 }
 
 message StreamRequest {

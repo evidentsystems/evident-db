@@ -1,21 +1,18 @@
 package com.evidentdb.client.kotlin
 
-import arrow.core.foldLeft
+import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.*
-import com.evidentdb.client.java.Database as DatabaseJava
-import com.evidentdb.client.dto.protobuf.toDomain
-import com.evidentdb.client.dto.protobuf.toInstant
-import com.evidentdb.client.dto.protobuf.toProto
-import com.evidentdb.dto.v1.proto.BatchProposal
-import com.evidentdb.dto.v1.proto.DatabaseDeletionInfo
+import com.evidentdb.client.transfer.toDomain
+import com.evidentdb.client.transfer.toInstant
+import com.evidentdb.client.transfer.toTransfer
 import com.evidentdb.service.v1.*
-import com.github.benmanes.caffeine.cache.AsyncCache
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.stats.CacheStats
 import io.cloudevents.CloudEvent
 import io.cloudevents.protobuf.toDomain
+import io.cloudevents.protobuf.toTransfer
 import io.grpc.Channel
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
@@ -23,6 +20,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
+import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -32,12 +30,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.annotation.concurrent.ThreadSafe
+import kotlin.math.max
 
-internal const val DEFAULT_CACHE_SIZE: Long = 10_000 // TODO: Make configurable
-internal const val EVENTS_TO_DATABASE_CACHE_SIZE_RATIO = 100
+internal const val DEFAULT_CACHE_SIZE: Long = 10_000
 internal const val AVERAGE_EVENT_WEIGHT = 1000
 internal const val EMPTY_EVENT_WEIGHT = 10
-internal const val LATEST_DATABASE_REVISION_SIGIL = 0L
+internal const val LATEST_DATABASE_REVISION_SIGIL = 0uL
 internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
 
 /**
@@ -69,6 +67,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
     private val isActive: Boolean
         get() = active.get()
 
+    // TODO: make this configurable, perhaps via a Java property?
     var cacheSize: Long
         get() = cacheSizeReference.get()
         set(value) {
@@ -87,28 +86,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                     .setName(name)
                     .build()
             )
-            when (result.resultCase) {
-                CreateDatabaseReply.ResultCase.DATABASE_CREATION ->
-                    true
-
-                CreateDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                    throw InvalidDatabaseNameError(name)
-
-                CreateDatabaseReply.ResultCase.DATABASE_NAME_ALREADY_EXISTS_ERROR ->
-                    throw DatabaseNameAlreadyExistsError(name)
-
-                CreateDatabaseReply.ResultCase.DATABASE_TOPIC_CREATION_ERROR ->
-                    throw DatabaseTopicCreationError(
-                        result.databaseTopicCreationError.database,
-                        result.databaseTopicCreationError.topic
-                    )
-
-                CreateDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                    throw InternalServerError(result.internalServerError.message)
-
-                else ->
-                    throw SerializationError("Result not set")
-            }
+            result.hasDatabase()
         }
 
     override fun deleteDatabase(name: DatabaseName): Boolean =
@@ -119,40 +97,17 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             throw ClientClosedException(this)
         else {
             val result = grpcClient.deleteDatabase(
-                DatabaseDeletionInfo.newBuilder()
+                DeleteDatabaseRequest.newBuilder()
                     .setName(name)
                     .build()
             )
-            when (result.resultCase) {
-                DeleteDatabaseReply.ResultCase.DATABASE_DELETION -> {
-                    removeConnection(name)?.shutdown()
-                    true
-                }
-
-                DeleteDatabaseReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                    throw InvalidDatabaseNameError(name)
-
-                DeleteDatabaseReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                    throw DatabaseNotFoundError(name)
-
-                DeleteDatabaseReply.ResultCase.DATABASE_TOPIC_DELETION_ERROR ->
-                    throw DatabaseTopicDeletionError(
-                        result.databaseTopicDeletionError.database,
-                        result.databaseTopicDeletionError.topic
-                    )
-
-                DeleteDatabaseReply.ResultCase.INTERNAL_SERVER_ERROR ->
-                    throw InternalServerError(result.internalServerError.message)
-
-                else ->
-                    throw SerializationError("Result not set")
-            }
+            result.hasDatabase()
         }
 
-    override fun fetchCatalog(): CloseableIterator<DatabaseSummary> =
+    override fun fetchCatalog(): CloseableIterator<com.evidentdb.client.Database> =
         fetchCatalogAsync().asIterator()
 
-    override fun fetchCatalogAsync(): Flow<DatabaseSummary> =
+    override fun fetchCatalogAsync(): Flow<com.evidentdb.client.Database> =
         if (!isActive)
             throw ClientClosedException(this)
         else
@@ -164,9 +119,11 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         if (!isActive) {
             throw ClientClosedException(this)
         } else {
+            // Return from the cache, if available
             connections[name]?.let {
                 return@connectDatabase it
             }
+            // Otherwise, create, start, and cache a new connection
             val newConnection = ConnectionImpl(name, cacheSize)
             newConnection.start()
             connections[name] = newConnection
@@ -196,20 +153,16 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         override val database: DatabaseName,
         eventCacheSize: Long,
     ) : Connection {
+        private lateinit var subscriptionURI: URI
+        private lateinit var created: Instant
         private val connectionScope = CoroutineScope(Dispatchers.Default)
-        private val latestRevision: AtomicReference<DatabaseSummary> = AtomicReference()
-
-        private val dbCacheChannel = channelBuilder.build()
-        private val dbCache: AsyncCache<DatabaseRevision, DatabaseSummary> =
-            Caffeine.newBuilder()
-                .maximumSize(eventCacheSize.div(EVENTS_TO_DATABASE_CACHE_SIZE_RATIO))
-                .buildAsync()
+        private val latestRevision: AtomicReference<DatabaseRevision> = AtomicReference(0uL)
 
         private val eventCacheChannel = channelBuilder.build()
-        private val eventCache: AsyncLoadingCache<EventId, CloudEvent> =
+        private val eventCache: AsyncLoadingCache<EventRevision, CloudEvent> =
             Caffeine.newBuilder()
                 .maximumWeight(eventCacheSize * AVERAGE_EVENT_WEIGHT)
-                .weigher<EventId, CloudEvent> { _, event -> event.data?.toBytes()?.size ?: EMPTY_EVENT_WEIGHT }
+                .weigher<EventRevision, CloudEvent> { _, event -> event.data?.toBytes()?.size ?: EMPTY_EVENT_WEIGHT }
                 .buildAsync(EventLoader(eventCacheChannel, database))
 
         private val grpcClientChannel = channelBuilder.build()
@@ -217,128 +170,87 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
         fun start() {
             connectionScope.launch {
+                // TODO: handle errors, reconnection, etc.
                 grpcClient.connect(
-                    DatabaseRequest.newBuilder()
+                    ConnectRequest.newBuilder()
                         .setName(database)
                         .build()
                 ).collect { reply ->
-                    when (reply.resultCase) {
-                        DatabaseReply.ResultCase.DATABASE -> {
-                            val summary = reply.database.toDomain()
-                            setLatestRevision(summary)
-                            dbCache.get(summary.revision) { _ -> summary }
-                        }
-
-                        DatabaseReply.ResultCase.NOT_FOUND -> {
-                            shutdownNow()
-                            // TODO: throwing here doesn't prevent connection
-                            //  from constructing and returning from connectDatabase
-                            throw DatabaseNotFoundError(database)
-                        }
-
-                        else -> throw SerializationError("Result not set")
-                    }
+                    val summary = reply.database.toDomain()
+                    subscriptionURI = summary.subscriptionURI
+                    created = summary.created
+                    latestRevision.set(summary.revision)
                 }
             }
         }
 
-        override fun transact(events: List<EventProposal>): CompletableFuture<Batch> =
-            connectionScope.future { transactAsync(events) }
+        override fun transact(batch: BatchProposal): CompletableFuture<Batch> =
+            connectionScope.future { transactAsync(batch) }
 
-        override suspend fun transactAsync(events: List<EventProposal>): Batch =
+        override suspend fun transactAsync(batch: BatchProposal): Batch =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {
-                if (events.isEmpty())
-                    throw NoEventsProvidedError
+                // Fail fast on empty batch, no need to round-trip
+                if (batch.events.isEmpty())
+                    throw IllegalArgumentException("Batch cannot be empty")
 
                 val result = grpcClient.transactBatch(
-                    BatchProposal.newBuilder()
+                    TransactBatchRequest.newBuilder()
                         .setDatabase(database)
-                        .addAllEvents(events.map { it.toProto() })
+                        .addAllEvents(batch.events.map { it.toTransfer() })
+                        .addAllConstraints(batch.constraints.map { it.toTransfer() })
                         .build()
                 )
-                when (result.resultCase) {
-                    TransactBatchReply.ResultCase.BATCH_TRANSACTION -> {
-                        val database = result.batchTransaction.database.toDomain()
-                        setLatestRevision(database)
-                        dbCache.get(database.revision) { _ -> database }
+                val batch = result.batch.toDomain()
+                maybeSetLatestRevision(batch.revision)
 
-                        val batch = result.batchTransaction.batch.toDomain()
-                        eventCache.synchronous().putAll(
-                            batch.events.fold(mutableMapOf()) { acc, event ->
-                                acc[event.id] = event.event
-                                acc
-                            }
-                        )
-
-                        batch
+                // TODO: index accepted batch events into local cache
+                eventCache.synchronous().putAll(
+                    batch.events.fold(mutableMapOf()) { acc, event ->
+                        acc[event.revision] = event.event
+                        acc
                     }
+                )
 
-                    TransactBatchReply.ResultCase.INVALID_DATABASE_NAME_ERROR ->
-                        throw InvalidDatabaseNameError(result.invalidDatabaseNameError.name)
-
-                    TransactBatchReply.ResultCase.NO_EVENTS_PROVIDED_ERROR ->
-                        throw NoEventsProvidedError
-
-                    TransactBatchReply.ResultCase.INVALID_EVENTS_ERROR ->
-                        throw InvalidEventsError(
-                            result.invalidEventsError.invalidEventsList.map { invalidEvent ->
-                                invalidEvent.toDomain()
-                            }
-                        )
-
-                    TransactBatchReply.ResultCase.DATABASE_NOT_FOUND_ERROR ->
-                        throw DatabaseNotFoundError(result.databaseNotFoundError.name)
-
-                    TransactBatchReply.ResultCase.STREAM_STATE_CONFLICT_ERROR ->
-                        throw StreamStateConflictsError(
-                            result.streamStateConflictError.conflictsList.map {
-                                it.toDomain()
-                            }
-                        )
-
-                    else -> throw InternalServerError(result.internalServerError.message)
-                }
+                batch
             }
 
         override fun db(): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
-                latestRevision.get().let { summary ->
-                    DatabaseImpl(
-                        summary.name,
-                        summary.topic,
-                        summary.created,
-                        summary.streamRevisions,
-                    )
-                }
+                DatabaseImpl(
+                    database,
+                    subscriptionURI,
+                    created,
+                    latestRevision.get(),
+                )
 
         override fun fetchDbAsOf(revision: DatabaseRevision): CompletableFuture<Database> =
             connectionScope.future {
                 fetchDbAsOfAsync(revision)
             }
 
-        // TODO: validate revision > 0, and ensure
-        //  all valid revisions return a valid database
-        //  event fuzzy (currently throws NPE if not an exact match?)
+        /**
+         * May block while awaiting database revision on server
+         */
         override suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): Database =
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else {
-                val summary = dbCache.get(revision) { _, executor ->
-                    connectionScope.future(executor.asCoroutineDispatcher()) {
-                        val summary = loadDatabase(grpcClient, database, revision)
-                        setLatestRevision(summary)
-                        summary
-                    }
-                }.await()
+                val summary = grpcClient.databaseAtRevision(
+                    DatabaseAtRevisionRequest.newBuilder()
+                        .setName(database)
+                        .setRevision(revision.toLong())
+                        .build()
+                ).database.toDomain()
+                maybeSetLatestRevision(summary.revision)
                 DatabaseImpl(
                     summary.name,
-                    summary.topic,
+                    summary.subscriptionURI,
                     summary.created,
-                    summary.streamRevisions,
+                    summary.revision,
                 )
             }
 
@@ -351,14 +263,17 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             if (!connectionScope.isActive)
                 throw ConnectionClosedException(this)
             else
-                loadDatabase(grpcClient, database, LATEST_DATABASE_REVISION_SIGIL).let { summary ->
-                        setLatestRevision(summary)
-                        dbCache.get(summary.revision) { _ -> summary }
+                grpcClient.latestDatabase(
+                    LatestDatabaseRequest.newBuilder()
+                        .setName(database)
+                        .build()
+                ).database.toDomain().let { summary ->
+                        maybeSetLatestRevision(summary.revision)
                         DatabaseImpl(
                             summary.name,
-                            summary.topic,
+                            summary.subscriptionURI,
                             summary.created,
-                            summary.streamRevisions,
+                            summary.revision,
                         )
                     }
 
@@ -372,38 +287,25 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 grpcClient.databaseLog(
                     DatabaseLogRequest
                         .newBuilder()
-                        .setDatabase(database)
+                        .setName(database)
                         .build()
                 ).map { batch ->
-                    when (batch.resultCase) {
-                        DatabaseLogReply.ResultCase.BATCH -> {
-                            val batchSummary = batch.batch
-                            val batchEvents = eventCache.getAll(
-                                batchSummary.eventsList.map { it.id }
-                            ).await()
-                            Batch(
-                                BatchId.fromString(batchSummary.id),
-                                database,
-                                batchSummary.eventsList.map {
-                                    Event(
-                                        batchEvents[it.id]!!,
-                                        it.stream
-                                    )
-                                },
-                                batchSummary.streamRevisionsMap,
-                                batchSummary.timestamp.toInstant(),
+                    val batchSummary = batch.batch
+                    val batchEvents = eventCache.getAll(
+                        batchSummary.eventRevisionsList.map { it.toULong() }
+                    ).await()
+                    Batch(
+                        database,
+                        batchSummary.eventRevisionsList.map {
+                            Event(
+                                batchEvents[it.toULong()]!!
                             )
-                        }
-
-                        DatabaseLogReply.ResultCase.DATABASE_NOT_FOUND ->
-                            throw DatabaseNotFoundError(batch.databaseNotFound.name)
-
-                        else ->
-                            throw SerializationError("Result not set")
-                    }
+                        }.toNonEmptyListOrNull()!!,
+                        batchSummary.timestamp.toInstant(),
+                        batchSummary.basisRevision.toULong(),
+                    )
                 }
 
-        fun databaseCacheStats(): CacheStats = dbCache.synchronous().stats()
         fun eventCacheStats(): CacheStats = eventCache.synchronous().stats()
 
         override fun shutdown() {
@@ -424,43 +326,31 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             removeConnection(database)
         }
 
-        private fun setLatestRevision(database: DatabaseSummary) {
+        private fun maybeSetLatestRevision(revision: DatabaseRevision) {
             latestRevision.getAndUpdate { current ->
-                if (current == null || (database.revision > current.revision))
-                    database
-                else
-                    current
+                max(revision, current)
             }
         }
 
         private fun doToAllChannels(block: (ManagedChannel) -> Unit) =
             listOf(
-                dbCacheChannel,
                 eventCacheChannel,
                 grpcClientChannel
             ).forEach(block)
 
         private fun invalidateCaches() {
-            dbCache.synchronous().invalidateAll()
             eventCache.synchronous().invalidateAll()
         }
 
-        private suspend fun getCachedEvent(eventId: EventId): CloudEvent? =
-            eventCache[eventId].await()
+        private suspend fun getCachedEvent(eventRevision: EventRevision): CloudEvent? =
+            eventCache[eventRevision].await()
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
-            override val topic: TopicName,
+            override val subscriptionURI: URI,
             override val created: Instant,
-            override val streamRevisions: Map<StreamName, StreamRevision>,
+            override val revision: DatabaseRevision,
         ) : Database {
-            private val streams = ConcurrentHashMap<StreamName, List<EventId>>(streamRevisions.size)
-
-            override val revision: DatabaseRevision
-                get() = streamRevisions.foldLeft(0L) { acc, (_, v) ->
-                    acc + v
-                }
-
             override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> =
                 fetchStreamAsync(streamName).asIterator()
 
@@ -468,13 +358,11 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    val maxRevision = streamRevisions[streamName]
-                        ?: throw StreamNotFoundError(database, streamName)
                     processStreamReplyFlow(
-                        maxRevision,
                         grpcClient.stream(
                             StreamRequest.newBuilder()
                                 .setDatabase(database)
+                                .setRevision(revision.toLong())
                                 .setStream(streamName)
                                 .build()
                         )
@@ -494,10 +382,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
-                    val maxRevision = streamRevisions[streamName]
-                        ?: throw StreamNotFoundError(database, streamName)
                     processStreamReplyFlow(
-                        maxRevision,
                         grpcClient.subjectStream(
                             SubjectStreamRequest.newBuilder()
                                 .setDatabase(database)
@@ -508,41 +393,70 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                     )
                 }
 
-            private fun processStreamReplyFlow(
-                maxRevision: Long,
-                streamReplyFlow: Flow<StreamEntryReply>
-            ) = streamReplyFlow
-                .map { reply ->
-                    when (reply.resultCase) {
-                        StreamEntryReply.ResultCase.STREAM_MAP_ENTRY ->
-                            reply.streamMapEntry
-                        StreamEntryReply.ResultCase.STREAM_NOT_FOUND ->
-                            throw StreamNotFoundError(
-                                reply.streamNotFound.database,
-                                reply.streamNotFound.stream,
-                            )
-                        else -> throw SerializationError("Result not set")
-                    }
-                }.takeWhile { entry ->
-                    entry.streamRevision <= maxRevision
-                }.map { entry ->
-                    eventCache[entry.eventId].await()
-                }
+            override fun fetchSubject(subjectName: StreamSubject): CloseableIterator<CloudEvent> =
+                fetchSubjectAsync(subjectName).asIterator()
 
-
-            override fun fetchEvent(eventId: EventId): CompletableFuture<CloudEvent?> =
-                runBlocking { future { fetchEventAsync(eventId) } }
-
-            override suspend fun fetchEventAsync(eventId: EventId): CloudEvent? =
+            override fun fetchSubjectAsync(subjectName: StreamSubject): Flow<CloudEvent> =
                 if (!connectionScope.isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
-                else
-                    getCachedEvent(eventId)
+                else {
+                    processStreamReplyFlow(
+                        grpcClient.subject(
+                            SubjectRequest.newBuilder()
+                                .setDatabase(database)
+                                .setRevision(revision.toLong())
+                                .setSubject(subjectName)
+                                .build()
+                        )
+                    )
+                }
+
+            override fun fetchEventType(eventType: EventType): CloseableIterator<CloudEvent> =
+                fetchEventTypeAsync(eventType).asIterator()
+
+            override fun fetchEventTypeAsync(eventType: EventType): Flow<CloudEvent> =
+                if (!connectionScope.isActive)
+                    throw ConnectionClosedException(this@ConnectionImpl)
+                else {
+                    processStreamReplyFlow(
+                        grpcClient.eventType(
+                            EventTypeRequest.newBuilder()
+                                .setDatabase(database)
+                                .setRevision(revision.toLong())
+                                .setEventType(eventType)
+                                .build()
+                        )
+                    )
+                }
+
+            private fun processStreamReplyFlow(
+                streamReplyFlow: Flow<EventRevisionReply>
+            ) = streamReplyFlow
+                .map { it.revision.toULong() }
+                .takeWhile { r -> r <= revision }
+                .map { r -> eventCache[r].await() }
+
+
+            override fun fetchEventById(eventId: EventId): CompletableFuture<CloudEvent?> =
+                runBlocking { future { fetchEventByIdAsync(eventId) } }
+
+            override suspend fun fetchEventByIdAsync(eventId: EventId): CloudEvent? =
+                if (!connectionScope.isActive) {
+                    throw ConnectionClosedException(this@ConnectionImpl)
+                } else {
+                    // TODO: build a cache/map of id -> revision for 2-step lookup?
+                    grpcClient.eventById(
+                        EventByIdRequest.newBuilder()
+                            .setDatabase(database)
+                            .setEventId(eventId)
+                            .build()
+                    ).event.toDomain()
+                }
 
             // Use as Data Class
             operator fun component1() = name
             operator fun component2() = created
-            operator fun component3() = streamRevisions
+            operator fun component3() = revision
 
             override fun equals(other: Any?): Boolean {
                 if (this === other) return true
@@ -552,7 +466,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
                 if (name != other.name) return false
                 if (created != other.created) return false
-                if (streamRevisions != other.streamRevisions) return false
+                if (revision != other.revision) return false
 
                 return true
             }
@@ -560,87 +474,51 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             override fun hashCode(): Int {
                 var result = name.hashCode()
                 result = 31 * result + created.hashCode()
-                result = 31 * result + streamRevisions.hashCode()
+                result = 31 * result + revision.hashCode()
                 return result
             }
 
             override fun toString(): String {
-                return "Database(name='$name', topic=$topic, created=$created, streamRevisions=$streamRevisions, revision=$revision)"
+                return "Database(name='$name', topic=$subscriptionURI, created=$created, streamRevisions=$revision, revision=$revision)"
             }
         }
-    }
-}
-
-internal suspend fun loadDatabase(
-    grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub,
-    database: DatabaseName,
-    revision: DatabaseRevision,
-): DatabaseSummary {
-    val builder = DatabaseRequest.newBuilder()
-        .setName(database)
-    if (revision > LATEST_DATABASE_REVISION_SIGIL)
-        builder.revision = revision
-    val result = grpcClient.database(builder.build())
-    return when (result.resultCase) {
-        DatabaseReply.ResultCase.DATABASE -> result.database.toDomain()
-
-        DatabaseReply.ResultCase.NOT_FOUND ->
-            throw DatabaseNotFoundError(result.notFound.name)
-
-        else ->
-            throw SerializationError("Result not set")
     }
 }
 
 internal class EventLoader(
     channel: Channel,
     private val database: DatabaseName,
-) : AsyncCacheLoader<EventId, CloudEvent> {
+) : AsyncCacheLoader<EventRevision, CloudEvent> {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)
 
     override fun asyncLoad(
-        key: EventId?,
+        key: EventRevision?,
         executor: Executor?
     ): CompletableFuture<CloudEvent?> = runBlocking(executor!!.asCoroutineDispatcher()) {
         future { fetchEvents(listOf(key!!))[key] }
     }
 
     override fun asyncLoadAll(
-        keys: MutableSet<out EventId>?,
+        keys: MutableSet<out EventRevision>?,
         executor: Executor?
-    ): CompletableFuture<out Map<out EventId, CloudEvent>> =
+    ): CompletableFuture<out Map<out EventRevision, CloudEvent>> =
         runBlocking(executor!!.asCoroutineDispatcher()) {
             future { fetchEvents(keys!!.toList()) }
         }
 
     private suspend fun fetchEvents(
-        eventIds: List<EventId>
-    ): Map<EventId, CloudEvent> {
+        eventIds: List<EventRevision>
+    ): Map<EventRevision, CloudEvent> {
         val result = grpcClient.events(
-            eventIds.map {
-                EventRequest.newBuilder()
-                    .setDatabase(database)
-                    .setEventId(it)
-                    .build()
-            }.asFlow()
+            EventByRevisionRequest.newBuilder()
+                .setDatabase(database)
+                .addAllEventRevisions(eventIds.map { it.toLong() })
+                .build()
         )
-        val eventMap = mutableMapOf<EventId, CloudEvent>()
+        val eventMap = mutableMapOf<EventRevision, CloudEvent>()
         result.collect { reply ->
-            when (reply.resultCase) {
-                EventReply.ResultCase.EVENT_MAP_ENTRY -> {
-                    val entry = reply.eventMapEntry
-                    val id = entry.eventId
-                    eventMap[id] = entry.event.toDomain()
-                }
-
-                EventReply.ResultCase.EVENT_NOT_FOUND ->
-                    throw EventNotFoundError(
-                        reply.eventNotFound.database,
-                        reply.eventNotFound.eventId,
-                    )
-
-                else -> throw SerializationError("Result not set")
-            }
+            val event = Event(reply.event.toDomain())
+            eventMap[event.revision] = event.event
         }
         return eventMap
     }

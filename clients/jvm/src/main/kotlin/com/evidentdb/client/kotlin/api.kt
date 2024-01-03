@@ -42,7 +42,7 @@ interface Connection: ConnectionJava {
      * @throws RuntimeException subtypes [InternalServerError] and [SerializationError]
      *  in rare cases of server-side or client-server serialization issues respectively
      * */
-    suspend fun transactAsync(events: List<EventProposal>): Batch
+    suspend fun transactAsync(batch: BatchProposal): Batch
 
     /**
      * Immediately returns the latest database value available locally.
@@ -128,9 +128,8 @@ interface Connection: ConnectionJava {
  * point-in-time queryable basis for querying streams of events. Databases have value
  * semantics, can be compared for equality, etc.
  *
- * Databases have 2 notions of clock state: [streamRevisions] which is the full clock
- * of the revision of each stream, and [revision] which summarizes the stream clock into
- * a monotonically increasing long.
+ * The clock state of a Database is its [revision], a monotonically increasing unsigned long
+ * representing the count of events present in the database.
  *
  * Databases cache their stream state (eventIds) and draw on their connection's event cache.
  * After their parent client or connection is closed, all subsequent API method calls will
@@ -147,11 +146,10 @@ interface Database: DatabaseJava {
     fun fetchStreamAsync(streamName: StreamName): Flow<CloudEvent>
 
     /**
-     * Returns a [Flow] of [CloudEvent]s comprising this subject stream as
-     * of this [Database]'s revision, if both stream and events for the given subject
-     * on that stream exist.
+     * Returns a [Flow] of [CloudEvent]s having the given subject and the given stream as
+     * of this [Database]'s revision.
      *
-     * @return [Flow] of [CloudEvent]s comprising this stream, in transaction order, if any.
+     * @return [Flow] of [CloudEvent]s comprising this stream, in transaction order.
      */
     fun fetchSubjectStreamAsync(
         streamName: StreamName,
@@ -159,9 +157,25 @@ interface Database: DatabaseJava {
     ): Flow<CloudEvent>
 
     /**
+     * Returns a [Flow] of [CloudEvent]s having this subject across all streams as
+     * of this [Database]'s revision.
+     *
+     * @return [Flow] of [CloudEvent]s comprising this stream, in transaction order.
+     */
+    fun fetchSubjectAsync(subjectName: StreamSubject): Flow<CloudEvent>
+
+    /**
+     * Returns a [Flow] of [CloudEvent]s having this event type across all streams as
+     * of this [Database]'s revision.
+     *
+     * @return [Flow] of [CloudEvent]s having this event type, in transaction order.
+     */
+    fun fetchEventTypeAsync(eventType: EventType): Flow<CloudEvent>
+
+    /**
      * Returns the [CloudEvent] having the given ID, if it exists.
      *
      * @return the [CloudEvent]? if it exists w/in this database.
      */
-    suspend fun fetchEventAsync(eventId: EventId): CloudEvent?
+    suspend fun fetchEventByIdAsync(eventId: EventId): CloudEvent?
 }

@@ -1,7 +1,9 @@
 package com.evidentdb.examples.autonomo.adapters
 
-import com.evidentdb.client.EventProposal
-import com.evidentdb.client.StreamState
+import arrow.core.toNonEmptyListOrNull
+import com.evidentdb.client.BatchConstraint
+import com.evidentdb.client.BatchProposal
+import com.evidentdb.client.DatabaseRevision
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.client.kotlin.Database
 import com.evidentdb.examples.autonomo.EventRepository
@@ -16,10 +18,11 @@ import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import java.net.URI
 
 class VehiclesEventRepository(
     private val connection: Connection,
-    private val asOf: Long? = null
+    private val asOf: DatabaseRevision? = null
 ): EventRepository<VehicleEvent> {
     private val db: Database = if (asOf == null) {
         connection.db()
@@ -36,15 +39,26 @@ class VehiclesEventRepository(
 
     override suspend fun store(events: List<VehicleEvent>): Result<Unit> =
         try {
-            connection.transactAsync(events.map {
-                val cloudEvent = vehicleEventToCloudEvent(it)
-                val streamState = if (asOf == null) {
-                    StreamState.StreamExists
-                } else {
-                    StreamState.AtRevision(asOf)
+            val (cloudEvents, constraints) = events.fold(
+                Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
+            ) { acc, event ->
+                val cloudEvent = vehicleEventToCloudEvent(event)
+                acc.first += cloudEvent
+                cloudEvent.subject?.let {
+                    acc.second += BatchConstraint.SubjectDoesNotExistOnStream(
+                        cloudEvent.source.toString(),
+                        it
+                    )
                 }
-                EventProposal(cloudEvent, STREAM, streamState)
-            })
+                acc
+            }
+            val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
+            connection.transactAsync(
+                BatchProposal(
+                    eventsNel,
+                    constraints.toList()
+                )
+            )
             Result.success(Unit)
         } catch (e: Throwable) {
             Result.failure(e)
@@ -55,8 +69,10 @@ class VehiclesEventRepository(
     private fun cloudEventToVehicleEvent(event: CloudEvent) =
         event.toVehicleEvent().toDomain()
 
-    private fun vehicleEventToCloudEvent(event: VehicleEvent) =
-        event.toTransfer().toCloudEvent()
+    private fun vehicleEventToCloudEvent(event: VehicleEvent): CloudEvent =
+        event.toTransfer().cloudEventBuilder()
+            .withSource(URI(STREAM))
+            .build()
 
     inner class VehicleEventRepository(
         val vin: Vin
@@ -66,15 +82,27 @@ class VehiclesEventRepository(
 
         override suspend fun store(events: List<VehicleEvent>): Result<Unit> =
             try {
-                connection.transactAsync(events.map {
-                    val cloudEvent = vehicleEventToCloudEvent(it)
-                    val streamState = if (asOf == null) {
-                        StreamState.StreamExists // TODO: subject exists/does not exist?
-                    } else {
-                        StreamState.AtRevision(asOf) // TODO: subject at state
+                val (cloudEvents, constraints) = events.fold(
+                    Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
+                ) { acc, event ->
+                    val cloudEvent = vehicleEventToCloudEvent(event)
+                    acc.first += cloudEvent
+                    cloudEvent.subject?.let {
+                        acc.second += BatchConstraint.SubjectMaxRevisionOnStream(
+                            cloudEvent.source.toString(),
+                            it,
+                            db.revision
+                        )
                     }
-                    EventProposal(cloudEvent, STREAM, streamState)
-                })
+                    acc
+                }
+                val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
+                connection.transactAsync(
+                    BatchProposal(
+                        eventsNel,
+                        constraints.toList()
+                    )
+                )
                 Result.success(Unit)
             } catch (e: Throwable) {
                 Result.failure(e)
@@ -84,7 +112,7 @@ class VehiclesEventRepository(
 
 class RidesEventRepository(
     private val connection: Connection,
-    private val asOf: Long? = null
+    private val asOf: DatabaseRevision? = null
 ): EventRepository<RideEvent> {
     private val db: Database = if (asOf == null) {
         connection.db()
@@ -97,15 +125,26 @@ class RidesEventRepository(
 
     override suspend fun store(events: List<RideEvent>): Result<Unit> =
         try {
-            connection.transactAsync(events.map {
-                val cloudEvent = rideEventToCloudEvent(it)
-                val streamState = if (asOf == null) {
-                    StreamState.StreamExists
-                } else {
-                    StreamState.AtRevision(asOf)
+            val (cloudEvents, constraints) = events.fold(
+                Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
+            ) { acc, event ->
+                val cloudEvent = rideEventToCloudEvent(event)
+                acc.first += cloudEvent
+                cloudEvent.subject?.let {
+                    acc.second += BatchConstraint.SubjectDoesNotExistOnStream(
+                        cloudEvent.source.toString(),
+                        it
+                    )
                 }
-                EventProposal(cloudEvent, STREAM, streamState)
-            })
+                acc
+            }
+            val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
+            connection.transactAsync(
+                BatchProposal(
+                    eventsNel,
+                    constraints.toList()
+                )
+            )
             Result.success(Unit)
         } catch (e: Throwable) {
             Result.failure(e)
@@ -131,15 +170,27 @@ class RidesEventRepository(
 
         override suspend fun store(events: List<RideEvent>): Result<Unit> =
             try {
-                connection.transactAsync(events.map {
-                    val cloudEvent = rideEventToCloudEvent(it)
-                    val streamState = if (asOf == null) {
-                        StreamState.StreamExists // TODO: subject exists/does not exist?
-                    } else {
-                        StreamState.AtRevision(asOf) // TODO: subject at state
+                val (cloudEvents, constraints) = events.fold(
+                    Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
+                ) { acc, event ->
+                    val cloudEvent = rideEventToCloudEvent(event)
+                    acc.first += cloudEvent
+                    cloudEvent.subject?.let {
+                        acc.second += BatchConstraint.SubjectMaxRevisionOnStream(
+                            cloudEvent.source.toString(),
+                            it,
+                            db.revision
+                        )
                     }
-                    EventProposal(cloudEvent, STREAM, streamState)
-                })
+                    acc
+                }
+                val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
+                connection.transactAsync(
+                    BatchProposal(
+                        eventsNel,
+                        constraints.toList()
+                    )
+                )
                 Result.success(Unit)
             } catch (e: Throwable) {
                 Result.failure(e)

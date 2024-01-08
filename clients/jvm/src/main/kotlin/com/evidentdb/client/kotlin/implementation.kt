@@ -13,9 +13,7 @@ import com.github.benmanes.caffeine.cache.stats.CacheStats
 import io.cloudevents.CloudEvent
 import io.cloudevents.protobuf.toDomain
 import io.cloudevents.protobuf.toTransfer
-import io.grpc.Channel
-import io.grpc.ManagedChannel
-import io.grpc.ManagedChannelBuilder
+import io.grpc.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
@@ -86,12 +84,20 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         if (!isActive)
             throw ClientClosedException(this)
         else {
-            val result = grpcClient.createDatabase(
-                CreateDatabaseRequest.newBuilder()
-                    .setName(name)
-                    .build()
-            )
-            result.hasDatabase()
+            try {
+                val result = grpcClient.createDatabase(
+                    CreateDatabaseRequest.newBuilder()
+                        .setName(name)
+                        .build()
+                )
+                result.hasDatabase()
+            } catch (e: StatusException) {
+                if (e.status.code == Status.Code.ALREADY_EXISTS) {
+                    false
+                } else {
+                    throw e
+                }
+            }
         }
 
     override fun deleteDatabase(name: DatabaseName): Boolean =
@@ -101,12 +107,20 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         if (!isActive)
             throw ClientClosedException(this)
         else {
-            val result = grpcClient.deleteDatabase(
-                DeleteDatabaseRequest.newBuilder()
-                    .setName(name)
-                    .build()
-            )
-            result.hasDatabase()
+            try {
+                val result = grpcClient.deleteDatabase(
+                    DeleteDatabaseRequest.newBuilder()
+                        .setName(name)
+                        .build()
+                )
+                result.hasDatabase()
+            } catch (e: StatusException) {
+                if (e.status.code == Status.Code.NOT_FOUND) {
+                    false
+                } else {
+                    throw e
+                }
+            }
         }
 
     override fun fetchCatalog(): CloseableIterator<com.evidentdb.client.Database> =

@@ -22,10 +22,6 @@ interface EvidentDb: Lifecycle {
      * @param name The name of the database to create, must match
      *  """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$""".
      * @return `true` if database was created, `false` otherwise.
-     * @throws InvalidDatabaseNameError
-     * @throws DatabaseNameAlreadyExistsError
-     * @throws InternalServerError
-     * @throws SerializationError
      */
     fun createDatabase(name: DatabaseName): Boolean
 
@@ -34,10 +30,6 @@ interface EvidentDb: Lifecycle {
      *
      * @param name The name of the database to delete.
      * @return `true` if database was deleted, `false` otherwise.
-     * @throws InvalidDatabaseNameError
-     * @throws DatabaseNotFoundError
-     * @throws InternalServerError
-     * @throws SerializationError
      */
     fun deleteDatabase(name: DatabaseName): Boolean
 
@@ -59,8 +51,6 @@ interface EvidentDb: Lifecycle {
      *
      * @param name the database name.
      * @return the [Connection], possibly cached.
-     * @throws DatabaseNotFoundError
-     * @throws SerializationError
      */
     fun connectDatabase(name: DatabaseName): Connection
 
@@ -121,10 +111,6 @@ interface EvidentDbKt: EvidentDb {
      * @param name The name of the database to create, must match
      *  """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$""".
      * @return `true` if database was created, `false` otherwise.
-     * @throws InvalidDatabaseNameError
-     * @throws DatabaseNameAlreadyExistsError
-     * @throws InternalServerError
-     * @throws SerializationError
      */
     suspend fun createDatabaseAsync(name: DatabaseName): Boolean
 
@@ -133,10 +119,6 @@ interface EvidentDbKt: EvidentDb {
      *
      * @param name The name of the database to delete.
      * @return `true` if database was deleted, `false` otherwise.
-     * @throws InvalidDatabaseNameError
-     * @throws DatabaseNotFoundError
-     * @throws InternalServerError
-     * @throws SerializationError
      */
     suspend fun deleteDatabaseAsync(name: DatabaseName): Boolean
 
@@ -154,8 +136,6 @@ interface EvidentDbKt: EvidentDb {
      *
      * @param name the database name.
      * @return the [ConnectionKt], possibly cached.
-     * @throws DatabaseNotFoundError
-     * @throws SerializationError
      */
     override fun connectDatabase(name: DatabaseName): ConnectionKt
 }

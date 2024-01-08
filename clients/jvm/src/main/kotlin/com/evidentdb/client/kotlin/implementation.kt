@@ -35,8 +35,13 @@ import kotlin.math.max
 internal const val DEFAULT_CACHE_SIZE: Long = 10_000
 internal const val AVERAGE_EVENT_WEIGHT = 1000
 internal const val EMPTY_EVENT_WEIGHT = 10
-internal const val LATEST_DATABASE_REVISION_SIGIL = 0uL
 internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
+
+private enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTED,
+    CLOSED
+}
 
 /**
  * This is the top-level entry point for the EvidentDB Kotlin client. Use
@@ -125,7 +130,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             }
             // Otherwise, create, start, and cache a new connection
             val newConnection = ConnectionImpl(name, cacheSize)
-            newConnection.start()
             connections[name] = newConnection
             newConnection
         }
@@ -156,7 +160,8 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         private lateinit var subscriptionURI: URI
         private lateinit var created: Instant
         private val connectionScope = CoroutineScope(Dispatchers.Default)
-        private val latestRevision: AtomicReference<DatabaseRevision> = AtomicReference(0uL)
+        private val state = AtomicReference(ConnectionState.DISCONNECTED)
+        private val latestRevision = AtomicReference(0uL)
 
         private val eventCacheChannel = channelBuilder.build()
         private val eventCache: AsyncLoadingCache<EventRevision, CloudEvent> =
@@ -168,27 +173,40 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         private val grpcClientChannel = channelBuilder.build()
         private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
 
-        fun start() {
+        private val isActive = state.get() != ConnectionState.CLOSED
+
+        init {
+            val started = CompletableFuture<Boolean>()
             connectionScope.launch {
-                // TODO: handle errors, reconnection, etc.
-                grpcClient.connect(
-                    ConnectRequest.newBuilder()
-                        .setName(database)
-                        .build()
-                ).collect { reply ->
-                    val summary = reply.database.toDomain()
-                    subscriptionURI = summary.subscriptionURI
-                    created = summary.created
-                    latestRevision.set(summary.revision)
+                while (isActive) {
+                    grpcClient.connect(
+                        ConnectRequest.newBuilder()
+                            .setName(database)
+                            .build()
+                    ).collectIndexed { i, reply ->
+                        val summary = reply.database.toDomain()
+                        println("database from `connect`: $summary")
+                        if (i == 0) {
+                            started.complete(true)
+                            println("first database from `connect`: $summary")
+                            state.set(ConnectionState.CONNECTED)
+                            subscriptionURI = summary.subscriptionURI
+                            created = summary.created
+                        }
+                        latestRevision.set(summary.revision)
+                    }
+                    println("Connection interrupted, setting state to disconnected")
+                    state.set(ConnectionState.DISCONNECTED)
                 }
             }
+            started.get()
         }
 
         override fun transact(batch: BatchProposal): CompletableFuture<Batch> =
             connectionScope.future { transactAsync(batch) }
 
         override suspend fun transactAsync(batch: BatchProposal): Batch =
-            if (!connectionScope.isActive)
+            if (!isActive)
                 throw ConnectionClosedException(this)
             else {
                 // Fail fast on empty batch, no need to round-trip
@@ -202,22 +220,22 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         .addAllConstraints(batch.constraints.map { it.toTransfer() })
                         .build()
                 )
-                val batch = result.batch.toDomain()
-                maybeSetLatestRevision(batch.revision)
+                val acceptedBatch = result.batch.toDomain()
+                maybeSetLatestRevision(acceptedBatch.revision)
 
                 // TODO: index accepted batch events into local cache
                 eventCache.synchronous().putAll(
-                    batch.events.fold(mutableMapOf()) { acc, event ->
+                    acceptedBatch.events.fold(mutableMapOf()) { acc, event ->
                         acc[event.revision] = event.event
                         acc
                     }
                 )
 
-                batch
+                acceptedBatch
             }
 
         override fun db(): Database =
-            if (!connectionScope.isActive)
+            if (!isActive)
                 throw ConnectionClosedException(this)
             else
                 DatabaseImpl(
@@ -236,7 +254,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
          * May block while awaiting database revision on server
          */
         override suspend fun fetchDbAsOfAsync(revision: DatabaseRevision): Database =
-            if (!connectionScope.isActive)
+            if (!isActive)
                 throw ConnectionClosedException(this)
             else {
                 val summary = grpcClient.databaseAtRevision(
@@ -260,7 +278,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             }
 
         override suspend fun fetchLatestDbAsync(): Database =
-            if (!connectionScope.isActive)
+            if (!isActive)
                 throw ConnectionClosedException(this)
             else
                 grpcClient.latestDatabase(
@@ -281,7 +299,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             fetchLogFlow().asIterator()
 
         override fun fetchLogFlow(): Flow<Batch> =
-            if (!connectionScope.isActive)
+            if (!isActive)
                 throw ConnectionClosedException(this)
             else
                 grpcClient.databaseLog(
@@ -309,6 +327,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         fun eventCacheStats(): CacheStats = eventCache.synchronous().stats()
 
         override fun shutdown() {
+            state.set(ConnectionState.CLOSED)
             connectionScope.cancel()
             doToAllChannels {
                 it.shutdown().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
@@ -318,6 +337,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         }
 
         override fun shutdownNow() {
+            state.set(ConnectionState.CLOSED)
             connectionScope.cancel()
             doToAllChannels {
                 it.shutdownNow().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
@@ -326,11 +346,10 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             removeConnection(database)
         }
 
-        private fun maybeSetLatestRevision(revision: DatabaseRevision) {
+        private fun maybeSetLatestRevision(revision: DatabaseRevision) =
             latestRevision.getAndUpdate { current ->
                 max(revision, current)
             }
-        }
 
         private fun doToAllChannels(block: (ManagedChannel) -> Unit) =
             listOf(
@@ -355,7 +374,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 fetchStreamAsync(streamName).asIterator()
 
             override fun fetchStreamAsync(streamName: StreamName): Flow<CloudEvent> =
-                if (!connectionScope.isActive)
+                if (!isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     processStreamReplyFlow(
@@ -379,7 +398,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 streamName: StreamName,
                 subjectName: StreamSubject
             ): Flow<CloudEvent> =
-                if (!connectionScope.isActive)
+                if (!isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     processStreamReplyFlow(
@@ -397,7 +416,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 fetchSubjectAsync(subjectName).asIterator()
 
             override fun fetchSubjectAsync(subjectName: StreamSubject): Flow<CloudEvent> =
-                if (!connectionScope.isActive)
+                if (!isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     processStreamReplyFlow(
@@ -415,7 +434,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 fetchEventTypeAsync(eventType).asIterator()
 
             override fun fetchEventTypeAsync(eventType: EventType): Flow<CloudEvent> =
-                if (!connectionScope.isActive)
+                if (!isActive)
                     throw ConnectionClosedException(this@ConnectionImpl)
                 else {
                     processStreamReplyFlow(
@@ -441,7 +460,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 runBlocking { future { fetchEventByIdAsync(eventId) } }
 
             override suspend fun fetchEventByIdAsync(eventId: EventId): CloudEvent? =
-                if (!connectionScope.isActive) {
+                if (!isActive) {
                     throw ConnectionClosedException(this@ConnectionImpl)
                 } else {
                     // TODO: build a cache/map of id -> revision for 2-step lookup?

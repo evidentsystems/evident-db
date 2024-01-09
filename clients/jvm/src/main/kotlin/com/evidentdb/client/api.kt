@@ -1,5 +1,7 @@
 package com.evidentdb.client
 
+import com.evidentdb.client.cloudevents.RecordedTimeExtension
+import com.evidentdb.client.cloudevents.SequenceExtension
 import com.evidentdb.client.java.Connection
 import com.evidentdb.client.java.GrpcClient
 import com.evidentdb.client.kotlin.GrpcClient as GrpcClientKt
@@ -55,6 +57,12 @@ interface EvidentDb: Lifecycle {
     fun connectDatabase(name: DatabaseName): Connection
 
     companion object {
+        // These need to be registered before any event processing is done
+        init {
+            SequenceExtension.register()
+            RecordedTimeExtension.register()
+        }
+
         @JvmStatic
         fun javaClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb =
             GrpcClient(channelBuilder)
@@ -75,7 +83,7 @@ interface EvidentDb: Lifecycle {
             extensions: List<CloudEventExtension> = listOf(),
         ): CloudEventBuilder {
             val builder = CloudEventBuilder.v1()
-                .withId(eventId ?: UUID.randomUUID().toString())
+                .withId(eventId)
                 .withSource(URI(streamName))
                 .withType(eventType)
                 .withData(data)

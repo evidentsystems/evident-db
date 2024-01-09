@@ -14,7 +14,7 @@ class SequenceExtension: CloudEventExtension {
     companion object {
         const val SEQUENCE_KEY = "sequence"
         private val KEY_SET = setOf(SEQUENCE_KEY)
-        init {
+        fun register() {
             ExtensionProvider.getInstance()
                     .registerExtension(
                             SequenceExtension::class.java,
@@ -50,7 +50,7 @@ class RecordedTimeExtension: CloudEventExtension {
     companion object {
         const val RECORDED_TIME_KEY = "recordedtime"
         private val KEY_SET = setOf(RECORDED_TIME_KEY)
-        init {
+        fun register() {
             ExtensionProvider.getInstance()
                     .registerExtension(
                             RecordedTimeExtension::class.java,

@@ -199,17 +199,14 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                             .build()
                     ).collectIndexed { i, reply ->
                         val summary = reply.database.toDomain()
-                        println("database from `connect`: $summary")
                         if (i == 0) {
                             started.complete(true)
-                            println("first database from `connect`: $summary")
                             state.set(ConnectionState.CONNECTED)
                             subscriptionURI = summary.subscriptionURI
                             created = summary.created
                         }
                         latestRevision.set(summary.revision)
                     }
-                    println("Connection interrupted, setting state to disconnected")
                     state.set(ConnectionState.DISCONNECTED)
                 }
             }

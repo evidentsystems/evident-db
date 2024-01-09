@@ -1,0 +1,21 @@
+micronaut:
+  application:
+    name: evident-db-autonomo-example
+netty:
+  default:
+    allocator:
+      max-order: 3
+evident-db:
+  host: localhost
+  port: 50051
+  database-name: autonomo-example
+kafka:
+  bootstrap.servers: localhost:9092
+  schema.registry.url: http://localhost:8081
+  streams:
+    application.id: autonomo-example
+  topics:
+    ride-events: ride-events
+    rides: rides
+    vehicle-events: vehicle-events
+    vehicles: vehicles

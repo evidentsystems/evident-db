@@ -1,0 +1,29 @@
+micronaut:
+  server:
+    port: 50050
+  application:
+    name: evidentdb
+endpoints:
+  all:
+    port: 8085
+  health:
+    enabled: true
+  metrics:
+    enabled: true
+  beans:
+    enabled: true
+    sensitive: false
+#kafka:
+#  producers:
+#    service:
+#      linger.ms: 5
+#  streams:
+#    transactor:
+#      producer.linger.ms: 0
+#      state.dir: ./data/transactor
+#evidentdb:
+#  topics:
+#    internal-events:
+#      name: evidentdb-${evidentdb.tenant}-internal-events
+#    internal-commands:
+#      name: evidentdb-${evidentdb.tenant}-internal-commands

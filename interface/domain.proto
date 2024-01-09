@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package com.evidentdb;
+
+import "cloudevents.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "EvidentDB.V1";
+option go_package = "evidentdb.com/genproto/v1";
+option java_package = "com.evidentdb.dto.v1.proto";
+option java_multiple_files = true;
+option php_namespace = "Com\\EvidentDB\\V1\\Proto";
+option ruby_package = "Com::EvidentDB::V1::Proto";
+option objc_class_prefix = "EDB";
+
+message Database {
+  string name = 1;
+  string subscription_uri = 2;
+  google.protobuf.Timestamp created = 3;
+  uint64 revision = 4;
+}
+
+message BatchConstraint {
+  message StreamExists {
+    string stream = 1;
+  }
+  message StreamDoesNotExist {
+    string stream = 1;
+  }
+  message StreamMaxRevision {
+    string stream = 1;
+    uint64 revision = 2;
+  }
+
+  message SubjectExists {
+    string subject = 1;
+  }
+  message SubjectDoesNotExist {
+    string subject = 1;
+  }
+  message SubjectMaxRevision {
+    string subject = 1;
+    uint64 revision = 2;
+  }
+
+  message SubjectExistsOnStream {
+    string stream = 1;
+    string subject = 2;
+  }
+  message SubjectDoesNotExistOnStream {
+    string stream = 1;
+    string subject = 2;
+  }
+  message SubjectMaxRevisionOnStream {
+    string stream = 1;
+    string subject = 2;
+    uint64 revision = 3;
+  }
+
+  oneof constraint {
+    StreamExists stream_exists = 1;
+    StreamDoesNotExist stream_does_not_exist = 2;
+    StreamMaxRevision stream_max_revision = 3;
+
+    SubjectExists subject_exists = 4;
+    SubjectDoesNotExist subject_does_not_exist = 5;
+    SubjectMaxRevision subject_max_revision = 6;
+
+    SubjectExistsOnStream subject_exists_on_stream = 7;
+    SubjectDoesNotExistOnStream subject_does_not_exist_on_stream = 8;
+    SubjectMaxRevisionOnStream subject_max_revision_on_stream = 9;
+  }
+}
+
+message BatchSummary {
+  string database = 1;
+  repeated uint64 event_revisions = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  uint64 basis_revision = 4;
+}
+
+message Batch {
+  string database = 1;
+  repeated io.cloudevents.v1.CloudEvent events = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  uint64 basis_revision = 4;
+}
+
+// Error Details
+
+message InvalidEvent {
+  io.cloudevents.v1.CloudEvent event = 1;
+  repeated EventInvalidation errors = 2;
+}
+
+message EventInvalidation {
+  oneof error {
+    InvalidEventSource invalid_event_source = 1;
+    InvalidStreamName invalid_stream_name = 2;
+    InvalidEventId invalid_event_id = 3;
+    DuplicateEventId duplicate_event_id = 4;
+    InvalidEventSubject invalid_event_subject = 5;
+    InvalidEventType invalid_event_type = 6;
+  }
+}
+
+message InvalidBatchConstraint {
+  uint32 index = 1;
+  repeated BatchConstraintInvalidation errors = 2;
+}
+
+message BatchConstraintInvalidation {
+  oneof error {
+    InvalidStreamName invalid_stream_name = 1;
+    InvalidEventSubject invalid_event_subject = 2;
+    EmptyBatchConstraint empty_batch_constraint = 3;
+  }
+}
+
+message EmptyBatchConstraint {}
+
+message InvalidEventSource {
+  string event_source = 1;
+}
+
+message InvalidStreamName {
+  string stream_name = 1;
+}
+
+message InvalidEventId {
+  string stream = 1;
+  string event_id = 2;
+}
+
+message DuplicateEventId {
+  string stream = 1;
+  string event_id = 2;
+}
+
+message InvalidEventSubject {
+  string event_subject = 1;
+}
+
+message InvalidEventType {
+  string event_type = 1;
+}

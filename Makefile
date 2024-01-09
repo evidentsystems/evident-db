@@ -19,26 +19,26 @@ default: build
 
 # Server
 
-.PHONY: dockerfile
-dockerfile:
-	$(GRADLE) dockerfile
+.PHONY: test-server
+test-server:
+	cd server && ../$(GRADLE) test
 
-.PHONY: dockerfile
+.PHONY: jar
 jar:
-	$(GRADLE) app:assemble
+	cd server && ../$(GRADLE) app:build
 
-.PHONY: dockerfile
+.PHONY: native
 native:
-	$(GRADLE) app:nativeCompile
+	cd server && ../$(GRADLE) app:nativeCompile
 
 .PHONY: build
 build: jar native
 
 # Client
 
-.PHONY: install-client
-install-client:
-	$(GRADLE) client:publishToMavenLocal
+.PHONY: install-java-client
+install-java-client:
+	cd clients && ../$(GRADLE) client:publishToMavenLocal
 
 # Kafka Cluster
 
@@ -56,7 +56,7 @@ clean-kafka:
 
 .PHONY: kafka-topics
 kafka-topics:
-	$(GRADLE) run --args="-k $(KAFKA_BOOTSTRAP_SERVERS) bootstrap -p $(PARTITION_COUNT) -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
+	cd server && ../$(GRADLE) run --args="-k $(KAFKA_BOOTSTRAP_SERVERS) bootstrap -p $(PARTITION_COUNT) -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
 
 .PHONY: clean-kafka-topics
 clean-kafka-topics:
@@ -109,13 +109,11 @@ LOAD_TEST_TRANSACT_BATCH_REQUEST := "{\
 LOAD_TEST_QUERY_REQUEST := "{\"name\":\"load-test-{{randomInt 0 $(LOAD_TEST_DB_COUNT)}}\"}"
 
 .PHONY: test
-test:
-	$(GRADLE) test
-	cd perf/ && $(CARGO) test
+test: test-server
 
 .PHONY: run
 run: start-$(CLUSTER_TYPE) $(CLUSTER_TYPE)-topics
-	LOGGER_LEVELS_COM_EVIDENTDB=DEBUG $(GRADLE) run --args="node -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
+	cd server && LOGGER_LEVELS_COM_EVIDENTDB=DEBUG ../$(GRADLE) run --args="node -r $(REPLICATION_FACTOR) -c $(COMPRESSION_TYPE)"
 
 .PHONY: perf
 perf:
@@ -128,8 +126,8 @@ perf:
 
 .PHONY: clean
 clean:
-	$(GRADLE) clean
-	cd perf/ && $(CARGO) clean
+	cd clients && ../$(GRADLE) clean
+	cd ../server && ../$(GRADLE) clean
 
 TRANSACTOR_APP_ID ?= evident-db-transactor
 
@@ -146,8 +144,8 @@ clean-all: clean start-$(CLUSTER_TYPE) clean-kafka-topics clean-topology-data cl
 
 .PHONY: repl
 repl:
-	cd clojure-repl/ && ../$(GRADLE) clojureRepl
+	cd clients/clojure/ && ../../$(GRADLE) clojureRepl
 
 .PHONY: loc
 loc:
-	tokei adapters app domain perf proto service transactor
+	tokei server clients interface

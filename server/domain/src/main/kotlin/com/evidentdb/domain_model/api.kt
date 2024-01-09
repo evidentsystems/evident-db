@@ -5,6 +5,7 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
 import arrow.core.raise.zipOrAccumulate
+import com.evidentdb.cloudevents.RecordedTimeExtension
 import com.evidentdb.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
@@ -242,6 +243,12 @@ data class WellFormedProposedEvent private constructor (val event: CloudEvent) {
 
 data class AcceptedEvent private constructor(override val event: CloudEvent): Event {
     companion object {
+        // For lack of a better place, let's register our CloudEvent extensions here
+        init {
+            SequenceExtension.register()
+            RecordedTimeExtension.register()
+        }
+
         operator fun invoke(
             wellFormed: WellFormedProposedEvent,
             database: ActiveDatabaseCommandModel,

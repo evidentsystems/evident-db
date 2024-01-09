@@ -209,12 +209,16 @@ interface EvidentDbAdapter {
         databaseNameStr: String,
         revisions: List<EventRevision>,
     ): Flow<Either<QueryError, Event>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr).mapLeft {
-            DatabaseNotFound(databaseNameStr)
-        }) {
-            is Either.Left -> emit(databaseName)
+        val database = either {
+            val databaseName = DatabaseName(databaseNameStr)
+                .mapLeft { DatabaseNotFound(databaseNameStr) }
+                .bind()
+            repository.latestDatabase(databaseName).bind()
+        }
+        when (database) {
+            is Either.Left -> emit(database)
             is Either.Right -> emitAll(
-                repository.eventsByRevision(databaseName.value, revisions)
+                database.value.eventsByRevision(revisions)
             )
         }
     }

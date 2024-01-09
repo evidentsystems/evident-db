@@ -15,8 +15,6 @@ interface DatabaseRepository {
         name: DatabaseName,
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, DatabaseReadModel>
-
-    fun eventsByRevision(name: DatabaseName, revisions: List<EventRevision>): Flow<Either<QueryError, Event>>
 }
 
 interface DatabaseReadModel: Database {
@@ -30,4 +28,6 @@ interface DatabaseReadModel: Database {
     fun subjectStream(stream: StreamName, subject: EventSubject): Flow<EventRevision>
     fun subject(subject: EventSubject): Flow<EventRevision>
     fun eventType(type: EventType): Flow<EventRevision>
+
+    fun eventsByRevision(revisions: List<EventRevision>): Flow<Either<QueryError, Event>>
 }

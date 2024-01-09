@@ -95,25 +95,6 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
         ensureNotNull(database) { DatabaseNotFound(name.value) }
         database.databaseAtRevision(revision).bind()
     }
-
-    override fun eventsByRevision(
-        name: DatabaseName,
-        revisions: List<EventRevision>
-    ): Flow<Either<QueryError, Event>> = flow {
-        val database = storage[name]
-        if (database == null) {
-            emit(DatabaseNotFound(name.value).left())
-        } else {
-            revisions.forEach {
-                val event = database.eventByRevision(it)
-                if (event == null) {
-                    emit(EventNotFound("Event with revision $it not found in database $name").left())
-                } else {
-                    emit(event.right())
-                }
-            }
-        }
-    }
 }
 
 private class InMemoryDatabaseRepository(
@@ -145,17 +126,6 @@ private class InMemoryDatabaseRepository(
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, InMemoryDatabase> =
         InMemoryDatabase(name, subscriptionURI, created, revision).right()
-
-    fun eventByRevision(
-        revision: DatabaseRevision
-    ): Event? = storage.ceilingEntry(BatchKey(revision)).let {
-        val batch = it.value
-        if (batch is BatchValue) {
-            batch.getEventByAbsoluteRevision(revision)
-        } else {
-            throw IllegalStateException("Value stored under BatchKey isn't a BatchValue")
-        }
-    }
 
     fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
         either {
@@ -505,6 +475,30 @@ private class InMemoryDatabaseRepository(
                 .filterIsInstance<EventTypeIndexKey>()
                 .map { it.revision }
                 .asFlow()
+
+        private fun eventByRevision(
+            revision: DatabaseRevision
+        ): Event? = storage.ceilingEntry(BatchKey(revision)).let {
+            val batch = it.value
+            if (batch is BatchValue) {
+                batch.getEventByAbsoluteRevision(revision)
+            } else {
+                throw IllegalStateException("Value stored under BatchKey isn't a BatchValue")
+            }
+        }
+
+        override fun eventsByRevision(
+            revisions: List<EventRevision>
+        ): Flow<Either<QueryError, Event>> = flow {
+            revisions.forEach {
+                val event = eventByRevision(it)
+                if (event == null) {
+                    emit(EventNotFound("Event with revision $it not found in database $name").left())
+                } else {
+                    emit(event.right())
+                }
+            }
+        }
     }
 }
 

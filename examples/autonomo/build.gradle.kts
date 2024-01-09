@@ -18,7 +18,6 @@ dependencies {
     // Micronaut App Framework
     compileOnly("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
-    implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut.serde:micronaut-serde-jackson")
     annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
 //    implementation("io.micronaut.views:micronaut-views-jte")
@@ -35,7 +34,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.evidentdb.examples.autonomo.ApplicationKt")
+    mainClass.set("com.evidentdb.examples.autonomo.MainKt")
 }
 
 micronaut {

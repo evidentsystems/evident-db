@@ -1,7 +1,7 @@
 package com.evidentdb.examples.autonomo.transfer
 
 import com.evidentdb.examples.autonomo.domain.*
-import com.fasterxml.jackson.databind.ObjectMapper
+import io.micronaut.serde.ObjectMapper
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
 import io.micronaut.serde.annotation.Serdeable
@@ -65,7 +65,7 @@ sealed interface RideEvent {
             .withId(UUID.randomUUID().toString())
             .withSubject(ride.toString())
             .withType(this::class.simpleName)
-            .withData(ObjectMapper().writeValueAsBytes(this))
+            .withData(ObjectMapper.getDefault().writeValueAsBytes(this))
 
     companion object {
         fun fromDomain(event: DomainRideEvent): RideEvent = when (event) {
@@ -102,7 +102,7 @@ sealed interface RideEvent {
         }
 
         fun fromCloudEvent(event: CloudEvent): RideEvent {
-            val objectMapper = ObjectMapper()
+            val objectMapper = ObjectMapper.getDefault()
             val data = event.data!!
                 .toBytes()
                 .toString(StandardCharsets.UTF_8)

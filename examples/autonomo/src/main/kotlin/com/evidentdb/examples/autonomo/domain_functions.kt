@@ -80,15 +80,14 @@ interface EventSourcingDecisionExecutor<in C, S, E>: EventSourcingViewProjector<
     suspend fun executeDecision(repository: EventRepository<E>, command: C): Result<S> {
         val currentState = projectView(repository)
         return domainLogic.decide(command, currentState)
-            .mapCatching { events ->
+            .map { events ->
                 val result = repository.store(events)
                 if (result.isSuccess) {
-                    events
+                    events.fold(currentState, domainLogic.evolve)
                 } else {
                     throw result.exceptionOrNull()!!
                 }
             }
-            .map { events -> events.fold(currentState, domainLogic.evolve) }
     }
 }
 

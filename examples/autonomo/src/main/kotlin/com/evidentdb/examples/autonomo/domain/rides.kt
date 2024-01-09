@@ -5,7 +5,7 @@ import java.time.Instant
 // ***** Commands *****
 
 sealed interface RideCommand: Command {
-    val ride: RideId?
+    val ride: RideId
 
     fun decide(state: Ride): List<RideEvent>
 }
@@ -14,12 +14,12 @@ data class RequestRide(
     val rider: UserId,
     val origin: GeoCoordinates,
     val destination: GeoCoordinates,
-    val pickupTime: Instant
+    val pickupTime: Instant,
+    override val ride: RideId = RideId.randomUUID()
 ): RideCommand {
-    override val ride = null
     override fun decide(state: Ride): List<RideEvent> = when(state) {
         InitialRideState -> listOf(
-            RideRequested(RideId.randomUUID(), rider, origin, destination, pickupTime, Instant.now())
+            RideRequested(ride, rider, origin, destination, pickupTime, Instant.now())
         )
         else -> throw RideCommandError(this, state, "Ride already exists")
     }

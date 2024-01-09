@@ -6,11 +6,8 @@ import com.evidentdb.client.BatchProposal
 import com.evidentdb.client.DatabaseRevision
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.client.kotlin.Database
-import com.evidentdb.examples.autonomo.EventRepository
-import com.evidentdb.examples.autonomo.domain.RideEvent
-import com.evidentdb.examples.autonomo.domain.RideId
-import com.evidentdb.examples.autonomo.domain.VehicleEvent
-import com.evidentdb.examples.autonomo.domain.Vin
+import com.evidentdb.examples.autonomo.*
+import com.evidentdb.examples.autonomo.domain.*
 import com.evidentdb.examples.autonomo.transfer.toRideEvent
 import com.evidentdb.examples.autonomo.transfer.toTransfer
 import com.evidentdb.examples.autonomo.transfer.toVehicleEvent
@@ -19,181 +16,207 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import java.net.URI
+import java.util.*
 
-class VehiclesEventRepository(
-    private val connection: Connection,
-    private val asOf: DatabaseRevision? = null
-): EventRepository<VehicleEvent> {
-    private val db: Database = if (asOf == null) {
-        connection.db()
-    } else {
-        runBlocking { connection.fetchDbAsOfAsync(asOf) }
-    }
+interface EvidentDbEventRepository<E>: EventRepository<E> {
+    val connection: Connection
+    val db: Database
+    val eventQuery: (Database) -> Flow<CloudEvent>
+    val constraints: (Database) -> List<BatchConstraint>
 
-    companion object {
-        private const val STREAM = "vehicles"
-    }
+    override fun events(): Flow<E> =
+        eventQuery(db).map(::cloudEventToDomainEvent)
 
-    override fun events(): Flow<VehicleEvent> =
-        db.fetchStreamAsync(STREAM).map(::cloudEventToVehicleEvent)
-
-    override suspend fun store(events: List<VehicleEvent>): Result<Unit> =
+    override suspend fun store(events: List<E>): Result<Unit> =
         try {
-            val (cloudEvents, constraints) = events.fold(
-                Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
-            ) { acc, event ->
-                val cloudEvent = vehicleEventToCloudEvent(event)
-                acc.first += cloudEvent
-                cloudEvent.subject?.let {
-                    acc.second += BatchConstraint.SubjectDoesNotExistOnStream(
-                        cloudEvent.source.toString(),
-                        it
-                    )
-                }
-                acc
-            }
-            val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
-            connection.transactAsync(
-                BatchProposal(
-                    eventsNel,
-                    constraints.toList()
-                )
-            )
+            val cloudEvents = events.map(::domainEventToCloudEvent).toNonEmptyListOrNull()!!
+            connection.transactAsync(BatchProposal(cloudEvents, constraints(db)))
             Result.success(Unit)
         } catch (e: Throwable) {
             Result.failure(e)
         }
 
-    fun forEntity(vin: Vin) = VehicleEventRepository(vin)
+    fun cloudEventToDomainEvent(event: CloudEvent): E
 
-    private fun cloudEventToVehicleEvent(event: CloudEvent) =
+    fun domainEventToCloudEvent(event: E): CloudEvent
+}
+
+class VehiclesEventRepository(
+    override val connection: Connection,
+    override val eventQuery: (Database) -> Flow<CloudEvent>,
+    override val constraints: (Database) -> List<BatchConstraint> = {_ -> listOf()},
+    revision: DatabaseRevision? = null
+): EvidentDbEventRepository<VehicleEvent> {
+    override val db: Database = if (revision == null) {
+        connection.db()
+    } else {
+        runBlocking { connection.fetchDbAsOfAsync(revision) }
+    }
+
+    override fun cloudEventToDomainEvent(event: CloudEvent) =
         event.toVehicleEvent().toDomain()
 
-    private fun vehicleEventToCloudEvent(event: VehicleEvent): CloudEvent =
+    override fun domainEventToCloudEvent(event: VehicleEvent): CloudEvent =
         event.toTransfer().cloudEventBuilder()
             .withSource(URI(STREAM))
             .build()
 
-    inner class VehicleEventRepository(
-        val vin: Vin
-    ): EventRepository<VehicleEvent> {
-        override fun events(): Flow<VehicleEvent> =
-            db.fetchSubjectStreamAsync(STREAM, vin.value).map(::cloudEventToVehicleEvent)
+    companion object {
+        private const val STREAM = "vehicles"
 
-        override suspend fun store(events: List<VehicleEvent>): Result<Unit> =
-            try {
-                val (cloudEvents, constraints) = events.fold(
-                    Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
-                ) { acc, event ->
-                    val cloudEvent = vehicleEventToCloudEvent(event)
-                    acc.first += cloudEvent
-                    cloudEvent.subject?.let {
-                        acc.second += BatchConstraint.SubjectMaxRevisionOnStream(
-                            cloudEvent.source.toString(),
-                            it,
-                            db.revision
-                        )
-                    }
-                    acc
-                }
-                val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
-                connection.transactAsync(
-                    BatchProposal(
-                        eventsNel,
-                        constraints.toList()
-                    )
-                )
-                Result.success(Unit)
-            } catch (e: Throwable) {
-                Result.failure(e)
-            }
+        fun repositoryBeforeVehicleCreation(
+            conn: Connection, vehicle: Vin, revision: DatabaseRevision? = null
+        ) = VehiclesEventRepository(
+            conn,
+            {db -> db.fetchSubjectStreamAsync(STREAM, vehicle.toString())},
+            {_ -> listOf(BatchConstraint.SubjectDoesNotExistOnStream(STREAM, vehicle.toString()))},
+            revision
+        )
+
+        fun repositoryForVehicle(
+            conn: Connection, vehicle: Vin, revision: DatabaseRevision? = null
+        ) = VehiclesEventRepository(
+            conn,
+            {db -> db.fetchSubjectStreamAsync(STREAM, vehicle.toString())},
+            {db -> listOf(BatchConstraint.SubjectMaxRevisionOnStream(
+                STREAM, vehicle.toString(), db.revision
+            ))},
+            revision
+        )
+    }
+}
+
+class EvidentDbVehicleService(
+    private val conn: Connection,
+): VehicleCommandService {
+    override val domainLogic = vehiclesDecider()
+
+    override suspend fun getMyVehicles(): List<Vehicle> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getAvailableVehicles(): List<Vehicle> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getVehicleByVin(vinString: String): Vehicle = try {
+        val vin = Vin.build(vinString)
+        val vehiclesEventRepository = VehiclesEventRepository
+            .repositoryForVehicle(conn, vin)
+        projectView(vehiclesEventRepository)
+    } catch (error: InvalidVinError) {
+        throw IllegalArgumentException(error)
+    }
+
+    override suspend fun addVehicle(user: UserId, vinString: String) = try {
+        val vin = Vin.build(vinString)
+        val vehiclesEventRepository = VehiclesEventRepository
+            .repositoryBeforeVehicleCreation(conn, vin)
+        executeDecision(vehiclesEventRepository, AddVehicle(user, vin))
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
+    }
+
+    override suspend fun makeVehicleAvailable(vinString: String) = try {
+        val vin = Vin.build(vinString)
+        val vehiclesEventRepository = VehiclesEventRepository.repositoryForVehicle(conn, vin)
+        executeDecision(vehiclesEventRepository, MakeVehicleAvailable(vin))
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
+    }
+
+    override suspend fun requestVehicleReturn(vinString: String) = try {
+        val vin = Vin.build(vinString)
+        val vehiclesEventRepository = VehiclesEventRepository
+            .repositoryForVehicle(conn, vin)
+        executeDecision(vehiclesEventRepository, RequestVehicleReturn(vin))
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
+    }
+
+    override suspend fun removeVehicle(user: UserId, vinString: String) = try {
+        val vin = Vin.build(vinString)
+        val vehiclesEventRepository = VehiclesEventRepository
+            .repositoryForVehicle(conn, vin)
+        executeDecision(vehiclesEventRepository, RemoveVehicle(user, vin))
+    } catch (error: InvalidVinError) {
+        Result.failure(error)
     }
 }
 
 class RidesEventRepository(
-    private val connection: Connection,
-    private val asOf: DatabaseRevision? = null
-): EventRepository<RideEvent> {
-    private val db: Database = if (asOf == null) {
+    override val connection: Connection,
+    override val eventQuery: (Database) -> Flow<CloudEvent>,
+    override val constraints: (Database) -> List<BatchConstraint> = {_ -> listOf()},
+    revision: DatabaseRevision? = null,
+): EvidentDbEventRepository<RideEvent> {
+    override val db: Database = if (revision == null) {
         connection.db()
     } else {
-        runBlocking { connection.fetchDbAsOfAsync(asOf) }
+        runBlocking { connection.fetchDbAsOfAsync(revision) }
     }
 
-    override fun events(): Flow<RideEvent> =
-        db.fetchStreamAsync(STREAM).map(::cloudEventToRideEvent)
+    override fun cloudEventToDomainEvent(event: CloudEvent)=
+        event.toRideEvent().toDomain()
 
-    override suspend fun store(events: List<RideEvent>): Result<Unit> =
-        try {
-            val (cloudEvents, constraints) = events.fold(
-                Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
-            ) { acc, event ->
-                val cloudEvent = rideEventToCloudEvent(event)
-                acc.first += cloudEvent
-                cloudEvent.subject?.let {
-                    acc.second += BatchConstraint.SubjectDoesNotExistOnStream(
-                        cloudEvent.source.toString(),
-                        it
-                    )
-                }
-                acc
-            }
-            val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
-            connection.transactAsync(
-                BatchProposal(
-                    eventsNel,
-                    constraints.toList()
-                )
-            )
-            Result.success(Unit)
-        } catch (e: Throwable) {
-            Result.failure(e)
-        }
+    override fun domainEventToCloudEvent(event: RideEvent): CloudEvent =
+        event.toTransfer().cloudEventBuilder()
+            .withSource(URI(STREAM))
+            .build()
 
     companion object {
         private const val STREAM = "rides"
+
+        fun repositoryBeforeRideCreation(
+            conn: Connection, ride: RideId, revision: DatabaseRevision? = null
+        ) = RidesEventRepository(
+            conn,
+            {db -> db.fetchSubjectStreamAsync(STREAM, ride.toString())},
+            {_ -> listOf(BatchConstraint.SubjectDoesNotExistOnStream(STREAM, ride.toString()))},
+            revision
+        )
+
+        fun repositoryForRide(
+            conn: Connection, ride: RideId, revision: DatabaseRevision? = null
+        ) = RidesEventRepository(
+            conn,
+            {db -> db.fetchSubjectStreamAsync(STREAM, ride.toString())},
+            {db -> listOf(BatchConstraint.SubjectMaxRevisionOnStream(
+                STREAM, ride.toString(), db.revision
+            ))},
+            revision
+        )
+    }
+}
+
+class EvidentDbRideService(
+    private val conn: Connection,
+): RideCommandService {
+    override val domainLogic = ridesDecider()
+
+    override suspend fun getRideById(rideId: UUID): Ride {
+        val repository = RidesEventRepository.repositoryForRide(conn, rideId)
+        return projectView(repository)
     }
 
-    fun forEntity(rideId: RideId) = RideEventRepository(rideId)
+    override suspend fun requestRide(command: RequestRide): Result<Ride> {
+        val repository = RidesEventRepository.repositoryBeforeRideCreation(conn, command.ride)
+        val decision = executeDecision(repository, command)
+        return decision
+    }
 
-    private fun cloudEventToRideEvent(event: CloudEvent) =
-        event.toRideEvent().toDomain()
+    override suspend fun cancelRide(ride: RideId): Result<Ride> {
+        val repository = RidesEventRepository.repositoryForRide(conn, ride)
+        return executeDecision(repository, CancelRide(ride))
+    }
 
-    private fun rideEventToCloudEvent(event: RideEvent) =
-        event.toTransfer().toCloudEvent()
+    override suspend fun confirmRidePickup(command: ConfirmPickup): Result<Ride> {
+        val repository = RidesEventRepository.repositoryForRide(conn, command.ride)
+        return executeDecision(repository, command)
+    }
 
-    inner class RideEventRepository(
-        val rideId: RideId
-    ): EventRepository<RideEvent> {
-        override fun events(): Flow<RideEvent> =
-            db.fetchSubjectStreamAsync(STREAM, rideId.toString()).map(::cloudEventToRideEvent)
-
-        override suspend fun store(events: List<RideEvent>): Result<Unit> =
-            try {
-                val (cloudEvents, constraints) = events.fold(
-                    Pair(mutableListOf<CloudEvent>(), mutableSetOf<BatchConstraint>())
-                ) { acc, event ->
-                    val cloudEvent = rideEventToCloudEvent(event)
-                    acc.first += cloudEvent
-                    cloudEvent.subject?.let {
-                        acc.second += BatchConstraint.SubjectMaxRevisionOnStream(
-                            cloudEvent.source.toString(),
-                            it,
-                            db.revision
-                        )
-                    }
-                    acc
-                }
-                val eventsNel = cloudEvents.toNonEmptyListOrNull()!!
-                connection.transactAsync(
-                    BatchProposal(
-                        eventsNel,
-                        constraints.toList()
-                    )
-                )
-                Result.success(Unit)
-            } catch (e: Throwable) {
-                Result.failure(e)
-            }
+    override suspend fun endRide(command: EndRide): Result<Ride> {
+        val repository = RidesEventRepository.repositoryForRide(conn, command.ride)
+        return executeDecision(repository, command)
     }
 }

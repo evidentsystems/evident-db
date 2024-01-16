@@ -32,6 +32,7 @@
                 <projects>
                   <project path="$PROJECT_DIR$/server" />
                   <project path="$PROJECT_DIR$/server/adapter-in-memory" />
+                  <project path="$PROJECT_DIR$/server/adapter-local-file" />
                   <project path="$PROJECT_DIR$/server/app" />
                   <project path="$PROJECT_DIR$/server/domain" />
                   <project path="$PROJECT_DIR$/server/service" />
@@ -58,6 +59,7 @@
             <option value="$PROJECT_DIR$/examples/autonomo" />
             <option value="$PROJECT_DIR$/server" />
             <option value="$PROJECT_DIR$/server/adapter-in-memory" />
+            <option value="$PROJECT_DIR$/server/adapter-local-file" />
             <option value="$PROJECT_DIR$/server/app" />
             <option value="$PROJECT_DIR$/server/domain" />
             <option value="$PROJECT_DIR$/server/service" />

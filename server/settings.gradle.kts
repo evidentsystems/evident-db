@@ -48,4 +48,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "server"
-include("adapter-in-memory", "domain", "service", "test", "transfer", "app")
+include("adapter-in-memory", "adapter-local-file", "domain", "service", "test", "transfer", "app")

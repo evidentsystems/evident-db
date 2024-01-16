@@ -18,9 +18,11 @@ sealed interface DatabaseCommandModel
 // Adapter API
 
 interface DatabaseCommandModelBeforeCreation: DatabaseCommandModel {
+    // Invariant Checking
     suspend fun databaseNameAvailable(name: DatabaseName): Boolean
 
-    suspend fun create(
+    // Command Processing
+    suspend fun buildNewlyCreatedDatabase(
         name: DatabaseName,
         subscriptionURI: DatabaseSubscriptionURI,
         created: Instant
@@ -40,14 +42,22 @@ sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
     override val created: Instant
     override val revision: DatabaseRevision
 
+    // Invariant Checking
     suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean
     suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean
 
-    fun acceptBatch(batch: AcceptedBatch): DirtyDatabaseCommandModel =
+    // Command Processing
+    fun buildAcceptedBatch(
+        proposedBatch: WellFormedProposedBatch
+    ): Either<BatchTransactionError, AcceptedBatch> =
+        proposedBatch.buildAcceptedBatchAtState(this)
+
+    // Event Transitions
+    fun withBatch(batch: AcceptedBatch): DirtyDatabaseCommandModel =
         DirtyDatabaseCommandModel(this@ActiveDatabaseCommandModel, batch)
 
-    suspend fun delete(): Either<DatabaseDeletionError, DatabaseCommandModelAfterDeletion> =
-        DatabaseCommandModelAfterDeletion(this@ActiveDatabaseCommandModel).right()
+    fun asDeleted(): DatabaseCommandModelAfterDeletion =
+        DatabaseCommandModelAfterDeletion(this@ActiveDatabaseCommandModel)
 }
 
 data class NewlyCreatedDatabaseCommandModel internal constructor(
@@ -59,6 +69,7 @@ data class NewlyCreatedDatabaseCommandModel internal constructor(
     override val revision: DatabaseRevision = 0uL
 
     override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId) = true
+
     override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
         when (constraint) {
             is BatchConstraint.StreamExists -> false
@@ -320,7 +331,7 @@ data class WellFormedProposedBatch(
             }
     }
 
-    fun accept(
+    fun buildAcceptedBatchAtState(
         database: ActiveDatabaseCommandModel,
     ): Either<BatchTransactionError, AcceptedBatch> =
         AcceptedBatch(this, database)

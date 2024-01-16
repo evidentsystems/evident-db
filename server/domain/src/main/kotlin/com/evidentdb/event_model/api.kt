@@ -53,7 +53,9 @@ data class CreateDatabase(
         when (state) {
             is DatabaseCommandModelBeforeCreation -> either {
                 ensure(state.databaseNameAvailable(database)) { DatabaseNameAlreadyExists(database) }
-                val newlyCreatedDatabase = state.create(database, subscriptionURI, Instant.now()).bind()
+                val newlyCreatedDatabase = state.buildNewlyCreatedDatabase(
+                    database, subscriptionURI, Instant.now()
+                ).bind()
                 DatabaseCreated(
                     EnvelopeId.randomUUID(),
                     id,
@@ -74,7 +76,7 @@ data class TransactBatch(
     override suspend fun decide(state: DatabaseCommandModel): Either<BatchTransactionError, BatchTransacted> =
         when (state) {
             is ActiveDatabaseCommandModel -> either {
-                val acceptedBatch = proposedBatch.accept(state).bind()
+                val acceptedBatch = state.buildAcceptedBatch(proposedBatch).bind()
                 BatchTransacted(EnvelopeId.randomUUID(), id, database, acceptedBatch)
             }
             is DatabaseCommandModelBeforeCreation -> DatabaseNotFound(database.value).left()
@@ -91,7 +93,6 @@ data class DeleteDatabase(
             is DatabaseCommandModelBeforeCreation -> DatabaseNotFound(database.value).left()
             is DatabaseCommandModelAfterDeletion -> DatabaseNotFound(database.value).left()
             is ActiveDatabaseCommandModel -> either {
-                state.delete().bind()
                 DatabaseDeleted(EnvelopeId.randomUUID(), id, database, Instant.now())
             }
         }
@@ -106,7 +107,7 @@ data class DatabaseCreated(
     val createdDatabase: NewlyCreatedDatabaseCommandModel
 ): EvidentDbEvent {
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel = when (state) {
-        is DatabaseCommandModelBeforeCreation -> this.createdDatabase
+        is DatabaseCommandModelBeforeCreation -> createdDatabase
         is ActiveDatabaseCommandModel -> state
         is DatabaseCommandModelAfterDeletion -> state
     }
@@ -121,7 +122,7 @@ data class BatchTransacted(
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel = when (state) {
         is DatabaseCommandModelBeforeCreation -> state
         is DatabaseCommandModelAfterDeletion -> state
-        is ActiveDatabaseCommandModel -> state.acceptBatch(batch)
+        is ActiveDatabaseCommandModel -> state.withBatch(batch)
     }
 }
 
@@ -134,7 +135,7 @@ data class DatabaseDeleted(
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel =
         when (state) {
             is DatabaseCommandModelBeforeCreation -> state
-            is ActiveDatabaseCommandModel -> DatabaseCommandModelAfterDeletion(state)
+            is ActiveDatabaseCommandModel -> state.asDeleted()
             is DatabaseCommandModelAfterDeletion -> state
         }
 }

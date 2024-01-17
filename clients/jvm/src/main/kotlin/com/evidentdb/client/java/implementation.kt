@@ -8,7 +8,6 @@ import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future
-import java.net.URI
 import java.time.Instant
 import java.util.concurrent.*
 
@@ -21,7 +20,7 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     override fun deleteDatabase(name: DatabaseName): Boolean =
         runBlocking { kotlinClient.deleteDatabaseAsync(name) }
 
-    override fun fetchCatalog(): CloseableIterator<com.evidentdb.client.Database> =
+    override fun fetchCatalog(): CloseableIterator<DatabaseName> =
         kotlinClient.fetchCatalogAsync().asIterator()
 
     override fun connectDatabase(name: DatabaseName): Connection =

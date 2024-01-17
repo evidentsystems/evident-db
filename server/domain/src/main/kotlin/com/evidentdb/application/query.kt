@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 // Repositories
 
 interface DatabaseRepository {
-    fun databaseCatalog(): Flow<Database>
+    fun databaseCatalog(): Flow<DatabaseName>
     fun subscribe(name: DatabaseName): Flow<Either<DatabaseNotFound, Database>>
 
     suspend fun latestDatabase(name: DatabaseName): Either<DatabaseNotFound, DatabaseReadModel>

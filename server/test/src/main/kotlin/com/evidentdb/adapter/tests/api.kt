@@ -35,14 +35,7 @@ interface AdapterTests {
 
         // Ensure it shows up in catalog
         val catalog = adapter.catalog().toList()
-        Assertions.assertEquals(
-                listOf(databaseName),
-                catalog.map { it.name.value }
-        )
-        Assertions.assertEquals(
-                listOf(0uL),
-                catalog.map { it.revision }
-        )
+        Assertions.assertEquals(listOf(databaseName), catalog.map { it.value })
     }
 
     fun `transacting batches`() = runTest {

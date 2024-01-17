@@ -96,7 +96,7 @@ class EvidentDbEndpoint(
         LOGGER.info("catalog")
         emitAll(adapter.catalog().map {
             CatalogReply.newBuilder()
-                .setDatabase(it.toTransfer())
+                .setDatabaseName(it.value)
                 .build()
         })
     }

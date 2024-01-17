@@ -14,7 +14,6 @@ import io.cloudevents.core.builder.CloudEventBuilder
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.flow.Flow
 import java.net.URI
-import java.util.*
 
 interface EvidentDb: Lifecycle {
     /**
@@ -44,7 +43,7 @@ interface EvidentDb: Lifecycle {
      *
      * @returns a [CloseableIterator] of [Database].
      */
-    fun fetchCatalog(): CloseableIterator<Database>
+    fun fetchCatalog(): CloseableIterator<DatabaseName>
 
     /**
      * Returns a connection to a specific database. This method caches,
@@ -135,7 +134,7 @@ interface EvidentDbKt: EvidentDb {
      *
      * @returns a [Flow] of [Database].
      */
-    fun fetchCatalogAsync(): Flow<Database>
+    fun fetchCatalogAsync(): Flow<DatabaseName>
 
     /**
      * Returns a connection to a specific database. This method caches,

@@ -60,10 +60,10 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
             impl.tearDown()
         }
 
-    override fun databaseCatalog(): Flow<Database> =
+    override fun databaseCatalog(): Flow<DatabaseName> =
         storage
             .values
-            .mapNotNull { it.latestDatabase().getOrNull() }
+            .mapNotNull { it.name }
             .asFlow()
 
     override fun subscribe(name: DatabaseName): Flow<Either<DatabaseNotFound, Database>> = flow {

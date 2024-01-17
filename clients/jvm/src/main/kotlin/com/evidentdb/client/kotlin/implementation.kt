@@ -18,7 +18,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
-import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -123,16 +122,16 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             }
         }
 
-    override fun fetchCatalog(): CloseableIterator<com.evidentdb.client.Database> =
+    override fun fetchCatalog(): CloseableIterator<DatabaseName> =
         fetchCatalogAsync().asIterator()
 
-    override fun fetchCatalogAsync(): Flow<com.evidentdb.client.Database> =
+    override fun fetchCatalogAsync(): Flow<DatabaseName> =
         if (!isActive)
             throw ClientClosedException(this)
         else
             grpcClient
                 .catalog(CatalogRequest.getDefaultInstance())
-                .map { reply -> reply.database.toDomain() }
+                .map { reply -> reply.databaseName }
 
     override fun connectDatabase(name: DatabaseName): Connection =
         if (!isActive) {

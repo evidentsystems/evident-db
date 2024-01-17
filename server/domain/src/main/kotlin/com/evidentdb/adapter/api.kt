@@ -8,7 +8,6 @@ import arrow.resilience.Schedule
 import com.evidentdb.application.CommandService
 import com.evidentdb.application.DatabaseRepository
 import com.evidentdb.domain_model.*
-import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -52,7 +51,7 @@ interface EvidentDbAdapter {
         commandService.deleteDatabase(nameStr)
 
     // Query API
-    suspend fun catalog(): Flow<Database> = repository.databaseCatalog()
+    suspend fun catalog(): Flow<DatabaseName> = repository.databaseCatalog()
 
     fun connect(databaseNameStr: String): Flow<Either<QueryError, Database>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {

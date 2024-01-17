@@ -5,7 +5,6 @@ import com.evidentdb.client.cloudevents.RecordedTimeExtension
 import com.evidentdb.client.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.provider.ExtensionProvider
-import java.net.URI
 import java.time.Instant
 
 typealias Revision = ULong
@@ -17,7 +16,6 @@ typealias DatabaseRevision = Revision
 
 data class Database(
     val name: DatabaseName,
-    val subscriptionURI: URI,
     val created: Instant,
     val revision: DatabaseRevision,
 )

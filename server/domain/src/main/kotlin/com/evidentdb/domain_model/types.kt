@@ -18,9 +18,6 @@ typealias Revision = ULong
 typealias DatabaseRevision = Revision
 
 @JvmInline
-value class DatabaseSubscriptionURI(val value: URI)
-
-@JvmInline
 value class DatabaseName private constructor(val value: String) {
     companion object {
         val PATTERN = Regex("""^[a-zA-Z][a-zA-Z0-9\-_.]{1,127}$""")
@@ -34,7 +31,6 @@ value class DatabaseName private constructor(val value: String) {
 
 interface Database {
     val name: DatabaseName
-    val subscriptionURI: DatabaseSubscriptionURI
     val created: Instant
     val revision: DatabaseRevision
 }

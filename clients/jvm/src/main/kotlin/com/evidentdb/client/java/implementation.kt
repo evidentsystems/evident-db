@@ -74,8 +74,6 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private class DatabaseImpl(private val kotlinDatabase: DatabaseKt): Database {
         override val name: DatabaseName
             get() = kotlinDatabase.name
-        override val subscriptionURI: URI
-            get() = kotlinDatabase.subscriptionURI
         override val created: Instant
             get() = kotlinDatabase.created
         override val revision: DatabaseRevision
@@ -127,8 +125,7 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
         }
 
         override fun toString(): String {
-            return "Database(name='$name', subcriptionURI=$subscriptionURI, " +
-                    "created=$created, revision=$revision)"
+            return "Database(name='$name', created=$created, revision=$revision)"
         }
     }
 }

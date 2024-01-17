@@ -11,7 +11,6 @@ import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
 import com.evidentdb.dto.v1.proto.BatchConstraint.ConstraintCase.*
 import io.cloudevents.protobuf.toDomain
 import io.cloudevents.protobuf.toTransfer
-import java.net.URI
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
@@ -24,7 +23,6 @@ fun Timestamp.toInstant(): Instant =
 
 fun ProtoDatabase.toDomain() = Database(
     name,
-    URI(subscriptionUri),
     created.toInstant(),
     revision.toULong()
 )
@@ -38,7 +36,6 @@ fun ProtoBatch.toDomain() = Batch(
 
 //fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
 //    .setName(name)
-//    .setSubscriptionUri(subscriptionURI.toString())
 //    .setCreated(created.toTimestamp())
 //    .setRevision(revision.toLong())
 //    .build()

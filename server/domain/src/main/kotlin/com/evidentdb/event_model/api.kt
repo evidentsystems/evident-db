@@ -46,15 +46,14 @@ data class EvidentDbErrorEvent(
 
 data class CreateDatabase(
     override val id: EnvelopeId,
-    override val database: DatabaseName,
-    val subscriptionURI: DatabaseSubscriptionURI
+    override val database: DatabaseName
 ): EvidentDbCommand {
     override suspend fun decide(state: DatabaseCommandModel): Either<DatabaseCreationError, DatabaseCreated> =
         when (state) {
             is DatabaseCommandModelBeforeCreation -> either {
                 ensure(state.databaseNameAvailable(database)) { DatabaseNameAlreadyExists(database) }
                 val newlyCreatedDatabase = state.buildNewlyCreatedDatabase(
-                    database, subscriptionURI, Instant.now()
+                    database, Instant.now()
                 ).bind()
                 DatabaseCreated(
                     EnvelopeId.randomUUID(),

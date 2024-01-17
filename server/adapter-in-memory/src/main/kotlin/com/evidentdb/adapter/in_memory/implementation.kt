@@ -14,7 +14,6 @@ import com.evidentdb.event_model.decider
 import jakarta.inject.Singleton
 import kotlinx.coroutines.flow.*
 import java.lang.IndexOutOfBoundsException
-import java.net.URI
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -31,18 +30,11 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
     override suspend fun databaseCommandModel(name: DatabaseName): DatabaseCommandModel =
         storage[name]?.latestDatabase()?.getOrNull() ?: this
 
-    override suspend fun setupDatabase(name: DatabaseName): Either<DatabaseCreationError, DatabaseSubscriptionURI> =
-        either {
-            val uri = URI("evidentdb:mem:NULL")
-            DatabaseSubscriptionURI(uri)
-        }
-
-    override suspend fun addDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit> =
+    override suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit> =
         either {
             val key = database.name
             val value = InMemoryDatabaseRepository(
                 database.name,
-                database.subscriptionURI,
                 database.created,
             )
             // putIfAbsent returns null if no existing key present
@@ -99,7 +91,6 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
 
 private class InMemoryDatabaseRepository(
     val name: DatabaseName,
-    val subscriptionURI: DatabaseSubscriptionURI,
     val created: Instant,
 ) {
     private val lock = ReentrantLock()
@@ -109,7 +100,7 @@ private class InMemoryDatabaseRepository(
 
     // Initial database state
     init {
-        val initialDatabase = DatabaseRootValue(name, subscriptionURI, created, 0uL)
+        val initialDatabase = DatabaseRootValue(name, created, 0uL)
         storage = TreeMap()
         storage[DatabaseRootKey] = initialDatabase
         _updates = MutableStateFlow(initialDatabase.right())
@@ -125,7 +116,7 @@ private class InMemoryDatabaseRepository(
     fun databaseAtRevision(
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, InMemoryDatabase> =
-        InMemoryDatabase(name, subscriptionURI, created, revision).right()
+        InMemoryDatabase(name, created, revision).right()
 
     fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
         either {
@@ -136,7 +127,6 @@ private class InMemoryDatabaseRepository(
             }
             val nextDatabaseRoot = DatabaseRootValue(
                 database.name,
-                database.subscriptionURI,
                 database.created,
                 database.revision
             )
@@ -336,7 +326,6 @@ private class InMemoryDatabaseRepository(
 
     private data class DatabaseRootValue(
         override val name: DatabaseName,
-        override val subscriptionURI: DatabaseSubscriptionURI,
         override val created: Instant,
         override val revision: DatabaseRevision,
     ): Database, InMemoryRepositoryValue
@@ -360,7 +349,6 @@ private class InMemoryDatabaseRepository(
 
     inner class InMemoryDatabase(
         override val name: DatabaseName,
-        override val subscriptionURI: DatabaseSubscriptionURI,
         override val created: Instant,
         override val revision: DatabaseRevision
     ): CleanDatabaseCommandModel, DatabaseReadModel {

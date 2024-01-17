@@ -171,7 +171,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         override val database: DatabaseName,
         eventCacheSize: Long,
     ) : Connection {
-        private lateinit var subscriptionURI: URI
         private lateinit var created: Instant
         private val connectionScope = CoroutineScope(Dispatchers.Default)
         private val state = AtomicReference(ConnectionState.DISCONNECTED)
@@ -202,7 +201,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         if (i == 0) {
                             started.complete(true)
                             state.set(ConnectionState.CONNECTED)
-                            subscriptionURI = summary.subscriptionURI
                             created = summary.created
                         }
                         latestRevision.set(summary.revision)
@@ -251,7 +249,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             else
                 DatabaseImpl(
                     database,
-                    subscriptionURI,
                     created,
                     latestRevision.get(),
                 )
@@ -277,7 +274,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 maybeSetLatestRevision(summary.revision)
                 DatabaseImpl(
                     summary.name,
-                    summary.subscriptionURI,
                     summary.created,
                     summary.revision,
                 )
@@ -300,7 +296,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         maybeSetLatestRevision(summary.revision)
                         DatabaseImpl(
                             summary.name,
-                            summary.subscriptionURI,
                             summary.created,
                             summary.revision,
                         )
@@ -377,7 +372,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
-            override val subscriptionURI: URI,
             override val created: Instant,
             override val revision: DatabaseRevision,
         ) : Database {
@@ -509,7 +503,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             }
 
             override fun toString(): String {
-                return "Database(name='$name', topic=$subscriptionURI, created=$created, streamRevisions=$revision, revision=$revision)"
+                return "Database(name='$name', created=$created, revision=$revision)"
             }
         }
     }

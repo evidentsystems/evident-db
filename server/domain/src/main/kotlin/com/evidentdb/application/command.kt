@@ -15,10 +15,9 @@ class CommandService(
         val name = DatabaseName(nameStr).bind()
         val initialState = repository.databaseCommandModel(name)
         ensure(initialState is DatabaseCommandModelBeforeCreation) { DatabaseNameAlreadyExists(name) }
-        val subscriptionURI = repository.setupDatabase(name).bind()
-        val result = execute(initialState, CreateDatabase(EnvelopeId.randomUUID(), name, subscriptionURI)).bind()
+        val result = execute(initialState, CreateDatabase(EnvelopeId.randomUUID(), name)).bind()
         ensure(result is NewlyCreatedDatabaseCommandModel) { DatabaseNameAlreadyExists(name) }
-        repository.addDatabase(result).bind()
+        repository.setupDatabase(result).bind()
         result
     }
 
@@ -79,8 +78,7 @@ interface WritableDatabaseRepository: DatabaseRepository {
     suspend fun databaseCommandModel(name: DatabaseName): DatabaseCommandModel
 
     // Database Creation
-    suspend fun setupDatabase(name: DatabaseName): Either<DatabaseCreationError, DatabaseSubscriptionURI>
-    suspend fun addDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit>
+    suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit>
 
     // Batch Transaction
     suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit>

@@ -15,7 +15,6 @@ option objc_class_prefix = "EDB";
 
 message Database {
   string name = 1;
-  string subscription_uri = 2;
   google.protobuf.Timestamp created = 3;
   uint64 revision = 4;
 }

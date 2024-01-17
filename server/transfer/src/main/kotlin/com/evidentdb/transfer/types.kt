@@ -24,7 +24,6 @@ fun Instant.toTimestamp(): Timestamp =
 
 fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
     .setName(name.value)
-    .setSubscriptionUri(subscriptionURI.value.toString())
     .setCreated(created.toTimestamp())
     .setRevision(revision.toLong())
     .build()

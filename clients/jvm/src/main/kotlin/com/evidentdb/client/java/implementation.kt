@@ -8,7 +8,6 @@ import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future
-import java.time.Instant
 import java.util.concurrent.*
 
 class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
@@ -73,8 +72,6 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private class DatabaseImpl(private val kotlinDatabase: DatabaseKt): Database {
         override val name: DatabaseName
             get() = kotlinDatabase.name
-        override val created: Instant
-            get() = kotlinDatabase.created
         override val revision: DatabaseRevision
             get() = kotlinDatabase.revision
 
@@ -100,8 +97,7 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
 
         // Use as Data Class
         operator fun component1() = name
-        operator fun component2() = created
-        operator fun component3() = revision
+        operator fun component2() = revision
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -110,7 +106,6 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
             other as DatabaseImpl
 
             if (name != other.name) return false
-            if (created != other.created) return false
             if (revision != other.revision) return false
 
             return true
@@ -118,13 +113,12 @@ class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
 
         override fun hashCode(): Int {
             var result = name.hashCode()
-            result = 31 * result + created.hashCode()
             result = 31 * result + revision.hashCode()
             return result
         }
 
         override fun toString(): String {
-            return "Database(name='$name', created=$created, revision=$revision)"
+            return "Database(name='$name', revision=$revision)"
         }
     }
 }

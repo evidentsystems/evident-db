@@ -33,10 +33,7 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
     override suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit> =
         either {
             val key = database.name
-            val value = InMemoryDatabaseRepository(
-                database.name,
-                database.created,
-            )
+            val value = InMemoryDatabaseRepository(database.name)
             // putIfAbsent returns null if no existing key present
             ensure(storage.putIfAbsent(key, value) == null) {
                 DatabaseNameAlreadyExists(database.name)
@@ -91,7 +88,6 @@ private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, Wri
 
 private class InMemoryDatabaseRepository(
     val name: DatabaseName,
-    val created: Instant,
 ) {
     private val lock = ReentrantLock()
     private val storage: NavigableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>
@@ -100,7 +96,7 @@ private class InMemoryDatabaseRepository(
 
     // Initial database state
     init {
-        val initialDatabase = DatabaseRootValue(name, created, 0uL)
+        val initialDatabase = DatabaseRootValue(name, 0uL)
         storage = TreeMap()
         storage[DatabaseRootKey] = initialDatabase
         _updates = MutableStateFlow(initialDatabase.right())
@@ -116,7 +112,7 @@ private class InMemoryDatabaseRepository(
     fun databaseAtRevision(
         revision: DatabaseRevision
     ): Either<DatabaseNotFound, InMemoryDatabase> =
-        InMemoryDatabase(name, created, revision).right()
+        InMemoryDatabase(name, revision).right()
 
     fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
         either {
@@ -127,7 +123,6 @@ private class InMemoryDatabaseRepository(
             }
             val nextDatabaseRoot = DatabaseRootValue(
                 database.name,
-                database.created,
                 database.revision
             )
             val batchAndIndexes = mutableMapOf<InMemoryRepositoryKey, InMemoryRepositoryValue>()
@@ -326,7 +321,6 @@ private class InMemoryDatabaseRepository(
 
     private data class DatabaseRootValue(
         override val name: DatabaseName,
-        override val created: Instant,
         override val revision: DatabaseRevision,
     ): Database, InMemoryRepositoryValue
 
@@ -349,7 +343,6 @@ private class InMemoryDatabaseRepository(
 
     inner class InMemoryDatabase(
         override val name: DatabaseName,
-        override val created: Instant,
         override val revision: DatabaseRevision
     ): CleanDatabaseCommandModel, DatabaseReadModel {
         override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =

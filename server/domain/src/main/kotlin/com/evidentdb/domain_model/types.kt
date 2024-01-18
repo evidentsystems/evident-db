@@ -31,7 +31,6 @@ value class DatabaseName private constructor(val value: String) {
 
 interface Database {
     val name: DatabaseName
-    val created: Instant
     val revision: DatabaseRevision
 }
 

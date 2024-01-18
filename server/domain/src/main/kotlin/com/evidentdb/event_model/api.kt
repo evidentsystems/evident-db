@@ -52,9 +52,7 @@ data class CreateDatabase(
         when (state) {
             is DatabaseCommandModelBeforeCreation -> either {
                 ensure(state.databaseNameAvailable(database)) { DatabaseNameAlreadyExists(database) }
-                val newlyCreatedDatabase = state.buildNewlyCreatedDatabase(
-                    database, Instant.now()
-                ).bind()
+                val newlyCreatedDatabase = state.buildNewlyCreatedDatabase(database).bind()
                 DatabaseCreated(
                     EnvelopeId.randomUUID(),
                     id,

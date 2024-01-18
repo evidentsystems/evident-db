@@ -18,7 +18,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
-import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
@@ -170,7 +169,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         override val database: DatabaseName,
         eventCacheSize: Long,
     ) : Connection {
-        private lateinit var created: Instant
         private val connectionScope = CoroutineScope(Dispatchers.Default)
         private val state = AtomicReference(ConnectionState.DISCONNECTED)
         private val latestRevision = AtomicReference(0uL)
@@ -200,7 +198,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         if (i == 0) {
                             started.complete(true)
                             state.set(ConnectionState.CONNECTED)
-                            created = summary.created
                         }
                         latestRevision.set(summary.revision)
                     }
@@ -248,7 +245,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
             else
                 DatabaseImpl(
                     database,
-                    created,
                     latestRevision.get(),
                 )
 
@@ -273,7 +269,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 maybeSetLatestRevision(summary.revision)
                 DatabaseImpl(
                     summary.name,
-                    summary.created,
                     summary.revision,
                 )
             }
@@ -295,7 +290,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         maybeSetLatestRevision(summary.revision)
                         DatabaseImpl(
                             summary.name,
-                            summary.created,
                             summary.revision,
                         )
                     }
@@ -371,7 +365,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
-            override val created: Instant,
             override val revision: DatabaseRevision,
         ) : Database {
             override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> =
@@ -478,8 +471,7 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
             // Use as Data Class
             operator fun component1() = name
-            operator fun component2() = created
-            operator fun component3() = revision
+            operator fun component2() = revision
 
             override fun equals(other: Any?): Boolean {
                 if (this === other) return true
@@ -488,7 +480,6 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                 other as DatabaseImpl
 
                 if (name != other.name) return false
-                if (created != other.created) return false
                 if (revision != other.revision) return false
 
                 return true
@@ -496,13 +487,12 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
 
             override fun hashCode(): Int {
                 var result = name.hashCode()
-                result = 31 * result + created.hashCode()
                 result = 31 * result + revision.hashCode()
                 return result
             }
 
             override fun toString(): String {
-                return "Database(name='$name', created=$created, revision=$revision)"
+                return "Database(name='$name', revision=$revision)"
             }
         }
     }

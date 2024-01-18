@@ -23,11 +23,10 @@ interface DatabaseCommandModelBeforeCreation: DatabaseCommandModel {
 
     // Command Processing
     suspend fun buildNewlyCreatedDatabase(
-        name: DatabaseName,
-        created: Instant
+        name: DatabaseName
     ): Either<DatabaseCreationError, NewlyCreatedDatabaseCommandModel> = either {
         ensure(databaseNameAvailable(name)) { DatabaseNameAlreadyExists(name) }
-        NewlyCreatedDatabaseCommandModel(name, created, this@DatabaseCommandModelBeforeCreation)
+        NewlyCreatedDatabaseCommandModel(name, this@DatabaseCommandModelBeforeCreation)
     }
 }
 
@@ -37,7 +36,6 @@ interface CleanDatabaseCommandModel: ActiveDatabaseCommandModel
 
 sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
     override val name: DatabaseName
-    override val created: Instant
     override val revision: DatabaseRevision
 
     // Invariant Checking
@@ -60,7 +58,6 @@ sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
 
 data class NewlyCreatedDatabaseCommandModel internal constructor(
     override val name: DatabaseName,
-    override val created: Instant,
     private val basis: DatabaseCommandModelBeforeCreation,
 ): ActiveDatabaseCommandModel {
     override val revision: DatabaseRevision = 0uL
@@ -87,8 +84,6 @@ data class DirtyDatabaseCommandModel internal constructor(
 ) : ActiveDatabaseCommandModel {
     override val name: DatabaseName
         get() = basis.name
-    override val created: Instant
-        get() = basis.created
     override val revision: DatabaseRevision = basis.revision + batch.events.size.toUInt()
 
     private val eventKeys = batch.events.map { event -> Pair(event.stream, event.id) }.toSet()

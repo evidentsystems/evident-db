@@ -15,8 +15,7 @@ option objc_class_prefix = "EDB";
 
 message Database {
   string name = 1;
-  google.protobuf.Timestamp created = 3;
-  uint64 revision = 4;
+  uint64 revision = 2;
 }
 
 message BatchConstraint {

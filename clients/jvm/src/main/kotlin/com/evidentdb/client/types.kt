@@ -16,7 +16,6 @@ typealias DatabaseRevision = Revision
 
 data class Database(
     val name: DatabaseName,
-    val created: Instant,
     val revision: DatabaseRevision,
 )
 

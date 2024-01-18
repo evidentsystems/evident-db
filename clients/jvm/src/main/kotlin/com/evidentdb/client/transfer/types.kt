@@ -23,7 +23,6 @@ fun Timestamp.toInstant(): Instant =
 
 fun ProtoDatabase.toDomain() = Database(
     name,
-    created.toInstant(),
     revision.toULong()
 )
 

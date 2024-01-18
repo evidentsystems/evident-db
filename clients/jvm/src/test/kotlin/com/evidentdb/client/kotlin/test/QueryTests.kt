@@ -1,4 +1,4 @@
-package com.evidentdb.client.test
+package com.evidentdb.client.kotlin.test
 
 class QueryTests {
 

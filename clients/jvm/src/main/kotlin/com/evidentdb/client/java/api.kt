@@ -115,7 +115,6 @@ interface Connection: Lifecycle {
  */
 interface Database {
     val name: DatabaseName
-    val created: Instant
     val revision: DatabaseRevision
 
     /**

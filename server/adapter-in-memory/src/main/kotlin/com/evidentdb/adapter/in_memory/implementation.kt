@@ -8,6 +8,9 @@ import com.evidentdb.adapter.EvidentDbAdapter
 import com.evidentdb.application.*
 import com.evidentdb.domain_model.*
 import com.evidentdb.event_model.decider
+import io.micronaut.context.annotation.Bean
+import jakarta.annotation.PostConstruct
+import jakarta.annotation.PreDestroy
 import jakarta.inject.Singleton
 import kotlinx.coroutines.flow.*
 import java.lang.IndexOutOfBoundsException
@@ -496,11 +499,21 @@ class InMemoryAdapter: EvidentDbAdapter {
         val repo = InMemoryCatalogRepository()
         databaseUpdateStream = repo
         commandService = CommandService(
-                decider(repo),
-                repo,
-                EmptyPathEventSourceURI("evidentdb://mem")
-                    .getOrElse { throw IllegalArgumentException("Invalid EmptyPathEventSourceURI") },
-            )
+            decider(repo),
+            repo,
+            EmptyPathEventSourceURI("evidentdb://mem")
+                .getOrElse { throw IllegalArgumentException("Invalid EmptyPathEventSourceURI") },
+        )
         repository = repo
+    }
+
+    @PostConstruct
+    fun postConstruct() {
+        super.setup(mapOf())
+    }
+
+    @PreDestroy
+    fun preDestroy() {
+        super.teardown()
     }
 }

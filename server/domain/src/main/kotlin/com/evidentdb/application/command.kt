@@ -10,7 +10,15 @@ class CommandService(
     private val decider: EvidentDbDecider,
     private val repository: WritableDatabaseRepository,
     private val emptyPathEventSourceURI: EmptyPathEventSourceURI,
-) {
+): Lifecycle {
+    override fun setup(params: Map<String, String>) {
+        repository.setup(params)
+    }
+
+    override fun teardown() {
+        repository.teardown()
+    }
+
     suspend fun createDatabase(nameStr: String): Either<EvidentDbCommandError, NewlyCreatedDatabaseCommandModel> = either {
         val name = DatabaseName(nameStr).bind()
         val initialState = repository.databaseCommandModel(name)

@@ -7,6 +7,8 @@ import arrow.core.right
 import arrow.resilience.Schedule
 import com.evidentdb.application.CommandService
 import com.evidentdb.application.DatabaseRepository
+import com.evidentdb.application.DatabaseUpdateStream
+import com.evidentdb.application.Lifecycle
 import com.evidentdb.domain_model.*
 import kotlinx.coroutines.flow.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -22,9 +24,23 @@ private val batchTransactRetrySchedule = Schedule
     .exponential<Either<EvidentDbCommandError, AcceptedBatch>>(10.milliseconds)
     .doUntil { result, duration -> duration > 60.seconds || isNotWriteCollision(result) }
 
-interface EvidentDbAdapter {
+interface EvidentDbAdapter: Lifecycle {
     val commandService: CommandService
     val repository: DatabaseRepository
+    val databaseUpdateStream: DatabaseUpdateStream
+
+    // Lifecycle
+    override fun setup(params: Map<String, String>) {
+        commandService.setup(params)
+        repository.setup(params)
+        databaseUpdateStream.setup(params)
+    }
+
+    override fun teardown() {
+        commandService.teardown()
+        repository.teardown()
+        databaseUpdateStream.teardown()
+    }
 
     // Command API
     suspend fun createDatabase(nameStr: String): Either<EvidentDbCommandError, Database> =
@@ -58,7 +74,7 @@ interface EvidentDbAdapter {
             is Either.Left -> emit(databaseName)
             is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
                 is Either.Left -> emit(database)
-                is Either.Right -> emitAll(repository.subscribe(database.value.name))
+                is Either.Right -> emitAll(databaseUpdateStream.subscribe(database.value.name))
             }
         }
     }

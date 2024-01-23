@@ -5,10 +5,7 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
 import com.evidentdb.adapter.EvidentDbAdapter
-import com.evidentdb.application.CommandService
-import com.evidentdb.application.DatabaseReadModel
-import com.evidentdb.application.DatabaseRepository
-import com.evidentdb.application.WritableDatabaseRepository
+import com.evidentdb.application.*
 import com.evidentdb.domain_model.*
 import com.evidentdb.event_model.decider
 import jakarta.inject.Singleton
@@ -21,8 +18,14 @@ import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-private class InMemoryCatalogRepository: DatabaseCommandModelBeforeCreation, WritableDatabaseRepository {
+private class InMemoryCatalogRepository:
+    DatabaseCommandModelBeforeCreation,
+    WritableDatabaseRepository,
+    DatabaseUpdateStream {
     private val storage: ConcurrentMap<DatabaseName, InMemoryDatabaseRepository> = ConcurrentHashMap()
+    // Lifecycle
+    override fun setup(params: Map<String, String>) = Unit // no-op
+    override fun teardown() = Unit // no-op
 
     override suspend fun databaseNameAvailable(name: DatabaseName): Boolean =
         !storage.containsKey(name)
@@ -486,10 +489,12 @@ private class InMemoryDatabaseRepository(
 @Singleton
 class InMemoryAdapter: EvidentDbAdapter {
     override val commandService: CommandService
+    override val databaseUpdateStream: DatabaseUpdateStream
     override val repository: DatabaseRepository
 
     init {
         val repo = InMemoryCatalogRepository()
+        databaseUpdateStream = repo
         commandService = CommandService(
                 decider(repo),
                 repo,

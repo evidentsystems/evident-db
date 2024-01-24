@@ -182,7 +182,7 @@ private class InMemoryDatabaseRepository(
     // alphabetically by class name, and per attributes between instances of same class
     private sealed interface InMemoryRepositoryKey: Comparable<InMemoryRepositoryKey>
 
-    private object DatabaseRootKey: InMemoryRepositoryKey {
+    private data object DatabaseRootKey: InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
                 DatabaseRootKey -> 0
@@ -320,7 +320,7 @@ private class InMemoryDatabaseRepository(
 
     private sealed interface InMemoryRepositoryValue
 
-    private object NullValue: InMemoryRepositoryValue
+    private data object NullValue: InMemoryRepositoryValue
 
     private data class EventIdIndexValue(val revision: DatabaseRevision): InMemoryRepositoryValue
 

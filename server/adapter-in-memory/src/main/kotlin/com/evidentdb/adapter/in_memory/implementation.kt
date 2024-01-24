@@ -8,7 +8,6 @@ import com.evidentdb.adapter.EvidentDbAdapter
 import com.evidentdb.application.*
 import com.evidentdb.domain_model.*
 import com.evidentdb.event_model.decider
-import io.micronaut.context.annotation.Bean
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Singleton
@@ -27,7 +26,7 @@ private class InMemoryCatalogRepository:
     DatabaseUpdateStream {
     private val storage: ConcurrentMap<DatabaseName, InMemoryDatabaseRepository> = ConcurrentHashMap()
     // Lifecycle
-    override fun setup(params: Map<String, String>) = Unit // no-op
+    override fun setup() = Unit // no-op
     override fun teardown() = Unit // no-op
 
     override suspend fun databaseNameAvailable(name: DatabaseName): Boolean =
@@ -509,7 +508,7 @@ class InMemoryAdapter: EvidentDbAdapter {
 
     @PostConstruct
     fun postConstruct() {
-        super.setup(mapOf())
+        super.setup()
     }
 
     @PreDestroy

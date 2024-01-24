@@ -30,10 +30,10 @@ interface EvidentDbAdapter: Lifecycle {
     val databaseUpdateStream: DatabaseUpdateStream
 
     // Lifecycle
-    override fun setup(params: Map<String, String>) {
-        commandService.setup(params)
-        repository.setup(params)
-        databaseUpdateStream.setup(params)
+    override fun setup() {
+        commandService.setup()
+        repository.setup()
+        databaseUpdateStream.setup()
     }
 
     override fun teardown() {

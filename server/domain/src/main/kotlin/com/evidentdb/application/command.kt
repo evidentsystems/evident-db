@@ -11,8 +11,8 @@ class CommandService(
     private val repository: WritableDatabaseRepository,
     private val emptyPathEventSourceURI: EmptyPathEventSourceURI,
 ): Lifecycle {
-    override fun setup(params: Map<String, String>) {
-        repository.setup(params)
+    override fun setup() {
+        repository.setup()
     }
 
     override fun teardown() {

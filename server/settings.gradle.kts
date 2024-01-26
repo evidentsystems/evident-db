@@ -18,7 +18,7 @@ dependencyResolutionManagement {
             version("protobuf-java", "3.25.1")
             version("grpc", "1.56.0")
             version("grpckotlin", "1.3.0")
-            version("micronaut", "4.1.1")
+            version("micronaut", "4.2.4")
             version("micrometer", "1.11.1")
             version("slf4j", "1.7.36")
 

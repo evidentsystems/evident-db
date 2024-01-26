@@ -3,7 +3,7 @@ plugins {
     id("com.evidentdb.build.protobuf")
 }
 
-group = "com.evidentdb"
+group = "com.evidentdb.server"
 version = "0.1.0-SNAPSHOT"
 
 dependencies {

@@ -2,8 +2,8 @@ plugins {
     id("com.evidentdb.build.micronaut-app")
 }
 
+group = "com.evidentdb.server"
 version = "0.1.0-alpha-SNAPSHOT"
-group = "com.evidentdb"
 
 dependencies {
     implementation(libs.arrow.core)

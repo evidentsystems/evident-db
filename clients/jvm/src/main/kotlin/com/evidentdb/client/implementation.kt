@@ -1,12 +1,15 @@
 package com.evidentdb.client
 
-import arrow.core.*
+import arrow.core.None
+import arrow.core.Option
+import arrow.core.Some
+import arrow.core.some
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
-import javax.annotation.concurrent.ThreadSafe
 import java.util.concurrent.atomic.AtomicReference
+import javax.annotation.concurrent.ThreadSafe
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine

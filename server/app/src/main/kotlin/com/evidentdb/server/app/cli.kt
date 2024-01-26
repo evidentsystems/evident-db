@@ -2,7 +2,6 @@ package com.evidentdb.server.app
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
-import io.micronaut.context.env.Environment
 import io.micronaut.runtime.Micronaut
 
 fun main(args: Array<String>) =

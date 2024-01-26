@@ -5,16 +5,13 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
 import com.evidentdb.server.adapter.EvidentDbAdapter
-import com.evidentdb.application.*
-import com.evidentdb.domain_model.*
-import com.evidentdb.server.event_model.decider
 import com.evidentdb.server.application.*
 import com.evidentdb.server.domain_model.*
+import com.evidentdb.server.event_model.decider
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Singleton
 import kotlinx.coroutines.flow.*
-import java.lang.IndexOutOfBoundsException
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap

@@ -4,9 +4,6 @@ import com.evidentdb.client.cloudevents.RecordedTimeExtension
 import com.evidentdb.client.cloudevents.SequenceExtension
 import com.evidentdb.client.java.Connection
 import com.evidentdb.client.java.GrpcClient
-import com.evidentdb.client.kotlin.GrpcClient as GrpcClientKt
-import com.evidentdb.client.kotlin.Connection as ConnectionKt
-
 import io.cloudevents.CloudEvent
 import io.cloudevents.CloudEventData
 import io.cloudevents.CloudEventExtension
@@ -14,6 +11,8 @@ import io.cloudevents.core.builder.CloudEventBuilder
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.flow.Flow
 import java.net.URI
+import com.evidentdb.client.kotlin.Connection as ConnectionKt
+import com.evidentdb.client.kotlin.GrpcClient as GrpcClientKt
 
 interface EvidentDb: Lifecycle {
     /**

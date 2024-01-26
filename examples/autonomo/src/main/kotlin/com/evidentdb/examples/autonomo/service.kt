@@ -1,7 +1,7 @@
 package com.evidentdb.examples.autonomo
 
 import com.evidentdb.examples.autonomo.domain.*
-import java.util.UUID
+import java.util.*
 
 // TODO: support passing point-in-time revision
 

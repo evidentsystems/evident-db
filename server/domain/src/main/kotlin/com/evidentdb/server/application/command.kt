@@ -3,8 +3,6 @@ package com.evidentdb.server.application
 import arrow.core.Either
 import arrow.core.raise.either
 import arrow.core.raise.ensure
-import com.evidentdb.domain_model.*
-import com.evidentdb.event_model.*
 import com.evidentdb.server.domain_model.*
 import com.evidentdb.server.event_model.*
 

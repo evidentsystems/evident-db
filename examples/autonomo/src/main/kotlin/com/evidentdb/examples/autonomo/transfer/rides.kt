@@ -1,9 +1,9 @@
 package com.evidentdb.examples.autonomo.transfer
 
 import com.evidentdb.examples.autonomo.domain.*
-import io.micronaut.serde.ObjectMapper
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
+import io.micronaut.serde.ObjectMapper
 import io.micronaut.serde.annotation.Serdeable
 import java.nio.charset.StandardCharsets
 import java.time.Instant

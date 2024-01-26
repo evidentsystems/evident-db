@@ -2,7 +2,6 @@ package com.evidentdb.client.kotlin.test
 
 import com.evidentdb.client.EvidentDb
 import io.grpc.ManagedChannelBuilder
-import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeAll

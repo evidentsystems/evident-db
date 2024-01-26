@@ -1,11 +1,11 @@
 package com.evidentdb.client.kotlin
 
 import com.evidentdb.client.*
-import com.evidentdb.client.java.Connection as ConnectionJava
-import com.evidentdb.client.java.Database as DatabaseJava
 import io.cloudevents.CloudEvent
 import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.CompletableFuture
+import com.evidentdb.client.java.Connection as ConnectionJava
+import com.evidentdb.client.java.Database as DatabaseJava
 
 /**
  * A connection to a specific database, used to [transactAsync]

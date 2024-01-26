@@ -1,22 +1,22 @@
 package com.evidentdb.examples.autonomo.transfer
 
-import java.time.Instant
-import java.util.UUID
 import com.evidentdb.examples.autonomo.domain.*
-import io.micronaut.serde.ObjectMapper
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
+import io.micronaut.serde.ObjectMapper
 import io.micronaut.serde.annotation.Serdeable
 import java.nio.charset.StandardCharsets
-import com.evidentdb.examples.autonomo.domain.VehicleEvent as DomainVehicleEvent
+import java.time.Instant
+import java.util.*
+import com.evidentdb.examples.autonomo.domain.Vehicle as DomainVehicle
 import com.evidentdb.examples.autonomo.domain.VehicleAdded as DomainVehicleAdded
 import com.evidentdb.examples.autonomo.domain.VehicleAvailable as DomainVehicleAvailable
+import com.evidentdb.examples.autonomo.domain.VehicleEvent as DomainVehicleEvent
 import com.evidentdb.examples.autonomo.domain.VehicleOccupied as DomainVehicleOccupied
-import com.evidentdb.examples.autonomo.domain.VehicleReturnRequested as DomainVehicleReturnRequested
-import com.evidentdb.examples.autonomo.domain.VehicleReturning as DomainVehicleReturning
-import com.evidentdb.examples.autonomo.domain.VehicleReturned as DomainVehicleReturned
 import com.evidentdb.examples.autonomo.domain.VehicleRemoved as DomainVehicleRemoved
-import com.evidentdb.examples.autonomo.domain.Vehicle as DomainVehicle
+import com.evidentdb.examples.autonomo.domain.VehicleReturnRequested as DomainVehicleReturnRequested
+import com.evidentdb.examples.autonomo.domain.VehicleReturned as DomainVehicleReturned
+import com.evidentdb.examples.autonomo.domain.VehicleReturning as DomainVehicleReturning
 
 // ***** Events *****
 

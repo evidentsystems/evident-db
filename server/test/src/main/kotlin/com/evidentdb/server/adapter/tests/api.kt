@@ -5,7 +5,8 @@ import arrow.core.right
 import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.domain_model.*
 import io.cloudevents.core.builder.CloudEventBuilder
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest

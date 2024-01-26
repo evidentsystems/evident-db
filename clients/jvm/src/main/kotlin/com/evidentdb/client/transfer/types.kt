@@ -2,15 +2,15 @@ package com.evidentdb.client.transfer
 
 import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.*
-import com.google.protobuf.Timestamp
-import java.time.Instant
-import io.cloudevents.v1.proto.CloudEvent as ProtoCloudEvent
-import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
-import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
-import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
 import com.evidentdb.dto.v1.proto.BatchConstraint.ConstraintCase.*
+import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.toDomain
 import io.cloudevents.protobuf.toTransfer
+import java.time.Instant
+import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
+import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
+import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
+import io.cloudevents.v1.proto.CloudEvent as ProtoCloudEvent
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())

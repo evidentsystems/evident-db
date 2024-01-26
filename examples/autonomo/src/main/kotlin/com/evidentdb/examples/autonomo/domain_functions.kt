@@ -1,8 +1,8 @@
 package com.evidentdb.examples.autonomo
 
+import com.evidentdb.examples.autonomo.domain.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.fold
-import com.evidentdb.examples.autonomo.domain.*
 
 // ***** Domain Functions API *****
 

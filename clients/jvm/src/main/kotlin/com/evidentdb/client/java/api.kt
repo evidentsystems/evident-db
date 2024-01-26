@@ -2,8 +2,6 @@ package com.evidentdb.client.java
 
 import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
-import java.net.URI
-import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
 /**

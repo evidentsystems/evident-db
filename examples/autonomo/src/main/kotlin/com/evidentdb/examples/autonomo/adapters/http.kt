@@ -8,7 +8,7 @@ import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import org.slf4j.LoggerFactory
 import java.net.URI
-import java.util.UUID
+import java.util.*
 
 @Controller("/rides")
 class RidesController(

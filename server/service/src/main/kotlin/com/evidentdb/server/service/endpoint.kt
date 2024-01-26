@@ -6,9 +6,9 @@ import arrow.core.raise.either
 import arrow.core.raise.mapOrAccumulate
 import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.domain_model.*
-import com.evidentdb.service.v1.*
 import com.evidentdb.server.transfer.toDomain
 import com.evidentdb.server.transfer.toTransfer
+import com.evidentdb.service.v1.*
 import io.cloudevents.protobuf.toDomain
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll

@@ -1,14 +1,16 @@
 package com.evidentdb.client.java
 
 import com.evidentdb.client.*
+import io.cloudevents.CloudEvent
+import io.grpc.ManagedChannelBuilder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.future.future
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CompletableFuture
 import com.evidentdb.client.kotlin.Connection as ConnectionKt
 import com.evidentdb.client.kotlin.Database as DatabaseKt
-import io.cloudevents.CloudEvent
 import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
-import io.grpc.ManagedChannelBuilder
-import kotlinx.coroutines.*
-import kotlinx.coroutines.future.future
-import java.util.concurrent.*
 
 class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private val kotlinClient = EvidentDBKt(channelBuilder)

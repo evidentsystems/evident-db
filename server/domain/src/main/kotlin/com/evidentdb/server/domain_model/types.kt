@@ -1,7 +1,12 @@
 package com.evidentdb.server.domain_model
 
-import arrow.core.*
-import arrow.core.raise.*
+import arrow.core.Either
+import arrow.core.NonEmptyList
+import arrow.core.getOrElse
+import arrow.core.raise.catch
+import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.core.raise.ensureNotNull
 import com.evidentdb.server.cloudevents.RecordedTimeExtension
 import com.evidentdb.server.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent

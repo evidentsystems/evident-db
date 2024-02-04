@@ -222,6 +222,10 @@ interface Event {
         get() = ExtensionProvider.getInstance()
             .parseExtension(SequenceExtension::class.java, event)!!
             .sequence
+    val revisionElen: String
+        get() = ExtensionProvider.getInstance()
+            .parseExtension(SequenceExtension::class.java, event)!!
+            .getValue(SequenceExtension.SEQUENCE_KEY)
     val time: Instant?
         get() = event.time?.toInstant()
     val recordedTime: Instant

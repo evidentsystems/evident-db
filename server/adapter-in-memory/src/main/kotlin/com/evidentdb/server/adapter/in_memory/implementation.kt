@@ -8,6 +8,7 @@ import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.application.*
 import com.evidentdb.server.domain_model.*
 import com.evidentdb.server.event_model.decider
+import io.micronaut.context.annotation.Secondary
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Singleton
@@ -499,6 +500,7 @@ private class InMemoryDatabaseRepository(
     }
 }
 
+@Secondary
 @Singleton
 class InMemoryAdapter: EvidentDbAdapter {
     override val commandService: CommandService

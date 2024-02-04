@@ -18,6 +18,9 @@ interface AdapterTests {
     val adapter: EvidentDbAdapter
     val creationResult: Either<EvidentDbCommandError, Database>
 
+    // TODO: write a test for fuzzy match of revision (next largest vs. given revision)
+    //   for Adapter.databaseAtRevision
+
     fun `creating a database`() = runTest {
         Assertions.assertTrue(creationResult.isRight())
         Assertions.assertInstanceOf(Database::class.java, creationResult.getOrNull())

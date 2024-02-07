@@ -135,7 +135,7 @@ private class InMemoryDatabaseRepository(
                 addBatchToTransaction(batchAndIndexes, it)
             }
             try {
-                storage.plusAssign(batchAndIndexes)
+                storage += batchAndIndexes
                 storage[DatabaseRootKey] = nextDatabaseRoot
                 val updateSent = _updates.compareAndSet(currentDatabaseRoot.right(), nextDatabaseRoot.right())
                 if (!updateSent) {
@@ -419,7 +419,8 @@ private class InMemoryDatabaseRepository(
             }
 
         override fun log(): Flow<Batch> =
-            storage.subMap(BatchKey.MIN_VALUE, false, BatchKey.MAX_VALUE, true)
+            // From minimum batch key (exclusive) to batch key as of this DB's revision
+            storage.subMap(BatchKey.MIN_VALUE, false, BatchKey(revision), true)
                 .values
                 .filterIsInstance<BatchValue>()
                 .asFlow()
@@ -429,6 +430,8 @@ private class InMemoryDatabaseRepository(
             val notFound = EventNotFound("No event with id=$id and stream=$stream found in database: ${name.value}")
             ensureNotNull(indexValue) { notFound }
             ensure(indexValue is EventIdIndexValue) { notFound }
+            // Ensure event revision is in scope for this DB's revision
+            ensure(indexValue.revision <= revision) { notFound }
             val result = eventByRevision(indexValue.revision)
             ensureNotNull(result) { notFound }
             result
@@ -437,7 +440,7 @@ private class InMemoryDatabaseRepository(
         override fun stream(stream: StreamName): Flow<EventRevision> =
             storage.subMap(
                 EventStreamIndexKey.minStreamKey(stream), false,
-                EventStreamIndexKey.maxStreamKey(stream), true
+                EventStreamIndexKey(stream, revision), true
             )
                 .keys
                 .filterIsInstance<EventStreamIndexKey>()
@@ -447,7 +450,7 @@ private class InMemoryDatabaseRepository(
         override fun subjectStream(stream: StreamName, subject: EventSubject): Flow<EventRevision> =
             storage.subMap(
                 EventSubjectStreamIndexKey.minSubjectStreamKey(stream, subject), false,
-                EventSubjectStreamIndexKey.maxSubjectStreamKey(stream, subject), true
+                EventSubjectStreamIndexKey(stream, subject, revision), true
             )
                 .keys
                 .filterIsInstance<EventSubjectStreamIndexKey>()
@@ -457,7 +460,7 @@ private class InMemoryDatabaseRepository(
         override fun subject(subject: EventSubject): Flow<EventRevision> =
             storage.subMap(
                 EventSubjectIndexKey.minSubjectKey(subject), false,
-                EventSubjectIndexKey.maxSubjectKey(subject), true
+                EventSubjectIndexKey(subject, revision), true
             )
                 .keys
                 .filterIsInstance<EventSubjectIndexKey>()
@@ -467,7 +470,7 @@ private class InMemoryDatabaseRepository(
         override fun eventType(type: EventType): Flow<EventRevision> =
             storage.subMap(
                 EventTypeIndexKey.minEventTypeKey(type), false,
-                EventTypeIndexKey.maxEventTypeKey(type), true
+                EventTypeIndexKey(type, revision), true
             )
                 .keys
                 .filterIsInstance<EventTypeIndexKey>()

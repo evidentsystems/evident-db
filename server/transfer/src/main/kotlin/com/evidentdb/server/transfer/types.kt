@@ -28,7 +28,7 @@ fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
     .build()
 
 // For returning AcceptedBatch from transaction
-fun AcceptedBatch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
+fun IndexedBatch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
     .setDatabase(database.value)
     .addAllEvents(events.map { it.event.toTransfer() })
     .setTimestamp(timestamp.toTimestamp())

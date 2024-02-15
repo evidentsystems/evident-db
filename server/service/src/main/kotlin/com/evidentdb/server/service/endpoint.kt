@@ -54,7 +54,7 @@ class EvidentDbEndpoint(
                     }.bind()
             }
         }.mapLeft { InvalidBatchConstraints(it) }
-        val result: Either<EvidentDbCommandError, AcceptedBatch> =
+        val result: Either<EvidentDbCommandError, IndexedBatch> =
             either {
                 adapter.transactBatch(
                     request.database,

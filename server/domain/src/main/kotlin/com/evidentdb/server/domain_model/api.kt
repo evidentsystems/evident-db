@@ -9,7 +9,6 @@ import com.evidentdb.server.cloudevents.RecordedTimeExtension
 import com.evidentdb.server.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.builder.CloudEventBuilder
-import kotlinx.coroutines.runBlocking
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -38,18 +37,14 @@ sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
     override val name: DatabaseName
     override val revision: DatabaseRevision
 
-    // Invariant Checking
-    suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean
-    suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean
-
     // Command Processing
     fun buildAcceptedBatch(
         proposedBatch: WellFormedProposedBatch
-    ): Either<BatchTransactionError, AcceptedBatch> =
-        proposedBatch.buildAcceptedBatchAtState(this)
+    ): Either<BatchTransactionError, IndexedBatch> =
+        proposedBatch.indexBatch(this.revision)
 
     // Event Transitions
-    fun withBatch(batch: AcceptedBatch): DirtyDatabaseCommandModel =
+    fun withBatch(batch: IndexedBatch): DirtyDatabaseCommandModel =
         DirtyDatabaseCommandModel(this@ActiveDatabaseCommandModel, batch)
 
     fun asDeleted(): DatabaseCommandModelAfterDeletion =
@@ -61,106 +56,32 @@ data class NewlyCreatedDatabaseCommandModel internal constructor(
     private val basis: DatabaseCommandModelBeforeCreation,
 ): ActiveDatabaseCommandModel {
     override val revision: DatabaseRevision = 0uL
-
-    override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId) = true
-
-    override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
-        when (constraint) {
-            is BatchConstraint.StreamExists -> false
-            is BatchConstraint.StreamDoesNotExist -> true
-            is BatchConstraint.StreamMaxRevision -> constraint.revision == revision
-            is BatchConstraint.SubjectExists -> false
-            is BatchConstraint.SubjectDoesNotExist -> true
-            is BatchConstraint.SubjectMaxRevision -> constraint.revision == revision
-            is BatchConstraint.SubjectExistsOnStream -> false
-            is BatchConstraint.SubjectDoesNotExistOnStream -> true
-            is BatchConstraint.SubjectMaxRevisionOnStream -> constraint.revision == revision
-        }
 }
 
 data class DirtyDatabaseCommandModel internal constructor(
-    private val basis: ActiveDatabaseCommandModel,
-    private val batch: AcceptedBatch,
+    val basis: ActiveDatabaseCommandModel,
+    val batch: IndexedBatch,
 ) : ActiveDatabaseCommandModel {
     override val name: DatabaseName
         get() = basis.name
     override val revision: DatabaseRevision = basis.revision + batch.events.size.toUInt()
 
-    private val eventKeys = batch.events.map { event -> Pair(event.stream, event.id) }.toSet()
-
-    private val streamRevision: Map<StreamName, StreamRevision> =
-        batch.events.fold(mutableMapOf<StreamName, StreamRevision>()) { acc, event ->
-            val key = event.stream
-            acc[key] = event.revision
-            acc
-        }.toMap()
-
-    private val subjectRevision: Map<EventSubject, StreamRevision> =
-        batch.events.fold(mutableMapOf<EventSubject, StreamRevision>()) { acc, event ->
-            val subject = event.subject
-            if (subject != null) {
-                acc[subject] = event.revision
-            }
-            acc
-        }.toMap()
-
-    private val subjectOnStreamRevision: Map<Pair<StreamName, EventSubject>, StreamRevision> =
-        batch.events.fold(mutableMapOf<Pair<StreamName, EventSubject>, StreamRevision>()) { acc, event ->
-            val subject = event.subject
-            if (subject != null) {
-                acc[Pair(event.stream, subject)] = event.revision
-            }
-            acc
-        }.toMap()
-
+    // Recursively discovers last clean basis
     val dirtyRelativeToRevision: DatabaseRevision
         get() = if (basis is DirtyDatabaseCommandModel) {
             basis.dirtyRelativeToRevision
         } else {
             basis.revision
         }
-    val dirtyBatches: List<AcceptedBatch>
+
+    // Provides dirty batches in order
+    val dirtyBatches: List<IndexedBatch>
         get() = if (basis is DirtyDatabaseCommandModel) {
             val result = basis.dirtyBatches.toMutableList()
             result.add(batch)
             result.toList()
         } else {
             listOf(batch)
-        }
-
-    override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =
-        if (eventKeys.contains(Pair(streamName, eventId))) false else basis.eventKeyIsUnique(streamName, eventId)
-
-    override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
-        when (constraint) {
-            is BatchConstraint.StreamExists ->
-                streamRevision[constraint.stream] != null
-                        || basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.StreamDoesNotExist ->
-                streamRevision[constraint.stream] == null
-                        && basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.StreamMaxRevision ->
-                streamRevision[constraint.stream]?.let { it <= constraint.revision }
-                    ?: basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectExists ->
-                subjectRevision[constraint.subject] != null
-                        || basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectDoesNotExist ->
-                subjectRevision[constraint.subject] == null
-                        && basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectMaxRevision ->
-                subjectRevision[constraint.subject]?.let { it <= constraint.revision }
-                    ?: basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectExistsOnStream ->
-                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)] != null
-                        || basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectDoesNotExistOnStream ->
-                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)] == null
-                        && basis.satisfiesBatchConstraint(constraint)
-            is BatchConstraint.SubjectMaxRevisionOnStream ->
-                subjectOnStreamRevision[Pair(constraint.stream, constraint.subject)]?.let { it <= constraint.revision }
-                    ?: basis.satisfiesBatchConstraint(constraint)
-
         }
 }
 
@@ -197,9 +118,8 @@ data class WellFormedProposedEvent private constructor (val event: CloudEvent) {
 
     companion object {
         /**
-         *  Given a proposed event, its proposed batch, and a base event source URI
-         *  event's source + ID is duplicated within its batch, return either a NEL of EventInvalidations
-         *  or a WellFormedProposedEvent.
+         *  Given a proposed event, its proposed batch, and a base event source URI,
+         *  return either a NEL of EventInvalidations, or a WellFormedProposedEvent.
          *
          *  The stream is provided by the client in the source attribute as a relative URI path,
          *  e.g. 'my-stream', which we'll transform to be relative to the fully qualified
@@ -233,18 +153,18 @@ data class WellFormedProposedEvent private constructor (val event: CloudEvent) {
         }
     }
 
-    fun accept(
-        database: ActiveDatabaseCommandModel,
+    fun index(
+        basisRevision: DatabaseRevision,
         indexInBatch: UInt,
         timestamp: Instant
-    ): Either<InvalidEvent, AcceptedEvent> =
-        AcceptedEvent(this, database, indexInBatch, timestamp)
+    ): Either<InvalidEvent, IndexedEvent>  =
+        IndexedEvent(this, basisRevision, indexInBatch, timestamp)
             .mapLeft { InvalidEvent(event, it) }
 }
 
-data class AcceptedEvent private constructor(override val event: CloudEvent): Event {
+data class IndexedEvent private constructor(override val event: CloudEvent): Event {
     companion object {
-        // For lack of a better place, let's register our CloudEvent extensions here
+        // For lack of a better place, let's register our required CloudEvent extensions here
         init {
             SequenceExtension.register()
             RecordedTimeExtension.register()
@@ -252,30 +172,17 @@ data class AcceptedEvent private constructor(override val event: CloudEvent): Ev
 
         operator fun invoke(
             wellFormed: WellFormedProposedEvent,
-            database: ActiveDatabaseCommandModel,
+            basisRevision: DatabaseRevision,
             indexInBatch: UInt,
             timestamp: Instant
-        ): Either<NonEmptyList<EventInvalidation>, AcceptedEvent> = runBlocking { // TODO: handle better
-            either {
-                zipOrAccumulate(
-                    {
-                        ensure(database.eventKeyIsUnique(wellFormed.stream, wellFormed.id)) {
-                            DuplicateEventId(wellFormed.stream.value, wellFormed.id.value)
-                        }
-                    },
-                    {
-
-                    }
-                ) { _, _ ->
-                    val sequenceExtension = SequenceExtension()
-                    sequenceExtension.sequence = database.revision + indexInBatch + 1u
-                    val newEvent = CloudEventBuilder.from(wellFormed.event)
-                        .withExtension(sequenceExtension)
-                        .withTime(timestamp.atOffset(ZoneOffset.UTC))
-                        .build()
-                    AcceptedEvent(newEvent)
-                }
-            }
+        ): Either<NonEmptyList<EventInvalidation>, IndexedEvent> {
+            val sequenceExtension = SequenceExtension()
+            sequenceExtension.sequence = basisRevision + indexInBatch + 1u
+            val newEvent = CloudEventBuilder.from(wellFormed.event)
+                .withExtension(sequenceExtension)
+                .withTime(timestamp.atOffset(ZoneOffset.UTC))
+                .build()
+            return IndexedEvent(newEvent).right()
         }
     }
 }
@@ -321,17 +228,17 @@ data class WellFormedProposedBatch(
             }
     }
 
-    fun buildAcceptedBatchAtState(
-        database: ActiveDatabaseCommandModel,
-    ): Either<BatchTransactionError, AcceptedBatch> =
-        AcceptedBatch(this, database)
+    fun indexBatch(
+        basisRevision: DatabaseRevision
+    ) = IndexedBatch(this, basisRevision)
 }
 
-data class AcceptedBatch private constructor(
+data class IndexedBatch private constructor(
     override val database: DatabaseName,
-    val events: NonEmptyList<AcceptedEvent>,
+    val events: NonEmptyList<IndexedEvent>,
     override val timestamp: Instant,
     override val basisRevision: DatabaseRevision,
+    val constraints: List<BatchConstraint>,
 ): Batch {
     override val eventRevisions
         get() = events.map { it.revision }
@@ -339,23 +246,25 @@ data class AcceptedBatch private constructor(
     companion object {
         operator fun invoke(
             wellFormed: WellFormedProposedBatch,
-            database: ActiveDatabaseCommandModel,
-        ): Either<BatchTransactionError, AcceptedBatch> = runBlocking { // TODO: handle better
-            either {
-                // Validate stream constraints
-                wellFormed.constraints.mapOrAccumulate {
-                    ensure(database.satisfiesBatchConstraint(it)) { it }
-                }.mapLeft { BatchConstraintViolations(wellFormed, it) }.bind()
-
-                // Validate constituent events
-                val timestamp = Instant.now()
-                val events = wellFormed.events.withIndex().mapOrAccumulate { eventWithIndex ->
-                    eventWithIndex.value
-                        .accept(database, eventWithIndex.index.toUInt(), timestamp)
-                        .bind()
+            basisRevision: DatabaseRevision,
+        ): Either<BatchTransactionError, IndexedBatch> = either {
+            // Validate constituent events
+            val timestamp = Instant.now()
+            val events = wellFormed.events.withIndex()
+                .mapOrAccumulate { eventWithIndex ->
+                    eventWithIndex.value.index(
+                        basisRevision,
+                        eventWithIndex.index.toUInt(),
+                        timestamp
+                    ).bind()
                 }.mapLeft { InvalidEvents(it) }.bind().toNonEmptyListOrNull()
-                AcceptedBatch(wellFormed.databaseName, events!!, timestamp, database.revision)
-            }
+            IndexedBatch(
+                wellFormed.databaseName,
+                events!!,
+                timestamp,
+                basisRevision,
+                wellFormed.constraints,
+            )
         }
     }
 }

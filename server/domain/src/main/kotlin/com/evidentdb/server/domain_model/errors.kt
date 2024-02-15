@@ -49,7 +49,7 @@ data class InvalidBatchConstraints(
 
 // TODO: capture provided constraint vs. current database state
 data class BatchConstraintViolations(
-    val batch: WellFormedProposedBatch,
+    val batch: IndexedBatch,
     val violations: NonEmptyList<BatchConstraint>
 ) : BatchTransactionError
 

@@ -17,14 +17,14 @@ import kotlinx.coroutines.flow.map
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-private fun isNotWriteCollision(transactionResult: Either<EvidentDbCommandError, AcceptedBatch>) =
+private fun isNotWriteCollision(transactionResult: Either<EvidentDbCommandError, IndexedBatch>) =
     when (transactionResult) {
         is Either.Left -> transactionResult.value !is ConcurrentWriteCollision
         is Either.Right -> true
     }
 
 private val batchTransactRetrySchedule = Schedule
-    .exponential<Either<EvidentDbCommandError, AcceptedBatch>>(10.milliseconds)
+    .exponential<Either<EvidentDbCommandError, IndexedBatch>>(10.milliseconds)
     .doUntil { result, duration -> duration > 60.seconds || isNotWriteCollision(result) }
 
 interface EvidentDbAdapter: Lifecycle {
@@ -56,8 +56,8 @@ interface EvidentDbAdapter: Lifecycle {
         databaseNameStr: String,
         events: List<ProposedEvent>,
         constraints: List<BatchConstraint>
-    ): Either<EvidentDbCommandError, AcceptedBatch> {
-        var result: Either<EvidentDbCommandError, AcceptedBatch> =
+    ): Either<EvidentDbCommandError, IndexedBatch> {
+        var result: Either<EvidentDbCommandError, IndexedBatch> =
             ConcurrentWriteCollision(0uL, 0uL).left()
         batchTransactRetrySchedule.repeat {
             result = commandService.transactBatch(databaseNameStr, events, constraints)

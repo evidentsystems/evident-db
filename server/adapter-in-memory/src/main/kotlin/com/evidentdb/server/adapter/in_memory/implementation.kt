@@ -96,7 +96,7 @@ private class InMemoryDatabaseRepository(
 ) {
     private val lock = ReentrantLock()
     private val storage: NavigableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>
-    private val _updates: MutableStateFlow<Either<DatabaseNotFound, Database>>
+    private val _updates: MutableStateFlow<Either<DatabaseNotFound, DatabaseRootValue>>
     val updates: StateFlow<Either<DatabaseNotFound, Database>>
 
     // Initial database state
@@ -119,57 +119,73 @@ private class InMemoryDatabaseRepository(
     ): Either<DatabaseNotFound, InMemoryDatabase> =
         InMemoryDatabase(name, revision).right()
 
-    fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
+    fun saveDatabase(newDatabase: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
         either {
-            val currentDatabaseRoot = storage[DatabaseRootKey]
-            ensure(currentDatabaseRoot is DatabaseRootValue) { DatabaseNotFound(database.name.value) }
-            ensure(database.dirtyRelativeToRevision == currentDatabaseRoot.revision) {
-                ConcurrentWriteCollision(database.dirtyRelativeToRevision, currentDatabaseRoot.revision)
+            val currentDatabase = latestDatabase().bind()
+            // Ensure the database is in the expected state
+            ensure(newDatabase.dirtyRelativeToRevision == currentDatabase.revision) {
+                ConcurrentWriteCollision(newDatabase.dirtyRelativeToRevision, currentDatabase.revision)
             }
+            val batch = newDatabase.batch
+
+            // Validate batch constraints
+            batch.constraints.mapOrAccumulate { constraint ->
+                ensure(currentDatabase.satisfiesBatchConstraint(constraint)) { constraint }
+            }.mapLeft { BatchConstraintViolations(batch, it) }.bind()
+
+            // Validate event ID + stream uniqueness
+            batch.events.mapOrAccumulate { event ->
+                ensure(currentDatabase.eventKeyIsUnique(event.stream, event.id)) {
+                    InvalidEvent(event.event, nonEmptyListOf(DuplicateEventId(event.stream.value, event.id.value)))
+                }
+            }.mapLeft { InvalidEvents(it) }.bind()
+
             val nextDatabaseRoot = DatabaseRootValue(
-                database.name,
-                database.revision
+                newDatabase.name,
+                newDatabase.revision
             )
-            val batchAndIndexes = mutableMapOf<InMemoryRepositoryKey, InMemoryRepositoryValue>()
-            database.dirtyBatches.forEach {
-                addBatchToTransaction(batchAndIndexes, it)
+            val transaction = batch.events.foldLeft(
+                mutableMapOf<InMemoryRepositoryKey, InMemoryRepositoryValue>(
+                    BatchKey(batch.revision) to BatchValue(
+                        batch.database,
+                        batch.events,
+                        batch.timestamp,
+                        batch.basisRevision,
+                    )
+                )
+            ) { txn, event ->
+                val revision = event.revision
+                val stream = event.stream
+                txn[EventIdIndexKey(stream, event.id)] = EventIdIndexValue(revision)
+                txn[EventStreamIndexKey(stream, revision)] = NullValue
+                txn[EventTypeIndexKey(event.type, revision)] = NullValue
+                event.subject?.let {
+                    txn[EventSubjectStreamIndexKey(stream, it, revision)] = NullValue
+                    txn[EventSubjectIndexKey(it, revision)] = NullValue
+                }
+                txn
             }
+
+            val currentDatabaseRoot = DatabaseRootValue(
+                currentDatabase.name,
+                currentDatabase.revision
+            )
+
             try {
-                storage += batchAndIndexes
+                storage += transaction
                 storage[DatabaseRootKey] = nextDatabaseRoot
-                val updateSent = _updates.compareAndSet(currentDatabaseRoot.right(), nextDatabaseRoot.right())
+                val updateSent = _updates.compareAndSet(
+                    currentDatabaseRoot.right(),
+                    nextDatabaseRoot.right(),
+                )
                 if (!updateSent) {
                     throw IllegalStateException("Compare and set to updates state flow failed")
                 }
             } catch (t: Throwable) {
-                batchAndIndexes.forEach {
+                transaction.forEach {
                     storage.remove(it.key)
                 }
                 storage[DatabaseRootKey] = currentDatabaseRoot
-                _updates.value = currentDatabaseRoot.right() // TODO: is this the right semantic here?
-            }
-        }
-    }
-
-    private fun addBatchToTransaction(
-        transaction: MutableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>,
-        batch: AcceptedBatch
-    ) {
-        transaction[BatchKey(batch.revision)] = BatchValue(
-            batch.database,
-            batch.events,
-            batch.timestamp,
-            batch.basisRevision,
-        )
-        batch.events.forEach { event ->
-            val revision = event.revision
-            val stream = event.stream
-            transaction[EventIdIndexKey(stream, event.id)] = EventIdIndexValue(revision)
-            transaction[EventStreamIndexKey(stream, revision)] = NullValue
-            transaction[EventTypeIndexKey(event.type, revision)] = NullValue
-            event.subject?.let {
-                transaction[EventSubjectStreamIndexKey(stream, it, revision)] = NullValue
-                transaction[EventSubjectIndexKey(it, revision)] = NullValue
             }
         }
     }
@@ -350,10 +366,10 @@ private class InMemoryDatabaseRepository(
         override val name: DatabaseName,
         override val revision: DatabaseRevision
     ): CleanDatabaseCommandModel, DatabaseReadModel {
-        override suspend fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =
-            eventById(streamName, eventId).isLeft()
+        fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =
+            storage[EventIdIndexKey(streamName, eventId)] == null
 
-        override suspend fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
+        fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
             when (constraint) {
                 is BatchConstraint.StreamExists ->
                     storage.subMap(
@@ -366,9 +382,10 @@ private class InMemoryDatabaseRepository(
                         EventStreamIndexKey.maxStreamKey(constraint.stream), true
                     ).isEmpty()
                 is BatchConstraint.StreamMaxRevision -> {
-                    val key = EventStreamIndexKey(constraint.stream, constraint.revision)
-                    val result = storage.ceilingKey(key)
-                    result == null || result == key
+                    val maxKey = storage.floorKey(
+                        EventStreamIndexKey.maxStreamKey(constraint.stream)
+                    ) as EventStreamIndexKey
+                    maxKey == null || constraint.revision >= maxKey.revision
                 }
                 is BatchConstraint.SubjectExists ->
                     storage.subMap(
@@ -378,23 +395,24 @@ private class InMemoryDatabaseRepository(
                 is BatchConstraint.SubjectDoesNotExist ->
                     storage.subMap(
                         EventSubjectIndexKey.minSubjectKey(constraint.subject), false,
-                        EventSubjectIndexKey.maxSubjectKey(constraint.subject), true
+                        EventSubjectIndexKey.maxSubjectKey(constraint.subject), true,
                     ).isEmpty()
                 is BatchConstraint.SubjectMaxRevision -> {
-                    val key = EventSubjectIndexKey(constraint.subject, constraint.revision)
-                    val result = storage.ceilingKey(key)
-                    result == null || result == key
+                    val maxKey = storage.floorKey(
+                        EventSubjectIndexKey.maxSubjectKey(constraint.subject)
+                    ) as EventSubjectIndexKey
+                    maxKey == null || constraint.revision >= maxKey.revision
                 }
                 is BatchConstraint.SubjectExistsOnStream ->
                     storage.subMap(
                         EventSubjectStreamIndexKey.minSubjectStreamKey(
                             constraint.stream,
-                            constraint.subject
+                            constraint.subject,
                         ),
                         false,
                         EventSubjectStreamIndexKey.maxSubjectStreamKey(
                             constraint.stream,
-                            constraint.subject
+                            constraint.subject,
                         ),
                         true
                     ).isNotEmpty()
@@ -402,19 +420,23 @@ private class InMemoryDatabaseRepository(
                     storage.subMap(
                         EventSubjectStreamIndexKey.minSubjectStreamKey(
                             constraint.stream,
-                            constraint.subject
+                            constraint.subject,
                         ),
                         false,
                         EventSubjectStreamIndexKey.maxSubjectStreamKey(
                             constraint.stream,
-                            constraint.subject
+                            constraint.subject,
                         ),
                         true
                     ).isEmpty()
                 is BatchConstraint.SubjectMaxRevisionOnStream -> {
-                    val key = EventSubjectStreamIndexKey(constraint.stream, constraint.subject, constraint.revision)
-                    val result = storage.ceilingKey(key)
-                    result == null || result == key
+                    val maxKey = storage.floorKey(
+                        EventSubjectStreamIndexKey.maxSubjectStreamKey(
+                            constraint.stream,
+                            constraint.subject,
+                        )
+                    ) as EventSubjectStreamIndexKey
+                    maxKey == null || constraint.revision >= maxKey.revision
                 }
             }
 

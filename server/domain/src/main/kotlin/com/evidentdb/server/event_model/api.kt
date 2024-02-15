@@ -114,7 +114,7 @@ data class BatchTransacted(
     override val id: EnvelopeId,
     override val commandId: EnvelopeId,
     override val database: DatabaseName,
-    val batch: AcceptedBatch
+    val batch: IndexedBatch
 ): EvidentDbEvent {
     override fun evolve(state: DatabaseCommandModel): DatabaseCommandModel = when (state) {
         is DatabaseCommandModelBeforeCreation -> state

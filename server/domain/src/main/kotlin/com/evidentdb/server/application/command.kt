@@ -33,7 +33,7 @@ class CommandService(
         databaseNameStr: String,
         events: List<ProposedEvent>,
         constraints: List<BatchConstraint>
-    ): Either<EvidentDbCommandError, AcceptedBatch> = either {
+    ): Either<EvidentDbCommandError, IndexedBatch> = either {
         val databaseName = DatabaseName(databaseNameStr).bind()
         val initialState = repository.databaseCommandModel(databaseName)
         ensure(initialState is ActiveDatabaseCommandModel) { DatabaseNotFound(databaseNameStr) }
@@ -88,7 +88,10 @@ interface WritableDatabaseRepository: DatabaseRepository {
     // Database Creation
     suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit>
 
-    // Batch Transaction
+    /**
+     * Saves the latest dirty batch in the given dirty database to the repository. This method must deal
+     * with the batch constraints, event ID/stream uniqueness per event, and concurrent write collisions.
+     */
     suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit>
 
     // Database Deletion

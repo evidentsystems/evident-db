@@ -187,6 +187,176 @@ interface AdapterTests {
         Assertions.assertEquals(revisionAfterBatch, update.getOrNull()?.revision)
     }
 
+    fun `event ID + stream-source uniqueness failure`() = runTest {
+        // Transact an event w/ identical ID + stream/source as in happy path test
+        val eventStream1 = "my-stream"
+        val eventIdSuffix = "an+id@foo.com"
+        val eventSubject1 = "a nice subject"
+        val eventType1 = "com.evidentdb.test-event1"
+        val event1 = CloudEventBuilder.v1()
+            .withSource(URI(eventStream1))
+            .withId("1$eventIdSuffix")
+            .withSubject(eventSubject1)
+            .withType(eventType1)
+            .build()
+        val result = adapter.transactBatch(
+            databaseName,
+            listOf(ProposedEvent(event1)),
+            listOf()
+        )
+        Assertions.assertTrue(result.isLeft())
+        val maybeErr = result.leftOrNull()
+        Assertions.assertNotNull(maybeErr)
+        Assertions.assertInstanceOf(InvalidEvents::class.java, maybeErr)
+        val err = maybeErr as InvalidEvents
+        Assertions.assertInstanceOf(
+            DuplicateEventId::class.java,
+            err.invalidEvents.first().errors.first()
+        )
+    }
+
+    fun `batch constraint failures`() = runTest {
+        val eventStream1 = "my-stream"
+        val nonExistentEventStream = "nope"
+        val eventSubject2 = "another nice subject"
+        val nonExistentEventSubject = "solid nope"
+        val event1 = CloudEventBuilder.v1()
+            .withSource(URI(eventStream1))
+            .withId("a completely unique event ID")
+            .withSubject(eventSubject2)
+            .withType("com.evidentdb.batch-constraint-failure")
+            .build()
+
+        var constraint: BatchConstraint = BatchConstraint.StreamExists(
+            StreamName(nonExistentEventStream).getOrNull()!!
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.StreamDoesNotExist(
+            StreamName(eventStream1).getOrNull()!!
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.StreamMaxRevision(
+            StreamName(eventStream1).getOrNull()!!,
+            1uL
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectExists(
+            EventSubject(nonExistentEventSubject).getOrNull()!!
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectDoesNotExist(
+            EventSubject(eventSubject2).getOrNull()!!
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectMaxRevision(
+            EventSubject(eventSubject2).getOrNull()!!,
+            2uL,
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectExistsOnStream(
+            StreamName(eventStream1).getOrNull()!!,
+            EventSubject(nonExistentEventSubject).getOrNull()!!,
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectDoesNotExistOnStream(
+            StreamName(eventStream1).getOrNull()!!,
+            EventSubject(eventSubject2).getOrNull()!!,
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.SubjectMaxRevisionOnStream(
+            StreamName(eventStream1).getOrNull()!!,
+            EventSubject(eventSubject2).getOrNull()!!,
+            1uL,
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+    }
+
+    private fun validateConstraintFailure(
+        constraint: BatchConstraint,
+        result: Either<EvidentDbCommandError, IndexedBatch>
+    ) {
+        Assertions.assertTrue(result.isLeft())
+        val maybeErr = result.leftOrNull()
+        Assertions.assertNotNull(maybeErr)
+        Assertions.assertInstanceOf(BatchConstraintViolations::class.java, maybeErr)
+        val err = maybeErr as BatchConstraintViolations
+        Assertions.assertEquals(
+            constraint,
+            err.violations.first()
+        )
+    }
+
     fun `deleting a database`() = runTest {
         val updates = mutableListOf<Either<QueryError, Database>>()
         val updatesJob = launch {

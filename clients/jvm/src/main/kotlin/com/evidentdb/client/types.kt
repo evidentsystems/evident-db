@@ -80,12 +80,12 @@ sealed interface BatchConstraint {
 
 data class Batch(
     val database: DatabaseName,
+    val basis: DatabaseRevision,
     val events: NonEmptyList<Event>,
     val timestamp: Instant,
-    val basisRevision: DatabaseRevision,
 ) {
     val revision: DatabaseRevision
-        get() = basisRevision + events.size.toUInt()
+        get() = basis + events.size.toUInt()
 }
 
 data class BatchProposal(

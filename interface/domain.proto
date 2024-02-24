@@ -72,16 +72,16 @@ message BatchConstraint {
 
 message BatchSummary {
   string database = 1;
-  repeated uint64 event_revisions = 2;
-  google.protobuf.Timestamp timestamp = 3;
-  uint64 basis_revision = 4;
+  uint64 basis = 2;
+  uint64 revision = 3;
+  google.protobuf.Timestamp timestamp = 4;
 }
 
 message Batch {
   string database = 1;
-  repeated io.cloudevents.v1.CloudEvent events = 2;
-  google.protobuf.Timestamp timestamp = 3;
-  uint64 basis_revision = 4;
+  uint64 basis = 2;
+  repeated io.cloudevents.v1.CloudEvent events = 3;
+  google.protobuf.Timestamp timestamp = 4;
 }
 
 // Error Details

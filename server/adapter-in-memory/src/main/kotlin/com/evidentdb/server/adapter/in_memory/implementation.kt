@@ -150,7 +150,7 @@ private class InMemoryDatabaseRepository(
                         batch.database,
                         batch.events,
                         batch.timestamp,
-                        batch.basisRevision,
+                        batch.basis,
                     )
                 )
             ) { txn, event ->
@@ -349,14 +349,14 @@ private class InMemoryDatabaseRepository(
         override val database: DatabaseName,
         val events: NonEmptyList<Event>,
         override val timestamp: Instant,
-        override val basisRevision: DatabaseRevision,
+        override val basis: DatabaseRevision,
     ): Batch, InMemoryRepositoryValue {
-        override val eventRevisions: NonEmptyList<EventRevision>
-            get() = events.map { it.revision }
+        override val revision: DatabaseRevision
+            get() = basis + events.size.toUInt()
 
-        fun getEventByAbsoluteRevision(revision: Revision): Event? =
+        fun getEventByAbsoluteRevision(rev: EventRevision): Event? =
             try {
-                events[(revision - basisRevision).toInt() - 1]
+                events[(rev - basis).toInt() - 1]
             } catch (e: IndexOutOfBoundsException) {
                 null
             }

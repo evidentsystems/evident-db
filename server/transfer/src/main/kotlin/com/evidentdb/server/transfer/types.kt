@@ -32,15 +32,15 @@ fun IndexedBatch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
     .setDatabase(database.value)
     .addAllEvents(events.map { it.event.toTransfer() })
     .setTimestamp(timestamp.toTimestamp())
-    .setBasisRevision(revision.toLong())
+    .setBasis(basis.toLong())
     .build()
 
 // For fetching BatchSummary for log, etc.
 fun Batch.toTransfer(): ProtoBatchSummary = ProtoBatchSummary.newBuilder()
     .setDatabase(database.value)
-    .addAllEventRevisions(eventRevisions.map { it.toLong() })
+    .setBasis(basis.toLong())
+    .setRevision(revision.toLong())
     .setTimestamp(timestamp.toTimestamp())
-    .setBasisRevision(revision.toLong())
     .build()
 
 fun Event.toTransfer(): ProtoCloudEvent = event.toTransfer()

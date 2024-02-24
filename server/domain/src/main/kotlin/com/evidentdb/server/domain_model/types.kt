@@ -262,9 +262,7 @@ sealed interface BatchConstraint {
 
 interface Batch {
     val database: DatabaseName
-    val eventRevisions: NonEmptyList<EventRevision>
-    val timestamp: Instant
-    val basisRevision: DatabaseRevision
+    val basis: DatabaseRevision
     val revision: DatabaseRevision
-        get() = basisRevision + eventRevisions.size.toUInt()
+    val timestamp: Instant
 }

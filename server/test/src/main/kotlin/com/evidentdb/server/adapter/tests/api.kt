@@ -90,8 +90,8 @@ interface AdapterTests {
         // New transaction should show up on log
         val log = adapter.databaseLog(databaseName, revisionAfterBatch).toList()
         Assertions.assertEquals(
-                listOf(Pair(true, listOf(1uL, 2uL, 3uL))),
-                log.map { Pair(it.isRight(), it.getOrNull()?.eventRevisions) }
+                listOf(Pair(true, 3uL)),
+                log.map { Pair(it.isRight(), it.getOrNull()!!.revision) }
         )
         // New transaction event should be indexed
         // By EventId + Stream

@@ -28,9 +28,9 @@ fun ProtoDatabase.toDomain() = Database(
 
 fun ProtoBatch.toDomain() = Batch(
     database,
+    basis.toULong(),
     eventsList.map { Event(it.toDomain()) }.toNonEmptyListOrNull()!!,
-    timestamp.toInstant(),
-    basisRevision.toULong()
+    timestamp.toInstant()
 )
 
 //fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()

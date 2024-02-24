@@ -311,18 +311,17 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
                         .build()
                 ).map { batch ->
                     val batchSummary = batch.batch
-                    val batchEvents = eventCache.getAll(
-                        batchSummary.eventRevisionsList.map { it.toULong() }
-                    ).await()
+                    val eventRevisions = (batchSummary.basis + 1).toULong()..batchSummary.revision.toULong()
+                    val batchEvents = eventCache.getAll(eventRevisions).await()
                     Batch(
                         database,
-                        batchSummary.eventRevisionsList.map {
+                        batchSummary.basis.toULong(),
+                        eventRevisions.map {
                             Event(
                                 batchEvents[it.toULong()]!!
                             )
                         }.toNonEmptyListOrNull()!!,
                         batchSummary.timestamp.toInstant(),
-                        batchSummary.basisRevision.toULong(),
                     )
                 }
 

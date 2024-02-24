@@ -237,11 +237,11 @@ data class IndexedBatch private constructor(
     override val database: DatabaseName,
     val events: NonEmptyList<IndexedEvent>,
     override val timestamp: Instant,
-    override val basisRevision: DatabaseRevision,
+    override val basis: DatabaseRevision,
     val constraints: List<BatchConstraint>,
 ): Batch {
-    override val eventRevisions
-        get() = events.map { it.revision }
+    override val revision
+        get() = basis + events.size.toUInt()
 
     companion object {
         operator fun invoke(

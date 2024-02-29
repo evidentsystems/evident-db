@@ -1,12 +1,13 @@
 package com.evidentdb.server.domain_model
 
 import arrow.core.Either
-import arrow.core.NonEmptyList
 import arrow.core.getOrElse
+import arrow.core.left
 import arrow.core.raise.catch
 import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
+import arrow.core.right
 import com.evidentdb.server.cloudevents.RecordedTimeExtension
 import com.evidentdb.server.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
@@ -213,11 +214,19 @@ interface Event {
             }
         }
     val id: EventId
-        get() = EventId(event.id).getOrElse { throw IllegalStateException("Illegal event id: $event.id") }
+        get() = EventId(event.id).getOrElse {
+            throw IllegalStateException("Illegal event id: $event.id")
+        }
     val type: EventType
-        get() = EventType(event.type).getOrElse { throw IllegalStateException("Illegal event type: $event.type") }
+        get() = EventType(event.type).getOrElse {
+            throw IllegalStateException("Illegal event type: $event.type")
+        }
     val subject: EventSubject?
-        get() = event.subject?.let { EventSubject(it).getOrElse { throw IllegalStateException("Illegal event subject: $event.subject") } }
+        get() = event.subject?.let {
+            EventSubject(it).getOrElse {
+                throw IllegalStateException("Illegal event subject: $event.subject")
+            }
+        }
     val revision: EventRevision
         get() = ExtensionProvider.getInstance()
             .parseExtension(SequenceExtension::class.java, event)!!
@@ -236,28 +245,307 @@ interface Event {
 
 // Batch
 
-sealed interface BatchConstraint {
-    data class StreamExists(val stream: StreamName) : BatchConstraint
-    data class StreamDoesNotExist(val stream: StreamName) : BatchConstraint
-    data class StreamMaxRevision(val stream: StreamName, val revision: StreamRevision) :
-        BatchConstraint
+sealed interface BatchConstraintKey {
+    data object Database: BatchConstraintKey
+    data class Stream(val stream: StreamName): BatchConstraintKey
+    data class Subject(val subject: EventSubject): BatchConstraintKey
+    data class SubjectStream(val stream: StreamName, val subject: EventSubject): BatchConstraintKey
 
-    data class SubjectExists(val subject: EventSubject) : BatchConstraint
-    data class SubjectDoesNotExist(val subject: EventSubject) : BatchConstraint
+    companion object {
+        fun from(constraint: BatchConstraint): BatchConstraintKey = when(constraint) {
+            is BatchConstraint.DatabaseMinRevision -> Database
+            is BatchConstraint.DatabaseMaxRevision -> Database
+            is BatchConstraint.DatabaseRevisionRange -> Database
+
+            is BatchConstraint.StreamMinRevision -> Stream(constraint.stream)
+            is BatchConstraint.StreamMaxRevision -> Stream(constraint.stream)
+            is BatchConstraint.StreamRevisionRange -> Stream(constraint.stream)
+
+            is BatchConstraint.SubjectMinRevision -> Subject(constraint.subject)
+            is BatchConstraint.SubjectMaxRevision -> Subject(constraint.subject)
+            is BatchConstraint.SubjectRevisionRange -> Subject(constraint.subject)
+
+            is BatchConstraint.SubjectMinRevisionOnStream ->
+                SubjectStream(constraint.stream, constraint.subject)
+            is BatchConstraint.SubjectMaxRevisionOnStream ->
+                SubjectStream(constraint.stream, constraint.subject)
+            is BatchConstraint.SubjectStreamRevisionRange ->
+                SubjectStream(constraint.stream, constraint.subject)
+        }
+    }
+}
+
+sealed interface BatchConstraint {
+    data class DatabaseMinRevision(val revision: DatabaseRevision) : BatchConstraint
+    data class DatabaseMaxRevision(val revision: DatabaseRevision) : BatchConstraint
+    data class DatabaseRevisionRange private constructor(
+        val min: DatabaseRevision,
+        val max: DatabaseRevision,
+    ): BatchConstraint {
+        companion object {
+            operator fun invoke(
+                min: DatabaseRevision,
+                max: DatabaseRevision,
+            ): Either<BatchConstraintInvalidation, DatabaseRevisionRange> = either {
+                ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
+                DatabaseRevisionRange(min, max)
+            }
+        }
+    }
+
+    data class StreamMinRevision(
+        val stream: StreamName,
+        val revision: StreamRevision
+    ) : BatchConstraint
+    data class StreamMaxRevision(
+        val stream: StreamName,
+        val revision: StreamRevision
+    ) : BatchConstraint
+    data class StreamRevisionRange private constructor(
+        val stream: StreamName,
+        val min: DatabaseRevision,
+        val max: DatabaseRevision,
+    ): BatchConstraint {
+        companion object {
+            operator fun invoke(
+                stream: StreamName,
+                min: DatabaseRevision,
+                max: DatabaseRevision,
+            ): Either<BatchConstraintInvalidation, StreamRevisionRange> = either {
+                ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
+                StreamRevisionRange(stream, min, max)
+            }
+        }
+    }
+
+    data class SubjectMinRevision(
+        val subject: EventSubject,
+        val revision: StreamRevision,
+    ) : BatchConstraint
     data class SubjectMaxRevision(
         val subject: EventSubject,
         val revision: StreamRevision,
     ) : BatchConstraint
+    data class SubjectRevisionRange private constructor(
+        val subject: EventSubject,
+        val min: DatabaseRevision,
+        val max: DatabaseRevision,
+    ): BatchConstraint {
+        companion object {
+            operator fun invoke(
+                subject: EventSubject,
+                min: DatabaseRevision,
+                max: DatabaseRevision,
+            ): Either<BatchConstraintInvalidation, SubjectRevisionRange> = either {
+                ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
+                SubjectRevisionRange(subject, min, max)
+            }
+        }
+    }
 
-    data class SubjectExistsOnStream(val stream: StreamName, val subject: EventSubject) :
-        BatchConstraint
-    data class SubjectDoesNotExistOnStream(val stream: StreamName, val subject: EventSubject) :
-        BatchConstraint
+    data class SubjectMinRevisionOnStream(
+        val stream: StreamName,
+        val subject: EventSubject,
+        val revision: StreamRevision,
+    ) : BatchConstraint
     data class SubjectMaxRevisionOnStream(
         val stream: StreamName,
         val subject: EventSubject,
         val revision: StreamRevision,
     ) : BatchConstraint
+    data class SubjectStreamRevisionRange private constructor(
+        val stream: StreamName,
+        val subject: EventSubject,
+        val min: DatabaseRevision,
+        val max: DatabaseRevision,
+    ): BatchConstraint {
+        companion object {
+            operator fun invoke(
+                stream: StreamName,
+                subject: EventSubject,
+                min: DatabaseRevision,
+                max: DatabaseRevision,
+            ): Either<BatchConstraintInvalidation, SubjectStreamRevisionRange> = either {
+                ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
+                SubjectStreamRevisionRange(stream, subject, min, max)
+            }
+        }
+    }
+
+    companion object {
+        fun streamExists(stream: StreamName) = StreamMinRevision(stream, 1uL)
+
+        fun streamDoesNotExist(stream: StreamName) = StreamMaxRevision(stream, 0uL)
+
+        fun streamAtRevision(stream: StreamName, revision: StreamRevision) =
+            StreamRevisionRange(stream, revision, revision)
+
+        fun subjectExists(subject: EventSubject) = SubjectMinRevision(subject, 1uL)
+
+        fun subjectDoesNotExist(subject: EventSubject) = SubjectMaxRevision(subject, 0uL)
+
+        fun subjectAtRevision(subject: EventSubject, revision: StreamRevision) =
+            SubjectRevisionRange(subject, revision, revision)
+
+        fun subjectExistsOnStream(stream: StreamName, subject: EventSubject) =
+            SubjectMinRevisionOnStream(stream, subject, 1uL)
+
+        fun subjectDoesNotExistOnStream(stream: StreamName, subject: EventSubject) =
+            SubjectMaxRevisionOnStream(stream, subject, 0uL)
+
+        fun subjectAtRevisionOnStream(stream: StreamName, subject: EventSubject, revision: StreamRevision) =
+            SubjectStreamRevisionRange(stream, subject, revision, revision)
+
+        fun combine(
+            lhs: BatchConstraint?,
+            rhs: BatchConstraint
+        ): Either<BatchConstraintConflict, BatchConstraint> = if (lhs == null) {
+            rhs.right()
+        } else {
+            val conflict = BatchConstraintConflict(lhs, rhs)
+            val err = IllegalStateException("Invalid batch constraint key lookup: $lhs, $rhs")
+            when (lhs) {
+                is DatabaseMinRevision -> when (rhs) {
+                    is DatabaseMaxRevision ->
+                        DatabaseRevisionRange(lhs.revision, rhs.revision).mapLeft { conflict }
+                    is DatabaseMinRevision,
+                    is DatabaseRevisionRange -> conflict.left()
+                    else -> throw err
+                }
+                is DatabaseMaxRevision -> when (rhs) {
+                    is DatabaseMinRevision -> DatabaseRevisionRange(rhs.revision, lhs.revision)
+                        .mapLeft { conflict }
+                    is DatabaseMaxRevision,
+                    is DatabaseRevisionRange -> conflict.left()
+                    else -> throw err
+                }
+                is DatabaseRevisionRange -> when (rhs) {
+                    is DatabaseMinRevision,
+                    is DatabaseMaxRevision,
+                    is DatabaseRevisionRange -> conflict.left()
+                    else -> throw err
+                }
+
+                is StreamMinRevision -> when (rhs) {
+                    is StreamMaxRevision -> if (lhs.stream == rhs.stream) {
+                        StreamRevisionRange(lhs.stream, lhs.revision, rhs.revision)
+                            .mapLeft { conflict }
+                    } else {
+                        throw err
+                    }
+                    is StreamMinRevision -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    is StreamRevisionRange -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    else -> throw err
+                }
+                is StreamMaxRevision -> when (rhs) {
+                    is StreamMinRevision -> if (lhs.stream == rhs.stream) {
+                        StreamRevisionRange(lhs.stream, rhs.revision, lhs.revision)
+                            .mapLeft{ conflict }
+                    } else {
+                        throw err
+                    }
+                    is StreamMaxRevision -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    is StreamRevisionRange -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    else -> throw err
+                }
+                is StreamRevisionRange -> when (rhs) {
+                    is StreamMinRevision -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    is StreamMaxRevision -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    is StreamRevisionRange -> if (lhs.stream == rhs.stream) conflict.left() else throw err
+                    else -> throw err
+                }
+
+                is SubjectMinRevision -> when (rhs) {
+                    is SubjectMaxRevision -> if (lhs.subject == rhs.subject) {
+                        SubjectRevisionRange(lhs.subject, lhs.revision, rhs.revision)
+                            .mapLeft { conflict }
+                    } else {
+                        throw err
+                    }
+                    is SubjectMinRevision -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    is SubjectRevisionRange -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    else -> throw err
+                }
+                is SubjectMaxRevision -> when (rhs) {
+                    is SubjectMinRevision -> if (lhs.subject == rhs.subject) {
+                        SubjectRevisionRange(lhs.subject, rhs.revision, lhs.revision)
+                            .mapLeft { conflict }
+                    } else {
+                        throw err
+                    }
+                    is SubjectMaxRevision -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    is SubjectRevisionRange -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    else -> throw err
+                }
+                is SubjectRevisionRange -> when (rhs) {
+                    is SubjectMinRevision -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    is SubjectMaxRevision -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    is SubjectRevisionRange -> if (lhs.subject == rhs.subject) conflict.left() else throw err
+                    else -> throw err
+                }
+
+                is SubjectMinRevisionOnStream -> when (rhs) {
+                    is SubjectMaxRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject) {
+                            SubjectStreamRevisionRange(
+                                lhs.stream,
+                                lhs.subject,
+                                lhs.revision,
+                                rhs.revision
+                            ).mapLeft { conflict }
+                        } else {
+                            throw err
+                        }
+                    is SubjectMinRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    is SubjectStreamRevisionRange ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    else -> throw err
+                }
+                is SubjectMaxRevisionOnStream -> when (rhs) {
+                    is SubjectMinRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject) {
+                            SubjectStreamRevisionRange(
+                                lhs.stream,
+                                lhs.subject,
+                                rhs.revision,
+                                lhs.revision
+                            ).mapLeft{ conflict }
+                        } else {
+                            throw err
+                        }
+                    is SubjectMaxRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    is SubjectStreamRevisionRange ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    else -> throw err
+                }
+                is SubjectStreamRevisionRange -> when (rhs) {
+                    is SubjectMinRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    is SubjectMaxRevisionOnStream ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    is SubjectStreamRevisionRange ->
+                        if (lhs.stream == rhs.stream && lhs.subject == rhs.subject)
+                            conflict.left()
+                        else throw err
+                    else -> throw err
+                }
+            }
+        }
+    }
 }
 
 interface Batch {

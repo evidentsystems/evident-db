@@ -1,25 +1,22 @@
 package com.evidentdb.client.transfer
 
+import arrow.core.Either
+import arrow.core.Either.Companion.zipOrAccumulate
+import arrow.core.NonEmptyList
+import arrow.core.nonEmptyListOf
+import arrow.core.raise.either
 import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.*
 import com.evidentdb.dto.v1.proto.BatchConstraint.ConstraintCase.*
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.toDomain
-import io.cloudevents.protobuf.toTransfer
 import java.time.Instant
 import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
 import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
 import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
-import io.cloudevents.v1.proto.CloudEvent as ProtoCloudEvent
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
-
-//fun Instant.toTimestamp(): Timestamp =
-//    Timestamp.newBuilder()
-//        .setSeconds(epochSecond)
-//        .setNanos(nano)
-//        .build()
 
 fun ProtoDatabase.toDomain() = Database(
     name,
@@ -33,86 +30,67 @@ fun ProtoBatch.toDomain() = Batch(
     timestamp.toInstant()
 )
 
-//fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
-//    .setName(name)
-//    .setCreated(created.toTimestamp())
-//    .setRevision(revision.toLong())
-//    .build()
-//
-//fun Batch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
-//    .setDatabase(database)
-//    .addAllEventRevisions(eventRevisions.map { it.toLong() })
-//    .setTimestamp(timestamp.toTimestamp())
-//    .setBasisRevision(revision.toLong())
-//    .build()
-
-fun Event.toTransfer(): ProtoCloudEvent = event.toTransfer()
+//fun Event.toTransfer(): ProtoCloudEvent = event.toTransfer()
 
 fun BatchConstraint.toTransfer(): ProtoBatchConstraint {
     val builder = ProtoBatchConstraint.newBuilder()
     when (this) {
-        is BatchConstraint.StreamExists ->
-            builder.streamExistsBuilder.stream = stream
-        is BatchConstraint.StreamDoesNotExist ->
-            builder.streamDoesNotExistBuilder.stream = stream
+        is BatchConstraint.DatabaseMinRevision ->
+            builder.databaseMinRevisionBuilder.revision = this.revision.toLong()
+        is BatchConstraint.DatabaseMaxRevision ->
+            builder.databaseMaxRevisionBuilder.revision = this.revision.toLong()
+        is BatchConstraint.DatabaseRevisionRange -> {
+            builder.databaseRevisionRangeBuilder.min = this.min.toLong()
+            builder.databaseRevisionRangeBuilder.max = this.max.toLong()
+        }
+
+        is BatchConstraint.StreamMinRevision -> {
+            builder.streamMinRevisionBuilder.stream = this.stream
+            builder.streamMinRevisionBuilder.revision = this.revision.toLong()
+        }
         is BatchConstraint.StreamMaxRevision -> {
-            builder.streamMaxRevisionBuilder.stream = stream
-            builder.streamMaxRevisionBuilder.revision = revision.toLong()
+            builder.streamMaxRevisionBuilder.stream = this.stream
+            builder.streamMaxRevisionBuilder.revision = this.revision.toLong()
         }
-        is BatchConstraint.SubjectExists ->
-            builder.subjectExistsBuilder.subject = subject
-        is BatchConstraint.SubjectDoesNotExist ->
-            builder.subjectDoesNotExistBuilder.subject = subject
+        is BatchConstraint.StreamRevisionRange -> {
+            builder.streamRevisionRangeBuilder.stream = this.stream
+            builder.streamRevisionRangeBuilder.min = this.min.toLong()
+            builder.streamRevisionRangeBuilder.max = this.max.toLong()
+        }
+
+        is BatchConstraint.SubjectMinRevision -> {
+            builder.subjectMinRevisionBuilder.subject = this.subject
+            builder.subjectMinRevisionBuilder.revision = this.revision.toLong()
+        }
         is BatchConstraint.SubjectMaxRevision -> {
-            builder.subjectMaxRevisionBuilder.subject = subject
-            builder.subjectMaxRevisionBuilder.revision = revision.toLong()
+            builder.subjectMaxRevisionBuilder.subject = this.subject
+            builder.subjectMaxRevisionBuilder.revision = this.revision.toLong()
         }
-        is BatchConstraint.SubjectExistsOnStream -> {
-            builder.subjectExistsOnStreamBuilder.stream = stream
-            builder.subjectExistsOnStreamBuilder.subject = subject
+        is BatchConstraint.SubjectRevisionRange -> {
+            builder.subjectRevisionRangeBuilder.subject = this.subject
+            builder.subjectRevisionRangeBuilder.min = this.min.toLong()
+            builder.subjectRevisionRangeBuilder.max = this.max.toLong()
         }
-        is BatchConstraint.SubjectDoesNotExistOnStream -> {
-            builder.subjectDoesNotExistOnStreamBuilder.stream = stream
-            builder.subjectDoesNotExistOnStreamBuilder.subject = subject
+
+        is BatchConstraint.SubjectMinRevisionOnStream -> {
+            builder.subjectMinRevisionOnStreamBuilder.stream = this.stream
+            builder.subjectMinRevisionOnStreamBuilder.subject = this.subject
+            builder.subjectMinRevisionOnStreamBuilder.revision = this.revision.toLong()
         }
         is BatchConstraint.SubjectMaxRevisionOnStream -> {
-            builder.subjectMaxRevisionOnStreamBuilder.stream = stream
-            builder.subjectMaxRevisionOnStreamBuilder.subject = subject
-            builder.subjectMaxRevisionOnStreamBuilder.revision = revision.toLong()
+            builder.subjectMaxRevisionOnStreamBuilder.stream = this.stream
+            builder.subjectMaxRevisionOnStreamBuilder.subject = this.subject
+            builder.subjectMaxRevisionOnStreamBuilder.revision = this.revision.toLong()
+        }
+        is BatchConstraint.SubjectStreamRevisionRange -> {
+            builder.subjectStreamRevisionRangeBuilder.stream = this.stream
+            builder.subjectStreamRevisionRangeBuilder.subject = this.subject
+            builder.subjectStreamRevisionRangeBuilder.min = this.min.toLong()
+            builder.subjectStreamRevisionRangeBuilder.max = this.max.toLong()
         }
     }
     return builder.build()
 }
-
-fun ProtoBatchConstraint.toDomain(): BatchConstraint =
-        when (constraintCase) {
-            STREAM_EXISTS -> BatchConstraint.StreamExists(streamExists.stream)
-            STREAM_DOES_NOT_EXIST -> BatchConstraint.StreamDoesNotExist(streamDoesNotExist.stream)
-            STREAM_MAX_REVISION -> BatchConstraint.StreamMaxRevision(
-                streamMaxRevision.stream,
-                streamMaxRevision.revision.toULong()
-            )
-            SUBJECT_EXISTS -> BatchConstraint.SubjectExists(subjectExists.subject)
-            SUBJECT_DOES_NOT_EXIST -> BatchConstraint.SubjectDoesNotExist(subjectDoesNotExist.subject)
-            SUBJECT_MAX_REVISION ->  BatchConstraint.SubjectMaxRevision(
-                subjectMaxRevision.subject,
-                subjectMaxRevision.revision.toULong()
-            )
-            SUBJECT_EXISTS_ON_STREAM -> BatchConstraint.SubjectExistsOnStream(
-                subjectExistsOnStream.stream,
-                subjectExistsOnStream.subject
-            )
-            SUBJECT_DOES_NOT_EXIST_ON_STREAM -> BatchConstraint.SubjectDoesNotExistOnStream(
-                subjectDoesNotExistOnStream.stream,
-                subjectDoesNotExistOnStream.subject
-            )
-            SUBJECT_MAX_REVISION_ON_STREAM -> BatchConstraint.SubjectMaxRevisionOnStream(
-                subjectMaxRevisionOnStream.stream,
-                subjectMaxRevisionOnStream.subject,
-                subjectMaxRevisionOnStream.revision.toULong(),
-            )
-            CONSTRAINT_NOT_SET, null -> throw IllegalArgumentException("constraintCase enum cannot be null")
-        }
 
 // Errors
 // TODO: toDomain() impls for error details

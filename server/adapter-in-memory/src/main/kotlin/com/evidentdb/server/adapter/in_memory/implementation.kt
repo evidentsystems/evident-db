@@ -129,7 +129,7 @@ private class InMemoryDatabaseRepository(
             val batch = newDatabase.batch
 
             // Validate batch constraints
-            batch.constraints.mapOrAccumulate { constraint ->
+            batch.constraints.values.mapOrAccumulate { constraint ->
                 ensure(currentDatabase.satisfiesBatchConstraint(constraint)) { constraint }
             }.mapLeft { BatchConstraintViolations(batch, it) }.bind()
 
@@ -371,72 +371,104 @@ private class InMemoryDatabaseRepository(
 
         fun satisfiesBatchConstraint(constraint: BatchConstraint): Boolean =
             when (constraint) {
-                is BatchConstraint.StreamExists ->
-                    storage.subMap(
-                        EventStreamIndexKey.minStreamKey(constraint.stream), false,
-                        EventStreamIndexKey.maxStreamKey(constraint.stream), true
-                    ).isNotEmpty()
-                is BatchConstraint.StreamDoesNotExist ->
-                    storage.subMap(
-                        EventStreamIndexKey.minStreamKey(constraint.stream), false,
-                        EventStreamIndexKey.maxStreamKey(constraint.stream), true
-                    ).isEmpty()
+                is BatchConstraint.DatabaseMinRevision -> constraint.revision <= revision
+                is BatchConstraint.DatabaseMaxRevision -> revision <= constraint.revision
+                is BatchConstraint.DatabaseRevisionRange ->
+                    constraint.min <= revision && revision <= constraint.max
+
+                is BatchConstraint.StreamMinRevision -> {
+                    val match: InMemoryRepositoryKey? = storage.ceilingKey(
+                        EventStreamIndexKey(constraint.stream, constraint.revision)
+                    )
+                    match is EventStreamIndexKey && match.stream == constraint.stream
+                }
                 is BatchConstraint.StreamMaxRevision -> {
-                    val maxKey = storage.floorKey(
-                        EventStreamIndexKey.maxStreamKey(constraint.stream)
-                    ) as EventStreamIndexKey
-                    maxKey == null || constraint.revision >= maxKey.revision
+                    val match = storage.ceilingKey(
+                        EventStreamIndexKey(constraint.stream, constraint.revision + 1u)
+                    )
+                    match !is EventStreamIndexKey || match.stream != constraint.stream
                 }
-                is BatchConstraint.SubjectExists ->
-                    storage.subMap(
-                        EventSubjectIndexKey.minSubjectKey(constraint.subject), false,
-                        EventSubjectIndexKey.maxSubjectKey(constraint.subject), true
-                    ).isNotEmpty()
-                is BatchConstraint.SubjectDoesNotExist ->
-                    storage.subMap(
-                        EventSubjectIndexKey.minSubjectKey(constraint.subject), false,
-                        EventSubjectIndexKey.maxSubjectKey(constraint.subject), true,
-                    ).isEmpty()
+                is BatchConstraint.StreamRevisionRange -> {
+                    val minKey = storage.ceilingKey(
+                        EventStreamIndexKey(constraint.stream, constraint.min)
+                    )
+                    val maxKey = storage.ceilingKey(
+                        EventStreamIndexKey(constraint.stream, constraint.max + 1u)
+                    )
+                    (minKey is EventStreamIndexKey && minKey.stream == constraint.stream)
+                            &&
+                            (maxKey !is EventStreamIndexKey || maxKey.stream != constraint.stream)
+                }
+
+                is BatchConstraint.SubjectMinRevision -> {
+                    val match = storage.ceilingKey(
+                        EventSubjectIndexKey(constraint.subject, constraint.revision)
+                    )
+                    match is EventSubjectIndexKey && match.subject == constraint.subject
+                }
                 is BatchConstraint.SubjectMaxRevision -> {
-                    val maxKey = storage.floorKey(
-                        EventSubjectIndexKey.maxSubjectKey(constraint.subject)
-                    ) as EventSubjectIndexKey
-                    maxKey == null || constraint.revision >= maxKey.revision
+                    val match = storage.ceilingKey(
+                        EventSubjectIndexKey(constraint.subject, constraint.revision + 1u)
+                    )
+                    match !is EventSubjectIndexKey || match.subject != constraint.subject
                 }
-                is BatchConstraint.SubjectExistsOnStream ->
-                    storage.subMap(
-                        EventSubjectStreamIndexKey.minSubjectStreamKey(
+                is BatchConstraint.SubjectRevisionRange -> {
+                    val minKey = storage.ceilingKey(
+                        EventSubjectIndexKey(constraint.subject, constraint.min)
+                    )
+                    val maxKey = storage.ceilingKey(
+                        EventSubjectIndexKey(constraint.subject, constraint.max + 1u)
+                    )
+                    (minKey is EventSubjectIndexKey && minKey.subject == constraint.subject)
+                            &&
+                            (maxKey !is EventSubjectIndexKey || maxKey.subject != constraint.subject)
+                }
+
+                is BatchConstraint.SubjectMinRevisionOnStream -> {
+                    val match = storage.ceilingKey(
+                        EventSubjectStreamIndexKey(
                             constraint.stream,
                             constraint.subject,
-                        ),
-                        false,
-                        EventSubjectStreamIndexKey.maxSubjectStreamKey(
-                            constraint.stream,
-                            constraint.subject,
-                        ),
-                        true
-                    ).isNotEmpty()
-                is BatchConstraint.SubjectDoesNotExistOnStream ->
-                    storage.subMap(
-                        EventSubjectStreamIndexKey.minSubjectStreamKey(
-                            constraint.stream,
-                            constraint.subject,
-                        ),
-                        false,
-                        EventSubjectStreamIndexKey.maxSubjectStreamKey(
-                            constraint.stream,
-                            constraint.subject,
-                        ),
-                        true
-                    ).isEmpty()
-                is BatchConstraint.SubjectMaxRevisionOnStream -> {
-                    val maxKey = storage.floorKey(
-                        EventSubjectStreamIndexKey.maxSubjectStreamKey(
-                            constraint.stream,
-                            constraint.subject,
+                            constraint.revision
                         )
-                    ) as EventSubjectStreamIndexKey
-                    maxKey == null || constraint.revision >= maxKey.revision
+                    )
+                    match is EventSubjectStreamIndexKey
+                            && match.stream == constraint.stream
+                            && match.subject == constraint.subject
+                }
+                is BatchConstraint.SubjectMaxRevisionOnStream -> {
+                    val match = storage.ceilingKey(
+                        EventSubjectStreamIndexKey(
+                            constraint.stream,
+                            constraint.subject,
+                            constraint.revision + 1u
+                        )
+                    )
+                    match !is EventSubjectStreamIndexKey ||
+                            match.stream != constraint.stream ||
+                            match.subject != constraint.subject
+                }
+                is BatchConstraint.SubjectStreamRevisionRange -> {
+                    val minKey = storage.ceilingKey(
+                        EventSubjectStreamIndexKey(
+                            constraint.stream,
+                            constraint.subject,
+                            constraint.min
+                        )
+                    )
+                    val maxKey = storage.ceilingKey(
+                        EventSubjectStreamIndexKey(
+                            constraint.stream,
+                            constraint.subject,
+                            constraint.max + 1u
+                        )
+                    )
+                    (minKey is EventSubjectStreamIndexKey
+                            && minKey.stream == constraint.stream
+                            && minKey.subject == constraint.subject) &&
+                            (maxKey !is EventSubjectStreamIndexKey ||
+                                    maxKey.stream != constraint.stream ||
+                                    maxKey.subject != constraint.subject)
                 }
             }
 

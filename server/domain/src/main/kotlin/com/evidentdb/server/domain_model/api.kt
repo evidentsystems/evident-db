@@ -206,10 +206,33 @@ data class ProposedBatch(
         WellFormedProposedBatch(this)
 }
 
+fun validateConstraints(
+    constraints: List<BatchConstraint>
+): Either<BatchConstraintConflicts, Map<BatchConstraintKey, BatchConstraint>> = either {
+    val result = constraints.fold(Pair(
+        mutableMapOf<BatchConstraintKey, BatchConstraint>(),
+        mutableSetOf<BatchConstraintConflict>()
+    )) { acc, constraint ->
+        val key = BatchConstraintKey.from(constraint)
+        val currentConstraint = acc.first[key]
+        val nextConstraint = BatchConstraint.combine(currentConstraint, constraint)
+        if (nextConstraint.isRight()) {
+            acc.first[key] = nextConstraint.getOrNull()!!
+        } else {
+            acc.second.add(nextConstraint.leftOrNull()!!)
+        }
+        acc
+    }
+    ensure(result.second.isEmpty()) {
+        BatchConstraintConflicts(result.second.toNonEmptyListOrNull()!!)
+    }
+    result.first
+}
+
 data class WellFormedProposedBatch(
     val databaseName: DatabaseName,
     val events: NonEmptyList<WellFormedProposedEvent>,
-    val constraints: List<BatchConstraint>
+    val constraints: Map<BatchConstraintKey, BatchConstraint>
 ) {
     companion object {
         operator fun invoke(proposedBatch: ProposedBatch): Either<BatchTransactionError, WellFormedProposedBatch> =
@@ -217,13 +240,15 @@ data class WellFormedProposedBatch(
                 val nonEmptyEvents = proposedBatch.events.toNonEmptyListOrNull()
                 ensureNotNull(nonEmptyEvents) { EmptyBatch }
 
+                val wellFormedConstraints = validateConstraints(proposedBatch.constraints).bind()
+
                 val wellFormedEvents = nonEmptyEvents.mapOrAccumulate {
                     it.ensureWellFormed(proposedBatch).bind()
                 }.mapLeft { InvalidEvents(it) }.bind()
                 WellFormedProposedBatch(
                     proposedBatch.databasePathEventSourceURI.databaseName,
                     wellFormedEvents,
-                    proposedBatch.constraints
+                    wellFormedConstraints
                 )
             }
     }
@@ -238,7 +263,7 @@ data class IndexedBatch private constructor(
     val events: NonEmptyList<IndexedEvent>,
     override val timestamp: Instant,
     override val basis: DatabaseRevision,
-    val constraints: List<BatchConstraint>,
+    val constraints: Map<BatchConstraintKey, BatchConstraint>,
 ): Batch {
     override val revision
         get() = basis + events.size.toUInt()

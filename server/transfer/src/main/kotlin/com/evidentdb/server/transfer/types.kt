@@ -48,34 +48,58 @@ fun Event.toTransfer(): ProtoCloudEvent = event.toTransfer()
 fun BatchConstraint.toTransfer(): ProtoBatchConstraint {
     val builder = ProtoBatchConstraint.newBuilder()
     when (this) {
-        is BatchConstraint.StreamExists ->
-            builder.streamExistsBuilder.stream = stream.value
-        is BatchConstraint.StreamDoesNotExist ->
-            builder.streamDoesNotExistBuilder.stream = stream.value
+        is BatchConstraint.DatabaseMinRevision ->
+            builder.databaseMinRevisionBuilder.revision = this.revision.toLong()
+        is BatchConstraint.DatabaseMaxRevision ->
+            builder.databaseMaxRevisionBuilder.revision = this.revision.toLong()
+        is BatchConstraint.DatabaseRevisionRange -> {
+            builder.databaseRevisionRangeBuilder.min = this.min.toLong()
+            builder.databaseRevisionRangeBuilder.max = this.max.toLong()
+        }
+
+        is BatchConstraint.StreamMinRevision -> {
+            builder.streamMinRevisionBuilder.stream = this.stream.value
+            builder.streamMinRevisionBuilder.revision = this.revision.toLong()
+        }
         is BatchConstraint.StreamMaxRevision -> {
-            builder.streamMaxRevisionBuilder.stream = stream.value
-            builder.streamMaxRevisionBuilder.revision = revision.toLong()
+            builder.streamMaxRevisionBuilder.stream = this.stream.value
+            builder.streamMaxRevisionBuilder.revision = this.revision.toLong()
         }
-        is BatchConstraint.SubjectExists ->
-            builder.subjectExistsBuilder.subject = subject.value
-        is BatchConstraint.SubjectDoesNotExist ->
-            builder.subjectDoesNotExistBuilder.subject = subject.value
+        is BatchConstraint.StreamRevisionRange -> {
+            builder.streamRevisionRangeBuilder.stream = this.stream.value
+            builder.streamRevisionRangeBuilder.min = this.min.toLong()
+            builder.streamRevisionRangeBuilder.max = this.max.toLong()
+        }
+
+        is BatchConstraint.SubjectMinRevision -> {
+            builder.subjectMinRevisionBuilder.subject = this.subject.value
+            builder.subjectMinRevisionBuilder.revision = this.revision.toLong()
+        }
         is BatchConstraint.SubjectMaxRevision -> {
-            builder.subjectMaxRevisionBuilder.subject = subject.value
-            builder.subjectMaxRevisionBuilder.revision = revision.toLong()
+            builder.subjectMaxRevisionBuilder.subject = this.subject.value
+            builder.subjectMaxRevisionBuilder.revision = this.revision.toLong()
         }
-        is BatchConstraint.SubjectExistsOnStream -> {
-            builder.subjectExistsOnStreamBuilder.stream = stream.value
-            builder.subjectExistsOnStreamBuilder.subject = subject.value
+        is BatchConstraint.SubjectRevisionRange -> {
+            builder.subjectRevisionRangeBuilder.subject = this.subject.value
+            builder.subjectRevisionRangeBuilder.min = this.min.toLong()
+            builder.subjectRevisionRangeBuilder.max = this.max.toLong()
         }
-        is BatchConstraint.SubjectDoesNotExistOnStream -> {
-            builder.subjectDoesNotExistOnStreamBuilder.stream = stream.value
-            builder.subjectDoesNotExistOnStreamBuilder.subject = subject.value
+
+        is BatchConstraint.SubjectMinRevisionOnStream -> {
+            builder.subjectMinRevisionOnStreamBuilder.stream = this.stream.value
+            builder.subjectMinRevisionOnStreamBuilder.subject = this.subject.value
+            builder.subjectMinRevisionOnStreamBuilder.revision = this.revision.toLong()
         }
         is BatchConstraint.SubjectMaxRevisionOnStream -> {
-            builder.subjectMaxRevisionOnStreamBuilder.stream = stream.value
-            builder.subjectMaxRevisionOnStreamBuilder.subject = subject.value
-            builder.subjectMaxRevisionOnStreamBuilder.revision = revision.toLong()
+            builder.subjectMaxRevisionOnStreamBuilder.stream = this.stream.value
+            builder.subjectMaxRevisionOnStreamBuilder.subject = this.subject.value
+            builder.subjectMaxRevisionOnStreamBuilder.revision = this.revision.toLong()
+        }
+        is BatchConstraint.SubjectStreamRevisionRange -> {
+            builder.subjectStreamRevisionRangeBuilder.stream = this.stream.value
+            builder.subjectStreamRevisionRangeBuilder.subject = this.subject.value
+            builder.subjectStreamRevisionRangeBuilder.min = this.min.toLong()
+            builder.subjectStreamRevisionRangeBuilder.max = this.max.toLong()
         }
     }
     return builder.build()
@@ -85,17 +109,24 @@ fun ProtoBatchConstraint.toDomain(): Either<NonEmptyList<BatchConstraintInvalida
     either {
         val proto = this@toDomain
         when (proto.constraintCase) {
-            STREAM_EXISTS -> {
-                val streamName = StreamName(proto.streamExists.stream)
+            DATABASE_MIN_REVISION ->
+                BatchConstraint.DatabaseMinRevision(proto.databaseMinRevision.revision.toULong())
+            DATABASE_MAX_REVISION ->
+                BatchConstraint.DatabaseMaxRevision(proto.databaseMaxRevision.revision.toULong())
+            DATABASE_REVISION_RANGE ->
+                BatchConstraint.DatabaseRevisionRange(
+                    proto.databaseRevisionRange.min.toULong(),
+                    proto.databaseRevisionRange.max.toULong()
+                ).mapLeft { nonEmptyListOf(it) }.bind()
+
+            STREAM_MIN_REVISION -> {
+                val streamName = StreamName(proto.streamMinRevision.stream)
                     .mapLeft { nonEmptyListOf(it) }
                     .bind()
-                BatchConstraint.StreamExists(streamName)
-            }
-            STREAM_DOES_NOT_EXIST -> {
-                val streamName = StreamName(proto.streamDoesNotExist.stream)
-                    .mapLeft { nonEmptyListOf(it) }
-                    .bind()
-                BatchConstraint.StreamDoesNotExist(streamName)
+                BatchConstraint.StreamMinRevision(
+                    streamName,
+                    proto.streamMinRevision.revision.toULong()
+                )
             }
             STREAM_MAX_REVISION -> {
                 val streamName = StreamName(proto.streamMaxRevision.stream)
@@ -106,19 +137,26 @@ fun ProtoBatchConstraint.toDomain(): Either<NonEmptyList<BatchConstraintInvalida
                     proto.streamMaxRevision.revision.toULong()
                 )
             }
-            SUBJECT_EXISTS -> {
-                val subjectName = EventSubject(proto.subjectExists.subject)
+            STREAM_REVISION_RANGE -> either {
+                val streamName = StreamName(proto.streamRevisionRange.stream).bind()
+
+                BatchConstraint.StreamRevisionRange(
+                    streamName,
+                    proto.streamRevisionRange.min.toULong(),
+                    proto.streamRevisionRange.max.toULong(),
+                ).bind()
+            }.mapLeft { nonEmptyListOf(it) }.bind()
+
+            SUBJECT_MIN_REVISION -> {
+                val subjectName = EventSubject(proto.subjectMinRevision.subject)
                     .mapLeft { nonEmptyListOf(it) }
                     .bind()
-                BatchConstraint.SubjectExists(subjectName)
+                BatchConstraint.SubjectMinRevision(
+                    subjectName,
+                    proto.subjectMinRevision.revision.toULong()
+                )
             }
-            SUBJECT_DOES_NOT_EXIST -> {
-                val subjectName = EventSubject(proto.subjectDoesNotExist.subject)
-                    .mapLeft { nonEmptyListOf(it) }
-                    .bind()
-                BatchConstraint.SubjectDoesNotExist(subjectName)
-            }
-            SUBJECT_MAX_REVISION ->  {
+            SUBJECT_MAX_REVISION -> {
                 val subjectName = EventSubject(proto.subjectMaxRevision.subject)
                     .mapLeft { nonEmptyListOf(it) }
                     .bind()
@@ -127,17 +165,24 @@ fun ProtoBatchConstraint.toDomain(): Either<NonEmptyList<BatchConstraintInvalida
                     proto.subjectMaxRevision.revision.toULong()
                 )
             }
-            SUBJECT_EXISTS_ON_STREAM -> zipOrAccumulate(
-                { StreamName(proto.subjectExistsOnStream.stream).bind() },
-                { EventSubject(proto.subjectExistsOnStream.subject).bind() }
+            SUBJECT_REVISION_RANGE -> either {
+                val subjectName = EventSubject(proto.subjectRevisionRange.subject).bind()
+                BatchConstraint.SubjectRevisionRange(
+                    subjectName,
+                    proto.subjectRevisionRange.min.toULong(),
+                    proto.subjectRevisionRange.max.toULong()
+                ).bind()
+            }.mapLeft { nonEmptyListOf(it) }.bind()
+
+            SUBJECT_MIN_REVISION_ON_STREAM -> zipOrAccumulate(
+                { StreamName(proto.subjectMinRevisionOnStream.stream).bind() },
+                { EventSubject(proto.subjectMinRevisionOnStream.subject).bind() }
             ) { streamName, subject ->
-                BatchConstraint.SubjectExistsOnStream(streamName, subject)
-            }
-            SUBJECT_DOES_NOT_EXIST_ON_STREAM -> zipOrAccumulate(
-                { StreamName(proto.subjectDoesNotExistOnStream.stream).bind() },
-                { EventSubject(proto.subjectDoesNotExistOnStream.subject).bind() }
-            ) { streamName, subject ->
-                BatchConstraint.SubjectDoesNotExistOnStream(streamName, subject)
+                BatchConstraint.SubjectMinRevisionOnStream(
+                    streamName,
+                    subject,
+                    proto.subjectMinRevisionOnStream.revision.toULong(),
+                )
             }
             SUBJECT_MAX_REVISION_ON_STREAM -> zipOrAccumulate(
                 { StreamName(proto.subjectMaxRevisionOnStream.stream).bind() },
@@ -149,7 +194,19 @@ fun ProtoBatchConstraint.toDomain(): Either<NonEmptyList<BatchConstraintInvalida
                     proto.subjectMaxRevisionOnStream.revision.toULong(),
                 )
             }
-            CONSTRAINT_NOT_SET -> raise(nonEmptyListOf(EmptyBatchConstraint))
-            null -> throw IllegalArgumentException("constraintCase enum cannot be null")
+            SUBJECT_STREAM_REVISION_RANGE -> zipOrAccumulate(
+                { StreamName(proto.subjectStreamRevisionRange.stream).bind() },
+                { EventSubject(proto.subjectStreamRevisionRange.subject).bind() }
+            ) { streamName, subject ->
+                BatchConstraint.SubjectStreamRevisionRange(
+                    streamName,
+                    subject,
+                    proto.subjectStreamRevisionRange.min.toULong(),
+                    proto.subjectStreamRevisionRange.max.toULong(),
+                ).mapLeft { nonEmptyListOf(it) }.bind()
+            }
+
+            CONSTRAINT_NOT_SET, null ->
+                throw IllegalArgumentException("constraintCase enum cannot be null")
         }
     }

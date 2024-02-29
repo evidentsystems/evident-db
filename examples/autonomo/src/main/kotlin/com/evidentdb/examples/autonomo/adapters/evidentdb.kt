@@ -69,7 +69,7 @@ class VehiclesEventRepository(
         ) = VehiclesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, vehicle.toString())},
-            {_ -> listOf(BatchConstraint.SubjectDoesNotExistOnStream(STREAM, vehicle.toString()))},
+            {_ -> listOf(BatchConstraint.subjectDoesNotExistOnStream(STREAM, vehicle.toString()))},
             revision
         )
 
@@ -172,7 +172,7 @@ class RidesEventRepository(
         ) = RidesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, ride.toString())},
-            {_ -> listOf(BatchConstraint.SubjectDoesNotExistOnStream(STREAM, ride.toString()))},
+            {_ -> listOf(BatchConstraint.subjectDoesNotExistOnStream(STREAM, ride.toString()))},
             revision
         )
 

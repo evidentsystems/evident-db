@@ -19,7 +19,7 @@ data class DatabaseNotFound(val name: String): DatabaseDeletionError, BatchTrans
 
 sealed interface InvalidBatchError : BatchTransactionError
 
-object EmptyBatch : InvalidBatchError
+data object EmptyBatch : InvalidBatchError
 
 sealed interface EventInvalidation
 sealed interface BatchConstraintInvalidation
@@ -36,7 +36,15 @@ data class InvalidEventType(val eventType: String) : EventInvalidation, QueryErr
 data class InvalidEvent(val event: CloudEvent, val errors: NonEmptyList<EventInvalidation>)
 data class InvalidEvents(val invalidEvents: NonEmptyList<InvalidEvent>) : InvalidBatchError
 
-object EmptyBatchConstraint: BatchConstraintInvalidation
+data class InvalidBatchConstraintRange(
+    val min: Revision,
+    val max: Revision,
+): BatchConstraintInvalidation
+
+data class BatchConstraintConflict(
+    val lhs: BatchConstraint,
+    val rhs: BatchConstraint,
+): BatchConstraintInvalidation
 
 data class InvalidBatchConstraint(
     val index: Int,
@@ -45,6 +53,10 @@ data class InvalidBatchConstraint(
 
 data class InvalidBatchConstraints(
     val invalidConstraints: NonEmptyList<InvalidBatchConstraint>
+): InvalidBatchError
+
+data class BatchConstraintConflicts(
+    val conflicts: NonEmptyList<BatchConstraintConflict>
 ): InvalidBatchError
 
 // TODO: capture provided constraint vs. current database state

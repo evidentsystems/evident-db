@@ -23,6 +23,16 @@ object EmptyBatch : InvalidBatchError
 sealed interface EventInvalidation
 sealed interface BatchConstraintInvalidation
 
+data class InvalidBatchConstraintRange(
+    val min: Revision,
+    val max: Revision,
+): BatchConstraintInvalidation
+
+data class BatchConstraintConflict(
+    val lhs: BatchConstraint,
+    val rhs: BatchConstraint,
+): BatchConstraintInvalidation
+
 data class InvalidEventSource(val eventSource: String) : EventInvalidation
 data class InvalidStreamName(val streamName: String) : EventInvalidation, BatchConstraintInvalidation, QueryError
 data class InvalidEventId(val eventId: String) : EventInvalidation, QueryError

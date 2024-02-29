@@ -9,10 +9,11 @@ import io.cloudevents.protobuf.toTransfer
 import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
 import com.evidentdb.dto.v1.proto.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
+import com.evidentdb.dto.v1.proto.BatchConstraintConflict as ProtoBatchConstraintConflict
 import com.evidentdb.dto.v1.proto.DuplicateEventId as ProtoDuplicateEventId
-import com.evidentdb.dto.v1.proto.EmptyBatchConstraint as ProtoEmptyBatchConstraint
 import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
 import com.evidentdb.dto.v1.proto.InvalidBatchConstraint as ProtoInvalidBatchConstraint
+import com.evidentdb.dto.v1.proto.InvalidBatchConstraintRange as ProtoInvalidBatchConstraintRange
 import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
 import com.evidentdb.dto.v1.proto.InvalidEventId as ProtoInvalidEventId
 import com.evidentdb.dto.v1.proto.InvalidEventSource as ProtoInvalidEventSource
@@ -28,6 +29,7 @@ fun EvidentDbCommandError.toRuntimeException(): StatusRuntimeException =
         is InternalServerError -> this.toRuntimeException()
         EmptyBatch -> EmptyBatch.toRuntimeException()
         is InvalidBatchConstraints -> this.toRuntimeException()
+        is BatchConstraintConflicts -> this.toRuntimeException()
         is InvalidEvents -> this.toRuntimeException()
         is DatabaseNameAlreadyExists -> this.toRuntimeException()
         is InvalidDatabaseName -> this.toRuntimeException()
@@ -82,6 +84,19 @@ fun InvalidBatchConstraints.toRuntimeException(): StatusRuntimeException {
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
             .setMessage("The provided batch included some invalid constraints")
+            .addAllDetails(details)
+            .build()
+    )
+}
+
+fun BatchConstraintConflicts.toRuntimeException(): StatusRuntimeException {
+    val details = conflicts.map { conflict ->
+        Any.pack(conflict.toTransfer())
+    }
+    return StatusProto.toStatusRuntimeException(
+        Status.newBuilder()
+            .setCode(Code.INVALID_ARGUMENT_VALUE)
+            .setMessage("The provided batch included some constraints that conflicted with each other")
             .addAllDetails(details)
             .build()
     )
@@ -173,13 +188,27 @@ fun InvalidBatchConstraint.toTransfer(): ProtoInvalidBatchConstraint {
 private fun BatchConstraintInvalidation.toTransfer(): ProtoBatchConstraintInvalidation {
     val builder = ProtoBatchConstraintInvalidation.newBuilder()
     when (this) {
-        EmptyBatchConstraint ->
-            builder.emptyBatchConstraint = ProtoEmptyBatchConstraint.newBuilder().build()
         is InvalidEventSubject ->
             builder.invalidEventSubject = this.toTransfer()
         is InvalidStreamName ->
             builder.invalidStreamName = this.toTransfer()
+        is InvalidBatchConstraintRange -> this.toTransfer()
+        is BatchConstraintConflict -> this.toTransfer()
     }
+    return builder.build()
+}
+
+fun InvalidBatchConstraintRange.toTransfer(): ProtoInvalidBatchConstraintRange {
+    val builder = ProtoInvalidBatchConstraintRange.newBuilder()
+    builder.min = min.toLong()
+    builder.max = max.toLong()
+    return builder.build()
+}
+
+fun BatchConstraintConflict.toTransfer(): ProtoBatchConstraintConflict {
+    val builder = ProtoBatchConstraintConflict.newBuilder()
+    builder.lhs = lhs.toTransfer()
+    builder.rhs = rhs.toTransfer()
     return builder.build()
 }
 
@@ -187,7 +216,6 @@ fun InvalidEvent.toTransfer(): ProtoInvalidEvent {
     val builder = ProtoInvalidEvent.newBuilder()
     builder.event = event.toTransfer()
     builder.addAllErrors(errors.map { it.toTransfer() })
-    builder.build()
     return builder.build()
 }
 

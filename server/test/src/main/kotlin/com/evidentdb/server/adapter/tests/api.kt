@@ -222,12 +222,49 @@ interface AdapterTests {
         val nonExistentEventSubject = "solid nope"
         val event1 = CloudEventBuilder.v1()
             .withSource(URI(eventStream1))
-            .withId("a completely unique event ID")
+            .withId("another completely unique event ID")
             .withSubject(eventSubject2)
             .withType("com.evidentdb.batch-constraint-failure")
             .build()
 
-        var constraint: BatchConstraint = BatchConstraint.StreamExists(
+        var constraint: BatchConstraint = BatchConstraint.DatabaseMinRevision(
+            4uL
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.DatabaseMaxRevision(
+            2uL
+        )
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.DatabaseRevisionRange(
+            1uL,
+            2uL
+        ).getOrNull()!!
+        validateConstraintFailure(
+            constraint,
+            adapter.transactBatch(
+                databaseName,
+                listOf(ProposedEvent(event1)),
+                listOf(constraint)
+            )
+        )
+
+        constraint = BatchConstraint.streamExists(
             StreamName(nonExistentEventStream).getOrNull()!!
         )
         validateConstraintFailure(
@@ -239,7 +276,7 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.StreamDoesNotExist(
+        constraint = BatchConstraint.streamDoesNotExist(
             StreamName(eventStream1).getOrNull()!!
         )
         validateConstraintFailure(
@@ -251,10 +288,10 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.StreamMaxRevision(
+        constraint = BatchConstraint.streamAtRevision(
             StreamName(eventStream1).getOrNull()!!,
             1uL
-        )
+        ).getOrNull()!!
         validateConstraintFailure(
             constraint,
             adapter.transactBatch(
@@ -264,7 +301,7 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectExists(
+        constraint = BatchConstraint.subjectExists(
             EventSubject(nonExistentEventSubject).getOrNull()!!
         )
         validateConstraintFailure(
@@ -276,7 +313,7 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectDoesNotExist(
+        constraint = BatchConstraint.subjectDoesNotExist(
             EventSubject(eventSubject2).getOrNull()!!
         )
         validateConstraintFailure(
@@ -288,10 +325,10 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectMaxRevision(
+        constraint = BatchConstraint.subjectAtRevision(
             EventSubject(eventSubject2).getOrNull()!!,
             2uL,
-        )
+        ).getOrNull()!!
         validateConstraintFailure(
             constraint,
             adapter.transactBatch(
@@ -301,7 +338,7 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectExistsOnStream(
+        constraint = BatchConstraint.subjectExistsOnStream(
             StreamName(eventStream1).getOrNull()!!,
             EventSubject(nonExistentEventSubject).getOrNull()!!,
         )
@@ -314,7 +351,7 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectDoesNotExistOnStream(
+        constraint = BatchConstraint.subjectDoesNotExistOnStream(
             StreamName(eventStream1).getOrNull()!!,
             EventSubject(eventSubject2).getOrNull()!!,
         )
@@ -327,11 +364,11 @@ interface AdapterTests {
             )
         )
 
-        constraint = BatchConstraint.SubjectMaxRevisionOnStream(
+        constraint = BatchConstraint.subjectAtRevisionOnStream(
             StreamName(eventStream1).getOrNull()!!,
             EventSubject(eventSubject2).getOrNull()!!,
             1uL,
-        )
+        ).getOrNull()!!
         validateConstraintFailure(
             constraint,
             adapter.transactBatch(

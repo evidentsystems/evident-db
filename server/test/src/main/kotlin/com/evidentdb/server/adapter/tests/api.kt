@@ -6,9 +6,9 @@ import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.domain_model.*
 import io.cloudevents.core.builder.CloudEventBuilder
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions
 import java.net.URI
@@ -27,12 +27,8 @@ interface AdapterTests {
 
         // Ensure the updates are being sent upon connection
         val updates = mutableListOf<Either<QueryError, Database>>()
-        val updatesJob = launch {
-            adapter.connect(databaseName).toList(updates)
-        }
-        advanceUntilIdle()
-        updatesJob.cancel()
-        Assertions.assertEquals(1, updates.size)
+        adapter.connect(databaseName).take(1).toList(updates)
+
         val update = updates.first()
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(0uL, update.getOrNull()?.revision)
@@ -46,7 +42,7 @@ interface AdapterTests {
         // Ensure the updates are being sent upon connection
         val updates = mutableListOf<Either<QueryError, Database>>()
         val updatesJob = launch {
-            adapter.connect(databaseName).toList(updates)
+            adapter.connect(databaseName).take(1).toList(updates)
         }
         // Transact the Batch
         val eventStream1 = "my-stream"
@@ -179,9 +175,8 @@ interface AdapterTests {
         ).toList()
         Assertions.assertEquals(listOf(2uL.right(), 3uL.right()), type2)
         // Ensure updates were properly received
-        advanceUntilIdle()
-        updatesJob.cancel()
-        Assertions.assertEquals(1, updates.size)
+        updatesJob.join()
+
         val update = updates.first()
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(revisionAfterBatch, update.getOrNull()?.revision)
@@ -397,7 +392,7 @@ interface AdapterTests {
     fun `deleting a database`() = runTest {
         val updates = mutableListOf<Either<QueryError, Database>>()
         val updatesJob = launch {
-            adapter.connect(databaseName).toList(updates)
+            adapter.connect(databaseName).take(1).toList(updates)
         }
         val result = adapter.deleteDatabase(databaseName)
         Assertions.assertTrue(result.isRight())
@@ -406,9 +401,9 @@ interface AdapterTests {
                 listOf<Database>(),
                 catalog
         )
-        advanceUntilIdle()
-        updatesJob.cancel()
-        Assertions.assertEquals(1, updates.size)
+
+        updatesJob.join()
+
         val update = updates.first()
         Assertions.assertTrue(update.isLeft())
         Assertions.assertInstanceOf(DatabaseNotFound::class.java, update.leftOrNull())

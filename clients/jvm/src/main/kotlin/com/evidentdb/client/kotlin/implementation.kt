@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -186,28 +187,40 @@ class GrpcClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evident
         private val grpcClientChannel = channelBuilder.build()
         private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
 
-        private val isActive = state.get() != ConnectionState.CLOSED
+        private val isActive
+            get() = state.get() != ConnectionState.CLOSED
 
         init {
             val started = CompletableFuture<Boolean>()
             connectionScope.launch {
                 while (isActive) {
-                    grpcClient.connect(
-                        ConnectRequest.newBuilder()
-                            .setName(database)
-                            .build()
-                    ).collectIndexed { i, reply ->
-                        val summary = reply.database.toDomain()
-                        if (i == 0) {
-                            started.complete(true)
+                    try {
+                        grpcClient.connect(
+                            ConnectRequest.newBuilder()
+                                .setName(database)
+                                .build()
+                        ).collect { reply ->
+                            if (!started.isDone) {
+                                started.complete(true)
+                            }
                             state.set(ConnectionState.CONNECTED)
+                            val summary = reply.database.toDomain()
+                            latestRevision.set(summary.revision)
                         }
-                        latestRevision.set(summary.revision)
+                        state.set(ConnectionState.DISCONNECTED)
+                    } catch (e: StatusException) {
+                        if (!started.isDone) {
+                            started.complete(true)
+                        }
+                        state.set(ConnectionState.CLOSED)
                     }
-                    state.set(ConnectionState.DISCONNECTED)
                 }
             }
-            started.get()
+            try {
+                started.get(30, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                state.set(ConnectionState.CLOSED)
+            }
         }
 
         override fun transact(batch: BatchProposal): CompletableFuture<Batch> =

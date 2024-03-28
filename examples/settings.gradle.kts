@@ -27,4 +27,4 @@ dependencyResolutionManagement {
 includeBuild("../clients")
 
 rootProject.name = "examples"
-include("autonomo") //, "clojure-repl")
+include("autonomo", "clojure-repl")

@@ -26,6 +26,7 @@
                 <projects>
                   <project path="$PROJECT_DIR$/examples" />
                   <project path="$PROJECT_DIR$/examples/autonomo" />
+                  <project path="$PROJECT_DIR$/examples/clojure-repl" />
                 </projects>
               </build>
               <build path="$PROJECT_DIR$/server" name="server">
@@ -56,6 +57,7 @@
             <option value="$PROJECT_DIR$/clients/jvm" />
             <option value="$PROJECT_DIR$/examples" />
             <option value="$PROJECT_DIR$/examples/autonomo" />
+            <option value="$PROJECT_DIR$/examples/clojure-repl" />
             <option value="$PROJECT_DIR$/server" />
             <option value="$PROJECT_DIR$/server/adapter-in-memory" />
             <option value="$PROJECT_DIR$/server/app" />

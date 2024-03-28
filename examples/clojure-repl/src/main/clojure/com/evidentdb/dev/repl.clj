@@ -1,10 +1,9 @@
 (ns com.evidentdb.dev.repl
-  (:require [clojure.string :as string]
-            [clj-rocksdb :as rocksdb])
+  (:require [clojure.string :as string])
   (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDB StreamState StreamState$Any CloseableIterator CodecKt]))
+           [com.evidentdb.client EvidentDb CloseableIterator]))
 
 (defn event-proposal
   ([event-type stream-name]
@@ -18,17 +17,15 @@
             data-content-type
             data-schema
             extensions]
-     :or {stream-state StreamState$Any/INSTANCE
-          extensions   []}}]
-   (EvidentDB/eventProposal ^String event-type
-                            ^String stream-name
-                            ^StreamState stream-state
-                            ^String subject
-                            ^String event-id
-                            ^CloudEventData data
-                            ^String data-content-type
-                            ^URI data-schema
-                            extensions)))
+     :or {extensions []}}]
+   (EvidentDb/event ^String stream-name
+                    ^String event-id
+                    ^String event-type
+                    ^String subject
+                    ^CloudEventData data
+                    ^String data-content-type
+                    ^URI data-schema
+                    extensions)))
 
 (defn eagerize
   [^CloseableIterator iter]
@@ -36,8 +33,10 @@
     (into [] (iterator-seq i))))
 
 (comment
+  (require 'com.evidentdb.dev.repl)
+  (in-ns 'com.evidentdb.dev.repl)
 
-  (def client (EvidentDB/javaClient
+  (def client (EvidentDb/javaClient
                (-> (ManagedChannelBuilder/forAddress "localhost" 50051)
                    .usePlaintext)))
   (def database-name "clojure-repl")

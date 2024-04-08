@@ -5,10 +5,8 @@ import arrow.core.right
 import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.domain_model.*
 import io.cloudevents.core.builder.CloudEventBuilder
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions
 import java.net.URI
@@ -26,10 +24,7 @@ interface AdapterTests {
         Assertions.assertInstanceOf(Database::class.java, creationResult.getOrNull())
 
         // Ensure the updates are being sent upon connection
-        val updates = mutableListOf<Either<QueryError, Database>>()
-        adapter.connect(databaseName).take(1).toList(updates)
-
-        val update = updates.first()
+        val update = adapter.connect(databaseName).first()
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(0uL, update.getOrNull()?.revision)
 
@@ -40,10 +35,8 @@ interface AdapterTests {
 
     fun `transacting batches`() = runTest {
         // Ensure the updates are being sent upon connection
-        val updates = mutableListOf<Either<QueryError, Database>>()
-        val updatesJob = launch {
-            adapter.connect(databaseName).take(1).toList(updates)
-        }
+        val updates = initializeConnection(databaseName, 0u, this)
+
         // Transact the Batch
         val eventStream1 = "my-stream"
         val eventStream2 = "my-other-stream"
@@ -175,9 +168,8 @@ interface AdapterTests {
         ).toList()
         Assertions.assertEquals(listOf(2uL.right(), 3uL.right()), type2)
         // Ensure updates were properly received
-        updatesJob.join()
-
         val update = updates.first()
+
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(revisionAfterBatch, update.getOrNull()?.revision)
     }
@@ -389,11 +381,12 @@ interface AdapterTests {
         )
     }
 
+    // TODO: Happy path when constraints are provided and satisfied
+
     fun `deleting a database`() = runTest {
-        val updates = mutableListOf<Either<QueryError, Database>>()
-        val updatesJob = launch {
-            adapter.connect(databaseName).take(1).toList(updates)
-        }
+        // Ensure the updates are being sent upon connection
+        val updateFlow = initializeConnection(databaseName, 3u, this)
+
         val result = adapter.deleteDatabase(databaseName)
         Assertions.assertTrue(result.isRight())
         val catalog = adapter.catalog().toList()
@@ -402,9 +395,7 @@ interface AdapterTests {
                 catalog
         )
 
-        updatesJob.join()
-
-        val update = updates.first()
+        val update = updateFlow.first()
         Assertions.assertTrue(update.isLeft())
         Assertions.assertInstanceOf(DatabaseNotFound::class.java, update.leftOrNull())
 
@@ -425,5 +416,22 @@ interface AdapterTests {
 //        adapter.eventById()
 //        adapter.eventType()
 //        adapter.eventsByRevision()
+    }
+
+    private suspend fun initializeConnection(
+        database: String,
+        expectedInitialRevision: Revision,
+        scope: CoroutineScope,
+    ): Flow<Either<DatabaseNotFound, Database>> {
+        val init = CompletableDeferred<Boolean>()
+        val flow = adapter.connect(database)
+        scope.async {
+            val first = flow.first()
+            Assertions.assertEquals(expectedInitialRevision, first.getOrNull()!!.revision)
+            init.complete(true)
+        }
+        init.await()
+        println("Connection initialized")
+        return flow
     }
 }

@@ -12,7 +12,9 @@ import io.micronaut.context.annotation.Secondary
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import jakarta.inject.Singleton
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.runBlocking
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -95,17 +97,16 @@ private class InMemoryDatabaseRepository(
     val name: DatabaseName,
 ) {
     private val lock = ReentrantLock()
-    private val storage: NavigableMap<InMemoryRepositoryKey, InMemoryRepositoryValue>
-    private val _updates: MutableStateFlow<Either<DatabaseNotFound, DatabaseRootValue>>
-    val updates: StateFlow<Either<DatabaseNotFound, Database>>
+    private val storage = TreeMap<InMemoryRepositoryKey, InMemoryRepositoryValue>()
+    private val _updates = MutableSharedFlow<Either<DatabaseNotFound, DatabaseRootValue>>(
+        extraBufferCapacity = 1000,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val updates: SharedFlow<Either<DatabaseNotFound, Database>> = _updates.asSharedFlow()
 
     // Initial database state
     init {
-        val initialDatabase = DatabaseRootValue(name, 0uL)
-        storage = TreeMap()
-        storage[DatabaseRootKey] = initialDatabase
-        _updates = MutableStateFlow(initialDatabase.right())
-        updates = _updates.asStateFlow()
+        storage[DatabaseRootKey] = DatabaseRootValue(name, 0uL)
     }
 
     fun latestDatabase(): Either<DatabaseNotFound, InMemoryDatabase> = either {
@@ -174,13 +175,7 @@ private class InMemoryDatabaseRepository(
             try {
                 storage += transaction
                 storage[DatabaseRootKey] = nextDatabaseRoot
-                val updateSent = _updates.compareAndSet(
-                    currentDatabaseRoot.right(),
-                    nextDatabaseRoot.right(),
-                )
-                if (!updateSent) {
-                    throw IllegalStateException("Compare and set to updates state flow failed")
-                }
+                _updates.tryEmit(nextDatabaseRoot.right())
             } catch (t: Throwable) {
                 transaction.forEach {
                     storage.remove(it.key)
@@ -191,7 +186,9 @@ private class InMemoryDatabaseRepository(
     }
 
     fun tearDown() {
-        _updates.value = DatabaseNotFound(name.value).left()
+        runBlocking {
+            _updates.emit(DatabaseNotFound(name.value).left())
+        }
     }
 
     // Let's compare these keys thus: DatabaseRootKey object first, then the others sorted

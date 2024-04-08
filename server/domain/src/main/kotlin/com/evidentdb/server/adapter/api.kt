@@ -72,12 +72,15 @@ interface EvidentDbAdapter: Lifecycle {
     // Query API
     suspend fun catalog(): Flow<DatabaseName> = repository.databaseCatalog()
 
-    fun connect(databaseNameStr: String): Flow<Either<QueryError, Database>> = flow {
+    fun connect(databaseNameStr: String): Flow<Either<DatabaseNotFound, Database>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
                 is Either.Left -> emit(database)
-                is Either.Right -> emitAll(databaseUpdateStream.subscribe(database.value.name))
+                is Either.Right -> {
+                    emit(database)
+                    emitAll(databaseUpdateStream.subscribe(database.value.name))
+                }
             }
         }
     }

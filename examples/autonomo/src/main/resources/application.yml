@@ -1,6 +1,8 @@
 micronaut:
   application:
     name: evident-db-autonomo-example
+  server:
+    port: 8888
 netty:
   default:
     allocator:

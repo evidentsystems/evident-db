@@ -10,12 +10,12 @@ import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CompletableFuture
 import com.evidentdb.client.kotlin.Connection as ConnectionKt
 import com.evidentdb.client.kotlin.Database as DatabaseKt
-import com.evidentdb.client.kotlin.GrpcClient as EvidentDBKt
+import com.evidentdb.client.kotlin.KotlinSimpleClient as EvidentDBKt
 
 fun EvidentDb.Companion.javaClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb =
-    GrpcClient(channelBuilder)
+    JavaSimpleClient(channelBuilder)
 
-class GrpcClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
+class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private val kotlinClient = EvidentDBKt(channelBuilder)
 
     override fun createDatabase(name: DatabaseName): Boolean =

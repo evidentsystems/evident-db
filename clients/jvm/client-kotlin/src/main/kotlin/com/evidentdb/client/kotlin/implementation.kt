@@ -28,9 +28,9 @@ import kotlin.math.max
 internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
 
 fun EvidentDb.Companion.kotlinClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDbKt =
-    EvidentDbSimpleClient(channelBuilder)
+    KotlinSimpleClient(channelBuilder)
 
-private enum class ConnectionState {
+enum class ConnectionState {
     DISCONNECTED,
     CONNECTED,
     CLOSED
@@ -38,7 +38,7 @@ private enum class ConnectionState {
 
 interface SimpleClient: EvidentDbKt {
     val grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub
-    var isActive: Boolean
+    val isActive: Boolean
     val connections: MutableMap<DatabaseName, Connection>
 
     override fun createDatabase(name: DatabaseName): Boolean =
@@ -115,18 +115,16 @@ interface SimpleClient: EvidentDbKt {
  *
  * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
  * used to connect to the EvidentDB server.
- * @property cacheSize Configurable size for new connections created by this client
  * @constructor Main entry point for creating EvidentDB clients
  */
 @ThreadSafe
-class EvidentDbSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) : SimpleClient {
+class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) : SimpleClient {
     override val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
     override val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
     private val active = AtomicBoolean(true)
 
-    override var isActive: Boolean
+    override val isActive: Boolean
         get() = active.get()
-        set(value) = active.set(value)
 
     private fun removeConnection(database: DatabaseName) =
         connections.remove(database)
@@ -146,18 +144,22 @@ class EvidentDbSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>
         }
 
     override fun shutdown() {
-        isActive = false
-        connections.forEach { (name, connection) ->
-            removeConnection(name)
-            connection.shutdown()
+        if (isActive) {
+            active.set(false)
+            connections.forEach { (name, connection) ->
+                removeConnection(name)
+                connection.shutdown()
+            }
         }
     }
 
     override fun shutdownNow() {
-        isActive = false
-        connections.forEach { (name, connection) ->
-            removeConnection(name)
-            connection.shutdownNow()
+        if (isActive) {
+            active.set(false)
+            connections.forEach { (name, connection) ->
+                removeConnection(name)
+                connection.shutdownNow()
+            }
         }
     }
 

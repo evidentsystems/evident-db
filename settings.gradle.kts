@@ -1,3 +1,3 @@
 includeBuild("server")
-includeBuild("clients")
+includeBuild("clients/jvm")
 includeBuild("examples")

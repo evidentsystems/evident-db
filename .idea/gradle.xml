@@ -16,17 +16,21 @@
                   <project path="$PROJECT_DIR$/build-logic/protobuf" />
                 </projects>
               </build>
-              <build path="$PROJECT_DIR$/clients" name="clients">
-                <projects>
-                  <project path="$PROJECT_DIR$/clients" />
-                  <project path="$PROJECT_DIR$/clients/jvm" />
-                </projects>
-              </build>
               <build path="$PROJECT_DIR$/examples" name="examples">
                 <projects>
                   <project path="$PROJECT_DIR$/examples" />
                   <project path="$PROJECT_DIR$/examples/autonomo" />
                   <project path="$PROJECT_DIR$/examples/clojure-repl" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/clients/jvm" name="clients.jvm">
+                <projects>
+                  <project path="$PROJECT_DIR$/clients/jvm" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-api" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-java" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-java-caching" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-kotlin" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-kotlin-caching" />
                 </projects>
               </build>
               <build path="$PROJECT_DIR$/server" name="server">
@@ -53,8 +57,12 @@
             <option value="$PROJECT_DIR$/build-logic/micronaut-app" />
             <option value="$PROJECT_DIR$/build-logic/micronaut-lib" />
             <option value="$PROJECT_DIR$/build-logic/protobuf" />
-            <option value="$PROJECT_DIR$/clients" />
             <option value="$PROJECT_DIR$/clients/jvm" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-api" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-java" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-java-caching" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-kotlin" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-kotlin-caching" />
             <option value="$PROJECT_DIR$/examples" />
             <option value="$PROJECT_DIR$/examples/autonomo" />
             <option value="$PROJECT_DIR$/examples/clojure-repl" />

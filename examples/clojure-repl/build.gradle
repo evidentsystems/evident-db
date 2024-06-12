@@ -11,10 +11,11 @@ repositories {
 }
 
 dependencies {
+    implementation 'com.evidentdb:client-java-caching'
+
     implementation 'org.clojure:clojure:1.11.1'
     implementation 'cider:cider-nrepl:0.28.6'
     implementation 'kotyo:clj-rocksdb:0.1.5'
-    implementation 'com.evidentdb:client'
     implementation libs.grpc.netty
 
     testRuntimeOnly 'org.ajoberstar:jovial:0.3.0'

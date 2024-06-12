@@ -11,7 +11,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
 
     // EvidentDB Client
-    implementation("com.evidentdb:client")
+    implementation("com.evidentdb:client-kotlin-caching")
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
 

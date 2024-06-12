@@ -67,8 +67,8 @@ data class BatchConstraintViolations(
 
 // Not for use in external interface, only for internal conflict resolution
 data class ConcurrentWriteCollision(
-    val expectedRevision: DatabaseRevision,
-    val actualRevision: DatabaseRevision
+    val expectedRevision: Revision,
+    val actualRevision: Revision
 ): BatchTransactionError
 
 data class EventNotFound(val message: String): QueryError

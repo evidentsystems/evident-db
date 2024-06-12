@@ -35,7 +35,7 @@ interface CleanDatabaseCommandModel: ActiveDatabaseCommandModel
 
 sealed interface ActiveDatabaseCommandModel: DatabaseCommandModel, Database {
     override val name: DatabaseName
-    override val revision: DatabaseRevision
+    override val revision: Revision
 
     // Command Processing
     fun buildAcceptedBatch(
@@ -55,7 +55,7 @@ data class NewlyCreatedDatabaseCommandModel internal constructor(
     override val name: DatabaseName,
     private val basis: DatabaseCommandModelBeforeCreation,
 ): ActiveDatabaseCommandModel {
-    override val revision: DatabaseRevision = 0uL
+    override val revision: Revision = 0uL
 }
 
 data class DirtyDatabaseCommandModel internal constructor(
@@ -64,10 +64,10 @@ data class DirtyDatabaseCommandModel internal constructor(
 ) : ActiveDatabaseCommandModel {
     override val name: DatabaseName
         get() = basis.name
-    override val revision: DatabaseRevision = basis.revision + batch.events.size.toUInt()
+    override val revision: Revision = basis.revision + batch.events.size.toUInt()
 
     // Recursively discovers last clean basis
-    val dirtyRelativeToRevision: DatabaseRevision
+    val dirtyRelativeToRevision: Revision
         get() = if (basis is DirtyDatabaseCommandModel) {
             basis.dirtyRelativeToRevision
         } else {
@@ -154,7 +154,7 @@ data class WellFormedProposedEvent private constructor (val event: CloudEvent) {
     }
 
     fun index(
-        basisRevision: DatabaseRevision,
+        basisRevision: Revision,
         indexInBatch: UInt,
         timestamp: Instant
     ): Either<InvalidEvent, IndexedEvent>  =
@@ -172,7 +172,7 @@ data class IndexedEvent private constructor(override val event: CloudEvent): Eve
 
         operator fun invoke(
             wellFormed: WellFormedProposedEvent,
-            basisRevision: DatabaseRevision,
+            basisRevision: Revision,
             indexInBatch: UInt,
             timestamp: Instant
         ): Either<NonEmptyList<EventInvalidation>, IndexedEvent> {
@@ -254,7 +254,7 @@ data class WellFormedProposedBatch(
     }
 
     fun indexBatch(
-        basisRevision: DatabaseRevision
+        basisRevision: Revision
     ) = IndexedBatch(this, basisRevision)
 }
 
@@ -262,7 +262,7 @@ data class IndexedBatch private constructor(
     override val database: DatabaseName,
     val events: NonEmptyList<IndexedEvent>,
     override val timestamp: Instant,
-    override val basis: DatabaseRevision,
+    override val basis: Revision,
     val constraints: Map<BatchConstraintKey, BatchConstraint>,
 ): Batch {
     override val revision
@@ -271,7 +271,7 @@ data class IndexedBatch private constructor(
     companion object {
         operator fun invoke(
             wellFormed: WellFormedProposedBatch,
-            basisRevision: DatabaseRevision,
+            basisRevision: Revision,
         ): Either<BatchTransactionError, IndexedBatch> = either {
             // Validate constituent events
             val timestamp = Instant.now()

@@ -85,7 +85,7 @@ private class InMemoryCatalogRepository:
 
     override suspend fun databaseAtRevision(
         name: DatabaseName,
-        revision: DatabaseRevision
+        revision: Revision
     ): Either<DatabaseNotFound, DatabaseReadModel> = either {
         val database = storage[name]
         ensureNotNull(database) { DatabaseNotFound(name.value) }
@@ -116,7 +116,7 @@ private class InMemoryDatabaseRepository(
     }
 
     fun databaseAtRevision(
-        revision: DatabaseRevision
+        revision: Revision
     ): Either<DatabaseNotFound, InMemoryDatabase> =
         InMemoryDatabase(name, revision).right()
 
@@ -203,7 +203,7 @@ private class InMemoryDatabaseRepository(
             }
     }
 
-    private data class BatchKey(val revision: DatabaseRevision): InMemoryRepositoryKey {
+    private data class BatchKey(val revision: Revision): InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
                 DatabaseRootKey -> Int.MAX_VALUE
@@ -240,7 +240,7 @@ private class InMemoryDatabaseRepository(
 
     private data class EventStreamIndexKey(
         val stream: StreamName,
-        val revision: DatabaseRevision,
+        val revision: Revision,
     ): InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
@@ -262,7 +262,7 @@ private class InMemoryDatabaseRepository(
 
     private data class EventSubjectIndexKey(
         val subject: EventSubject,
-        val revision: DatabaseRevision,
+        val revision: Revision,
     ): InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
@@ -285,7 +285,7 @@ private class InMemoryDatabaseRepository(
     private data class EventSubjectStreamIndexKey(
         val stream: StreamName,
         val subject: EventSubject,
-        val revision: DatabaseRevision,
+        val revision: Revision,
     ): InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
@@ -311,7 +311,7 @@ private class InMemoryDatabaseRepository(
 
     private data class EventTypeIndexKey(
         val type: EventType,
-        val revision: DatabaseRevision,
+        val revision: Revision,
     ): InMemoryRepositoryKey {
         override fun compareTo(other: InMemoryRepositoryKey): Int =
             when (other) {
@@ -335,23 +335,23 @@ private class InMemoryDatabaseRepository(
 
     private data object NullValue: InMemoryRepositoryValue
 
-    private data class EventIdIndexValue(val revision: DatabaseRevision): InMemoryRepositoryValue
+    private data class EventIdIndexValue(val revision: Revision): InMemoryRepositoryValue
 
     private data class DatabaseRootValue(
         override val name: DatabaseName,
-        override val revision: DatabaseRevision,
+        override val revision: Revision,
     ): Database, InMemoryRepositoryValue
 
     private data class BatchValue(
         override val database: DatabaseName,
         val events: NonEmptyList<Event>,
         override val timestamp: Instant,
-        override val basis: DatabaseRevision,
+        override val basis: Revision,
     ): Batch, InMemoryRepositoryValue {
-        override val revision: DatabaseRevision
+        override val revision: Revision
             get() = basis + events.size.toUInt()
 
-        fun getEventByAbsoluteRevision(rev: EventRevision): Event? =
+        fun getEventByAbsoluteRevision(rev: Revision): Event? =
             try {
                 events[(rev - basis).toInt() - 1]
             } catch (e: IndexOutOfBoundsException) {
@@ -361,7 +361,7 @@ private class InMemoryDatabaseRepository(
 
     inner class InMemoryDatabase(
         override val name: DatabaseName,
-        override val revision: DatabaseRevision
+        override val revision: Revision
     ): CleanDatabaseCommandModel, DatabaseReadModel {
         fun eventKeyIsUnique(streamName: StreamName, eventId: EventId): Boolean =
             storage[EventIdIndexKey(streamName, eventId)] == null
@@ -488,7 +488,7 @@ private class InMemoryDatabaseRepository(
             result
         }
 
-        override fun stream(stream: StreamName): Flow<EventRevision> =
+        override fun stream(stream: StreamName): Flow<Revision> =
             storage.subMap(
                 EventStreamIndexKey.minStreamKey(stream), false,
                 EventStreamIndexKey(stream, revision), true
@@ -498,7 +498,7 @@ private class InMemoryDatabaseRepository(
                 .map { it.revision }
                 .asFlow()
 
-        override fun subjectStream(stream: StreamName, subject: EventSubject): Flow<EventRevision> =
+        override fun subjectStream(stream: StreamName, subject: EventSubject): Flow<Revision> =
             storage.subMap(
                 EventSubjectStreamIndexKey.minSubjectStreamKey(stream, subject), false,
                 EventSubjectStreamIndexKey(stream, subject, revision), true
@@ -508,7 +508,7 @@ private class InMemoryDatabaseRepository(
                 .map { it.revision }
                 .asFlow()
 
-        override fun subject(subject: EventSubject): Flow<EventRevision> =
+        override fun subject(subject: EventSubject): Flow<Revision> =
             storage.subMap(
                 EventSubjectIndexKey.minSubjectKey(subject), false,
                 EventSubjectIndexKey(subject, revision), true
@@ -518,7 +518,7 @@ private class InMemoryDatabaseRepository(
                 .map { it.revision }
                 .asFlow()
 
-        override fun eventType(type: EventType): Flow<EventRevision> =
+        override fun eventType(type: EventType): Flow<Revision> =
             storage.subMap(
                 EventTypeIndexKey.minEventTypeKey(type), false,
                 EventTypeIndexKey(type, revision), true
@@ -529,7 +529,7 @@ private class InMemoryDatabaseRepository(
                 .asFlow()
 
         private fun eventByRevision(
-            revision: DatabaseRevision
+            revision: Revision
         ): Event? = storage.ceilingEntry(BatchKey(revision)).let {
             val batch = it.value
             if (batch is BatchValue) {
@@ -540,7 +540,7 @@ private class InMemoryDatabaseRepository(
         }
 
         override fun eventsByRevision(
-            revisions: List<EventRevision>
+            revisions: List<Revision>
         ): Flow<Either<QueryError, Event>> = flow {
             revisions.forEach {
                 val event = eventByRevision(it)

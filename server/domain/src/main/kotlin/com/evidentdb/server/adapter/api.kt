@@ -94,7 +94,7 @@ interface EvidentDbAdapter: Lifecycle {
 
     suspend fun databaseAtRevision(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
     ): Either<QueryError, Database> = either {
         val databaseName = DatabaseName(databaseNameStr)
             .mapLeft { DatabaseNotFound(databaseNameStr) }
@@ -104,7 +104,7 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun databaseLog(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
     ): Flow<Either<QueryError, Batch>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
@@ -119,9 +119,9 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun stream(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
         streamNameStr: String,
-    ): Flow<Either<QueryError, EventRevision>> = flow {
+    ): Flow<Either<QueryError, Revision>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
@@ -141,10 +141,10 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun subjectStream(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
         streamNameStr: String,
         subjectStr: String,
-    ): Flow<Either<QueryError, EventRevision>> = flow {
+    ): Flow<Either<QueryError, Revision>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
@@ -171,9 +171,9 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun subject(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
         subjectStr: String,
-    ): Flow<Either<QueryError, EventRevision>> = flow {
+    ): Flow<Either<QueryError, Revision>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
@@ -192,9 +192,9 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun eventType(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
         typeStr: String,
-    ): Flow<Either<QueryError, EventRevision>> = flow {
+    ): Flow<Either<QueryError, Revision>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
@@ -213,7 +213,7 @@ interface EvidentDbAdapter: Lifecycle {
 
     suspend fun eventById(
         databaseNameStr: String,
-        revision: DatabaseRevision,
+        revision: Revision,
         streamNameStr: String,
         idStr: String,
     ): Either<QueryError, Event> = either {
@@ -228,7 +228,7 @@ interface EvidentDbAdapter: Lifecycle {
 
     fun eventsByRevision(
         databaseNameStr: String,
-        revisions: List<EventRevision>,
+        revisions: List<Revision>,
     ): Flow<Either<QueryError, Event>> = flow {
         val database = either {
             val databaseName = DatabaseName(databaseNameStr)

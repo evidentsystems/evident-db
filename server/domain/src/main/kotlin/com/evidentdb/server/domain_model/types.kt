@@ -21,8 +21,6 @@ typealias Revision = ULong
 
 // Database (The Aggregate Root)
 
-typealias DatabaseRevision = Revision
-
 @JvmInline
 value class DatabaseName private constructor(val value: String) {
     companion object {
@@ -37,12 +35,10 @@ value class DatabaseName private constructor(val value: String) {
 
 interface Database {
     val name: DatabaseName
-    val revision: DatabaseRevision
+    val revision: Revision
 }
 
 // Streams
-
-typealias StreamRevision = Revision
 
 @JvmInline
 value class StreamName private constructor(val value: String) {
@@ -57,8 +53,6 @@ value class StreamName private constructor(val value: String) {
 }
 
 // Event
-
-typealias EventRevision = Revision
 
 @JvmInline
 value class EventId private constructor(val value: String) {
@@ -227,7 +221,7 @@ interface Event {
                 throw IllegalStateException("Illegal event subject: $event.subject")
             }
         }
-    val revision: EventRevision
+    val revision: Revision
         get() = ExtensionProvider.getInstance()
             .parseExtension(SequenceExtension::class.java, event)!!
             .sequence
@@ -276,16 +270,16 @@ sealed interface BatchConstraintKey {
 }
 
 sealed interface BatchConstraint {
-    data class DatabaseMinRevision(val revision: DatabaseRevision) : BatchConstraint
-    data class DatabaseMaxRevision(val revision: DatabaseRevision) : BatchConstraint
+    data class DatabaseMinRevision(val revision: Revision) : BatchConstraint
+    data class DatabaseMaxRevision(val revision: Revision) : BatchConstraint
     data class DatabaseRevisionRange private constructor(
-        val min: DatabaseRevision,
-        val max: DatabaseRevision,
+        val min: Revision,
+        val max: Revision,
     ): BatchConstraint {
         companion object {
             operator fun invoke(
-                min: DatabaseRevision,
-                max: DatabaseRevision,
+                min: Revision,
+                max: Revision,
             ): Either<BatchConstraintInvalidation, DatabaseRevisionRange> = either {
                 ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
                 DatabaseRevisionRange(min, max)
@@ -295,22 +289,22 @@ sealed interface BatchConstraint {
 
     data class StreamMinRevision(
         val stream: StreamName,
-        val revision: StreamRevision
+        val revision: Revision
     ) : BatchConstraint
     data class StreamMaxRevision(
         val stream: StreamName,
-        val revision: StreamRevision
+        val revision: Revision
     ) : BatchConstraint
     data class StreamRevisionRange private constructor(
         val stream: StreamName,
-        val min: DatabaseRevision,
-        val max: DatabaseRevision,
+        val min: Revision,
+        val max: Revision,
     ): BatchConstraint {
         companion object {
             operator fun invoke(
                 stream: StreamName,
-                min: DatabaseRevision,
-                max: DatabaseRevision,
+                min: Revision,
+                max: Revision,
             ): Either<BatchConstraintInvalidation, StreamRevisionRange> = either {
                 ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
                 StreamRevisionRange(stream, min, max)
@@ -320,22 +314,22 @@ sealed interface BatchConstraint {
 
     data class SubjectMinRevision(
         val subject: EventSubject,
-        val revision: StreamRevision,
+        val revision: Revision,
     ) : BatchConstraint
     data class SubjectMaxRevision(
         val subject: EventSubject,
-        val revision: StreamRevision,
+        val revision: Revision,
     ) : BatchConstraint
     data class SubjectRevisionRange private constructor(
         val subject: EventSubject,
-        val min: DatabaseRevision,
-        val max: DatabaseRevision,
+        val min: Revision,
+        val max: Revision,
     ): BatchConstraint {
         companion object {
             operator fun invoke(
                 subject: EventSubject,
-                min: DatabaseRevision,
-                max: DatabaseRevision,
+                min: Revision,
+                max: Revision,
             ): Either<BatchConstraintInvalidation, SubjectRevisionRange> = either {
                 ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
                 SubjectRevisionRange(subject, min, max)
@@ -346,25 +340,25 @@ sealed interface BatchConstraint {
     data class SubjectMinRevisionOnStream(
         val stream: StreamName,
         val subject: EventSubject,
-        val revision: StreamRevision,
+        val revision: Revision,
     ) : BatchConstraint
     data class SubjectMaxRevisionOnStream(
         val stream: StreamName,
         val subject: EventSubject,
-        val revision: StreamRevision,
+        val revision: Revision,
     ) : BatchConstraint
     data class SubjectStreamRevisionRange private constructor(
         val stream: StreamName,
         val subject: EventSubject,
-        val min: DatabaseRevision,
-        val max: DatabaseRevision,
+        val min: Revision,
+        val max: Revision,
     ): BatchConstraint {
         companion object {
             operator fun invoke(
                 stream: StreamName,
                 subject: EventSubject,
-                min: DatabaseRevision,
-                max: DatabaseRevision,
+                min: Revision,
+                max: Revision,
             ): Either<BatchConstraintInvalidation, SubjectStreamRevisionRange> = either {
                 ensure(min <= max) { InvalidBatchConstraintRange(min, max) }
                 SubjectStreamRevisionRange(stream, subject, min, max)
@@ -377,14 +371,14 @@ sealed interface BatchConstraint {
 
         fun streamDoesNotExist(stream: StreamName) = StreamMaxRevision(stream, 0uL)
 
-        fun streamAtRevision(stream: StreamName, revision: StreamRevision) =
+        fun streamAtRevision(stream: StreamName, revision: Revision) =
             StreamRevisionRange(stream, revision, revision)
 
         fun subjectExists(subject: EventSubject) = SubjectMinRevision(subject, 1uL)
 
         fun subjectDoesNotExist(subject: EventSubject) = SubjectMaxRevision(subject, 0uL)
 
-        fun subjectAtRevision(subject: EventSubject, revision: StreamRevision) =
+        fun subjectAtRevision(subject: EventSubject, revision: Revision) =
             SubjectRevisionRange(subject, revision, revision)
 
         fun subjectExistsOnStream(stream: StreamName, subject: EventSubject) =
@@ -393,7 +387,7 @@ sealed interface BatchConstraint {
         fun subjectDoesNotExistOnStream(stream: StreamName, subject: EventSubject) =
             SubjectMaxRevisionOnStream(stream, subject, 0uL)
 
-        fun subjectAtRevisionOnStream(stream: StreamName, subject: EventSubject, revision: StreamRevision) =
+        fun subjectAtRevisionOnStream(stream: StreamName, subject: EventSubject, revision: Revision) =
             SubjectStreamRevisionRange(stream, subject, revision, revision)
 
         fun combine(
@@ -550,7 +544,7 @@ sealed interface BatchConstraint {
 
 interface Batch {
     val database: DatabaseName
-    val basis: DatabaseRevision
-    val revision: DatabaseRevision
+    val basis: Revision
+    val revision: Revision
     val timestamp: Instant
 }

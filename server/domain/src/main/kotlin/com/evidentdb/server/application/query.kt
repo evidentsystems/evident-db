@@ -16,7 +16,7 @@ interface DatabaseRepository: Lifecycle {
     suspend fun latestDatabase(name: DatabaseName): Either<DatabaseNotFound, DatabaseReadModel>
     suspend fun databaseAtRevision(
         name: DatabaseName,
-        revision: DatabaseRevision
+        revision: Revision
     ): Either<DatabaseNotFound, DatabaseReadModel>
 }
 
@@ -27,10 +27,10 @@ interface DatabaseReadModel: Database {
     suspend fun eventById(stream: StreamName, id: EventId): Either<EventNotFound, Event>
 
     // Flows of event revisions from index
-    fun stream(stream: StreamName): Flow<EventRevision>
-    fun subjectStream(stream: StreamName, subject: EventSubject): Flow<EventRevision>
-    fun subject(subject: EventSubject): Flow<EventRevision>
-    fun eventType(type: EventType): Flow<EventRevision>
+    fun stream(stream: StreamName): Flow<Revision>
+    fun subjectStream(stream: StreamName, subject: EventSubject): Flow<Revision>
+    fun subject(subject: EventSubject): Flow<Revision>
+    fun eventType(type: EventType): Flow<Revision>
 
-    fun eventsByRevision(revisions: List<EventRevision>): Flow<Either<QueryError, Event>>
+    fun eventsByRevision(revisions: List<Revision>): Flow<Either<QueryError, Event>>
 }

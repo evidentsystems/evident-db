@@ -26,15 +26,15 @@ class EvidentDbEndpoint(
 
     // Command
     override suspend fun createDatabase(request: CreateDatabaseRequest): CreateDatabaseReply {
-        LOGGER.info("createDatabase: ${request.name}")
+        LOGGER.info("createDatabase: {}", request.name)
         val reply = CreateDatabaseReply.newBuilder()
         when (val result = adapter.createDatabase(request.name)) {
             is Either.Left -> {
-                LOGGER.warn("createDatabase error: ${request.name}")
+                LOGGER.warn("createDatabase error: {}", request.name)
                 throw result.value.toRuntimeException()
             }
             is Either.Right -> {
-                LOGGER.info("createDatabase success: ${request.name}")
+                LOGGER.info("createDatabase success: {}", request.name)
                 reply.database = result.value.toTransfer()
             }
         }
@@ -42,7 +42,7 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun transactBatch(request: TransactBatchRequest): TransactBatchReply {
-        LOGGER.info("transactBatch in database: ${request.database}")
+        LOGGER.info("transactBatch in database: {}", request.database)
         val reply = TransactBatchReply.newBuilder()
         val constraints = either<NonEmptyList<InvalidBatchConstraint>, List<BatchConstraint>> {
             mapOrAccumulate(
@@ -64,11 +64,15 @@ class EvidentDbEndpoint(
             }
         when (result) {
             is Either.Left -> {
-                LOGGER.warn("transactBatch error in database: ${request.database}")
-                throw result.value.toRuntimeException()
+                val exception = result.value.toRuntimeException()
+                LOGGER.warn(
+                    "transactBatch error in database {}: {}",
+                    request.database, exception.message
+                )
+                throw exception
             }
             is Either.Right -> {
-                LOGGER.info("transactBatch success in database: ${request.database}")
+                LOGGER.info("transactBatch success in database {}", request.database)
                 reply.batch = result.value.toTransfer()
             }
         }
@@ -76,15 +80,15 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun deleteDatabase(request: DeleteDatabaseRequest): DeleteDatabaseReply {
-        LOGGER.info("deleteDatabase: ${request.name}")
+        LOGGER.info("deleteDatabase: {}", request.name)
         val reply = DeleteDatabaseReply.newBuilder()
         when (val result = adapter.deleteDatabase(request.name)) {
             is Either.Left -> {
-                LOGGER.warn("deleteDatabase error: ${request.name}")
+                LOGGER.warn("deleteDatabase error: {}", request.name)
                 throw result.value.toRuntimeException()
             }
             is Either.Right -> {
-                LOGGER.info("deleteDatabase success: ${request.name}")
+                LOGGER.info("deleteDatabase success: {}", request.name)
                 reply.database = result.value.toTransfer()
             }
         }
@@ -102,7 +106,7 @@ class EvidentDbEndpoint(
     }
 
     override fun connect(request: ConnectRequest): Flow<DatabaseReply> = flow {
-        LOGGER.info("connect: ${request.name}")
+        LOGGER.info("connect: {}", request.name)
         emitAll(adapter.connect(request.name).map {
             val reply = DatabaseReply.newBuilder()
             when (it) {
@@ -114,7 +118,7 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun latestDatabase(request: LatestDatabaseRequest): DatabaseReply {
-        LOGGER.info("latestDatabase: ${request.name}")
+        LOGGER.info("latestDatabase: {}", request.name)
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.latestDatabase(request.name)) {
             is Either.Left -> throw result.value.toRuntimeException()
@@ -124,7 +128,7 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun databaseAtRevision(request: DatabaseAtRevisionRequest): DatabaseReply {
-        LOGGER.info("databaseAtRevision: ${request.name}, ${request.revision}")
+        LOGGER.info("databaseAtRevision: {}, {}", request.name, request.revision)
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.databaseAtRevision(request.name, request.revision.toULong())) {
             is Either.Left -> throw result.value.toRuntimeException()
@@ -134,7 +138,7 @@ class EvidentDbEndpoint(
     }
 
     override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
-        LOGGER.info("databaseLog: ${request.name}, ${request.revision}")
+        LOGGER.info("databaseLog: {}, {}", request.name, request.revision)
         emitAll(adapter.databaseLog(request.name, request.revision.toULong()).map {
             val reply = DatabaseLogReply.newBuilder()
             when (it) {
@@ -146,7 +150,7 @@ class EvidentDbEndpoint(
     }
 
     override fun stream(request: StreamRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("stream: ${request.database}, ${request.revision}, ${request.stream}")
+        LOGGER.info("stream: {}, {}, {}", request.database, request.revision, request.stream)
         emitAll(adapter.stream(
             request.database,
             request.revision.toULong(),
@@ -162,7 +166,10 @@ class EvidentDbEndpoint(
     }
 
     override fun subjectStream(request: SubjectStreamRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("subjectStream: ${request.database}, ${request.revision}, ${request.stream}, ${request.subject}")
+        LOGGER.info(
+            "subjectStream: {}, {}, {}, {}",
+            request.database, request.revision, request.stream, request.subject
+        )
         emitAll(adapter.subjectStream(
             request.database,
             request.revision.toULong(),
@@ -179,7 +186,10 @@ class EvidentDbEndpoint(
     }
 
     override fun subject(request: SubjectRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("subject: ${request.database}, ${request.revision}, ${request.subject}")
+        LOGGER.info(
+            "subject: {}, {}, {}",
+            request.database, request.revision, request.subject
+        )
         emitAll(adapter.subject(
             request.database,
             request.revision.toULong(),
@@ -195,7 +205,10 @@ class EvidentDbEndpoint(
     }
 
     override fun eventType(request: EventTypeRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("eventType: ${request.database}, ${request.revision}, ${request.eventType}")
+        LOGGER.info(
+            "eventType: {}, {}, {}",
+            request.database, request.revision, request.eventType
+        )
         emitAll(adapter.eventType(
             request.database,
             request.revision.toULong(),
@@ -211,7 +224,10 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun eventById(request: EventByIdRequest): EventReply {
-        LOGGER.info("eventById: ${request.database}, ${request.revision}, ${request.stream}, ${request.eventId}")
+        LOGGER.info(
+            "eventById: {}, {}, {}, {}",
+            request.database, request.revision, request.stream, request.eventId
+        )
         val reply = EventReply.newBuilder()
         when (val result = adapter.eventById(
             request.database,
@@ -226,7 +242,10 @@ class EvidentDbEndpoint(
     }
 
     override fun events(request: EventByRevisionRequest): Flow<EventReply> = flow {
-        LOGGER.info("events: ${request.database}, ${request.eventRevisionsList}")
+        LOGGER.info(
+            "events: {}, {}",
+            request.database, request.eventRevisionsList
+        )
         emitAll(adapter.eventsByRevision(
             request.database, request.eventRevisionsList.map { it.toULong() }
         ).map {

@@ -15,6 +15,7 @@ import jakarta.inject.Singleton
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -26,8 +27,15 @@ private class InMemoryCatalogRepository:
     DatabaseCommandModelBeforeCreation,
     WritableDatabaseRepository,
     DatabaseUpdateStream {
+    companion object {
+        private val LOGGER = LoggerFactory.getLogger(
+            "com.evidentdb.server.adapter.in_memory.InMemoryCatalogRepository"
+        )
+    }
+
     private val storage: ConcurrentMap<DatabaseName, InMemoryDatabaseRepository> = ConcurrentHashMap()
     // Lifecycle
+
     override fun setup() = Unit // no-op
     override fun teardown() = Unit // no-op
 
@@ -39,6 +47,7 @@ private class InMemoryCatalogRepository:
 
     override suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit> =
         either {
+            LOGGER.info("Setting up database: {}", database)
             val key = database.name
             val value = InMemoryDatabaseRepository(database.name)
             // putIfAbsent returns null if no existing key present
@@ -49,6 +58,7 @@ private class InMemoryCatalogRepository:
 
     override suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> =
         either {
+            LOGGER.info("Saving database: {}", database)
             val repository = storage[database.name]
             ensureNotNull(repository) { DatabaseNotFound(database.name.value) }
             repository.saveDatabase(database).bind()
@@ -58,6 +68,7 @@ private class InMemoryCatalogRepository:
         database: DatabaseCommandModelAfterDeletion
     ): Either<DatabaseDeletionError, Unit> =
         either {
+            LOGGER.info("Saving database: {}", database)
             val err = DatabaseNotFound(database.name.value)
             val impl = storage.remove(database.name)
             ensure(impl is InMemoryDatabaseRepository) { err }
@@ -216,8 +227,8 @@ private class InMemoryDatabaseRepository(
             }
 
         companion object {
-            val MIN_VALUE = BatchKey(DatabaseRevision.MIN_VALUE)
-            val MAX_VALUE = BatchKey(DatabaseRevision.MAX_VALUE)
+            val MIN_VALUE = BatchKey(Revision.MIN_VALUE)
+            val MAX_VALUE = BatchKey(Revision.MAX_VALUE)
         }
     }
 
@@ -255,8 +266,8 @@ private class InMemoryDatabaseRepository(
             }
 
         companion object {
-            fun minStreamKey(stream: StreamName) = EventStreamIndexKey(stream, DatabaseRevision.MIN_VALUE)
-            fun maxStreamKey(stream: StreamName) = EventStreamIndexKey(stream, DatabaseRevision.MAX_VALUE)
+            fun minStreamKey(stream: StreamName) = EventStreamIndexKey(stream, Revision.MIN_VALUE)
+            fun maxStreamKey(stream: StreamName) = EventStreamIndexKey(stream, Revision.MAX_VALUE)
         }
     }
 
@@ -277,8 +288,8 @@ private class InMemoryDatabaseRepository(
             }
 
         companion object {
-            fun minSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, DatabaseRevision.MIN_VALUE)
-            fun maxSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, DatabaseRevision.MAX_VALUE)
+            fun minSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, Revision.MIN_VALUE)
+            fun maxSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, Revision.MAX_VALUE)
         }
     }
 
@@ -303,9 +314,9 @@ private class InMemoryDatabaseRepository(
 
         companion object {
             fun minSubjectStreamKey(stream: StreamName, subject: EventSubject) =
-                EventSubjectStreamIndexKey(stream, subject, DatabaseRevision.MIN_VALUE)
+                EventSubjectStreamIndexKey(stream, subject, Revision.MIN_VALUE)
             fun maxSubjectStreamKey(stream: StreamName, subject: EventSubject) =
-                EventSubjectStreamIndexKey(stream, subject, DatabaseRevision.MAX_VALUE)
+                EventSubjectStreamIndexKey(stream, subject, Revision.MAX_VALUE)
         }
     }
 
@@ -326,8 +337,8 @@ private class InMemoryDatabaseRepository(
             }
 
         companion object {
-            fun minEventTypeKey(type: EventType) = EventTypeIndexKey(type, DatabaseRevision.MIN_VALUE)
-            fun maxEventTypeKey(type: EventType) = EventTypeIndexKey(type, DatabaseRevision.MAX_VALUE)
+            fun minEventTypeKey(type: EventType) = EventTypeIndexKey(type, Revision.MIN_VALUE)
+            fun maxEventTypeKey(type: EventType) = EventTypeIndexKey(type, Revision.MAX_VALUE)
         }
     }
 
@@ -561,6 +572,12 @@ class InMemoryAdapter: EvidentDbAdapter {
     override val databaseUpdateStream: DatabaseUpdateStream
     override val repository: DatabaseRepository
 
+    companion object {
+        private val LOGGER = LoggerFactory.getLogger(
+            "com.evidentdb.server.adapter.in_memory.InMemoryAdapter"
+        )
+    }
+
     init {
         val repo = InMemoryCatalogRepository()
         databaseUpdateStream = repo
@@ -575,11 +592,15 @@ class InMemoryAdapter: EvidentDbAdapter {
 
     @PostConstruct
     fun postConstruct() {
+        LOGGER.info("Setting up InMemoryAdapter...")
         super.setup()
+        LOGGER.info("...Finished setting up InMemoryAdapter.")
     }
 
     @PreDestroy
     fun preDestroy() {
+        LOGGER.info("Tearing down InMemoryAdapter...")
         super.teardown()
+        LOGGER.info("...Finished tearing down InMemoryAdapter.")
     }
 }

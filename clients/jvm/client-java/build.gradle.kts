@@ -8,8 +8,8 @@ group = "com.evidentdb"
 version = "0.1.0-alpha-SNAPSHOT"
 
 dependencies {
-    implementation(project(":client-api"))
-    implementation(project(":client-kotlin"))
+    api(project(":client-api"))
+    api(project(":client-kotlin"))
 
     // Platform
     compileOnly(libs.slf4j.api)

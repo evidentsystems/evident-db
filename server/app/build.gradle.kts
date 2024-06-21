@@ -24,18 +24,17 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.evidentdb.app.CliKt")
+    mainClass.set("com.evidentdb.server.app.CliKt")
     applicationDefaultJvmArgs = listOf("-Xmx4g", "-Xms4g")
 }
 
-graalvmNative.toolchainDetection.set(false)
 micronaut {
     version.set(libs.versions.micronaut)
     runtime("netty")
     testRuntime("junit5")
     processing {
         incremental(true)
-        annotations("com.evidentdb.*")
+        annotations("com.evidentdb.server.*")
     }
     aot {
         // Please review carefully the optimizations enabled below

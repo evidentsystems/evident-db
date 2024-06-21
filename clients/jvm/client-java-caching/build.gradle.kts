@@ -8,8 +8,7 @@ group = "com.evidentdb"
 version = "0.1.0-alpha-SNAPSHOT"
 
 dependencies {
-    implementation(project(":client-api"))
-    implementation(project(":client-kotlin-caching"))
+    api(project(":client-kotlin-caching"))
 
     // Platform
     compileOnly(libs.slf4j.api)

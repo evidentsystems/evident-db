@@ -23,7 +23,9 @@ import com.evidentdb.dto.v1.proto.InvalidStreamName as ProtoInvalidStreamName
 
 fun EvidentDbCommandError.toRuntimeException(): StatusRuntimeException =
     when (this) {
-        is ConcurrentWriteCollision -> throw IllegalStateException("ConcurrentWriteCollision isn't public")
+        is ConcurrentWriteCollision ->
+            // Don't surface ConcurrentWriteCollision to client
+            InternalServerError("Write collision timeout").toRuntimeException()
         is BatchConstraintViolations -> this.toRuntimeException()
         is DatabaseNotFound -> this.toRuntimeException()
         is InternalServerError -> this.toRuntimeException()

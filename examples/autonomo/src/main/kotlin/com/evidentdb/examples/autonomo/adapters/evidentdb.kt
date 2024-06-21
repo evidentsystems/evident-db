@@ -3,7 +3,7 @@ package com.evidentdb.examples.autonomo.adapters
 import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.BatchConstraint
 import com.evidentdb.client.BatchProposal
-import com.evidentdb.client.DatabaseRevision
+import com.evidentdb.client.Revision
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.client.kotlin.Database
 import com.evidentdb.examples.autonomo.*
@@ -45,7 +45,7 @@ class VehiclesEventRepository(
     override val connection: Connection,
     override val eventQuery: (Database) -> Flow<CloudEvent>,
     override val constraints: (Database) -> List<BatchConstraint> = {_ -> listOf()},
-    revision: DatabaseRevision? = null
+    revision: Revision? = null
 ): EvidentDbEventRepository<VehicleEvent> {
     override val db: Database = if (revision == null) {
         connection.db()
@@ -65,7 +65,7 @@ class VehiclesEventRepository(
         private const val STREAM = "vehicles"
 
         fun repositoryBeforeVehicleCreation(
-            conn: Connection, vehicle: Vin, revision: DatabaseRevision? = null
+            conn: Connection, vehicle: Vin, revision: Revision? = null
         ) = VehiclesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, vehicle.toString())},
@@ -74,7 +74,7 @@ class VehiclesEventRepository(
         )
 
         fun repositoryForVehicle(
-            conn: Connection, vehicle: Vin, revision: DatabaseRevision? = null
+            conn: Connection, vehicle: Vin, revision: Revision? = null
         ) = VehiclesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, vehicle.toString())},
@@ -148,7 +148,7 @@ class RidesEventRepository(
     override val connection: Connection,
     override val eventQuery: (Database) -> Flow<CloudEvent>,
     override val constraints: (Database) -> List<BatchConstraint> = {_ -> listOf()},
-    revision: DatabaseRevision? = null,
+    revision: Revision? = null,
 ): EvidentDbEventRepository<RideEvent> {
     override val db: Database = if (revision == null) {
         connection.db()
@@ -168,7 +168,7 @@ class RidesEventRepository(
         private const val STREAM = "rides"
 
         fun repositoryBeforeRideCreation(
-            conn: Connection, ride: RideId, revision: DatabaseRevision? = null
+            conn: Connection, ride: RideId, revision: Revision? = null
         ) = RidesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, ride.toString())},
@@ -177,7 +177,7 @@ class RidesEventRepository(
         )
 
         fun repositoryForRide(
-            conn: Connection, ride: RideId, revision: DatabaseRevision? = null
+            conn: Connection, ride: RideId, revision: Revision? = null
         ) = RidesEventRepository(
             conn,
             {db -> db.fetchSubjectStreamAsync(STREAM, ride.toString())},

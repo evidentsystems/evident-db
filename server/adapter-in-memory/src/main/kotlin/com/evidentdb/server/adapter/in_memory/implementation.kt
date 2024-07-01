@@ -15,25 +15,23 @@ import jakarta.inject.Singleton
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
-private class InMemoryCatalogRepository:
+private class InMemoryDatabaseRepository:
     DatabaseCommandModelBeforeCreation,
     WritableDatabaseRepository,
     DatabaseUpdateStream {
     companion object {
-        private val LOGGER = LoggerFactory.getLogger(
-            "com.evidentdb.server.adapter.in_memory.InMemoryCatalogRepository"
-        )
+        private val LOGGER = LoggerFactory.getLogger(InMemoryDatabaseRepository::class.java)
     }
 
-    private val storage: ConcurrentMap<DatabaseName, InMemoryDatabaseRepository> = ConcurrentHashMap()
+    private val storage: ConcurrentMap<DatabaseName, InMemoryDatabaseStore> = ConcurrentHashMap()
     // Lifecycle
 
     override fun setup() = Unit // no-op
@@ -47,18 +45,23 @@ private class InMemoryCatalogRepository:
 
     override suspend fun setupDatabase(database: NewlyCreatedDatabaseCommandModel): Either<DatabaseCreationError, Unit> =
         either {
-            LOGGER.info("Setting up database: {}", database)
+            LOGGER.info("Setting up database {}", database.name.value)
             val key = database.name
-            val value = InMemoryDatabaseRepository(database.name)
+            val value = InMemoryDatabaseStore(database.name)
             // putIfAbsent returns null if no existing key present
             ensure(storage.putIfAbsent(key, value) == null) {
                 DatabaseNameAlreadyExists(database.name)
             }
         }
 
-    override suspend fun saveDatabase(database: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> =
+    override suspend fun saveDatabase(
+        database: DirtyDatabaseCommandModel
+    ): Either<BatchTransactionError, Unit> =
         either {
-            LOGGER.info("Saving database: {}", database)
+            LOGGER.info(
+                "Saving database {} at revision {}",
+                database.name.value, database.revision
+            )
             val repository = storage[database.name]
             ensureNotNull(repository) { DatabaseNotFound(database.name.value) }
             repository.saveDatabase(database).bind()
@@ -68,10 +71,13 @@ private class InMemoryCatalogRepository:
         database: DatabaseCommandModelAfterDeletion
     ): Either<DatabaseDeletionError, Unit> =
         either {
-            LOGGER.info("Saving database: {}", database)
+            LOGGER.info(
+                "Tearing down database {} with final revision {}",
+                database.name.value, database.revision
+            )
             val err = DatabaseNotFound(database.name.value)
             val impl = storage.remove(database.name)
-            ensure(impl is InMemoryDatabaseRepository) { err }
+            ensure(impl is InMemoryDatabaseStore) { err }
             impl.tearDown()
         }
 
@@ -104,10 +110,8 @@ private class InMemoryCatalogRepository:
     }
 }
 
-private class InMemoryDatabaseRepository(
-    val name: DatabaseName,
-) {
-    private val lock = ReentrantLock()
+private class InMemoryDatabaseStore(val name: DatabaseName) {
+    private val mutex = Mutex()
     private val storage = TreeMap<InMemoryRepositoryKey, InMemoryRepositoryValue>()
     private val _updates = MutableSharedFlow<Either<DatabaseNotFound, DatabaseRootValue>>(
         extraBufferCapacity = 1000,
@@ -131,27 +135,38 @@ private class InMemoryDatabaseRepository(
     ): Either<DatabaseNotFound, InMemoryDatabase> =
         InMemoryDatabase(name, revision).right()
 
-    fun saveDatabase(newDatabase: DirtyDatabaseCommandModel): Either<BatchTransactionError, Unit> = lock.withLock {
+    suspend fun saveDatabase(
+        newDatabase: DirtyDatabaseCommandModel
+    ): Either<BatchTransactionError, Unit> = mutex.withLock("saveDatabase") {
         either {
+            // Ensure the current database is in the expected state
             val currentDatabase = latestDatabase().bind()
-            // Ensure the database is in the expected state
             ensure(newDatabase.dirtyRelativeToRevision == currentDatabase.revision) {
-                ConcurrentWriteCollision(newDatabase.dirtyRelativeToRevision, currentDatabase.revision)
+                ConcurrentWriteCollision(
+                    newDatabase.dirtyRelativeToRevision,
+                    currentDatabase.revision
+                )
             }
             val batch = newDatabase.batch
 
-            // Validate batch constraints
+            // Validate batch constraints against the current database
             batch.constraints.values.mapOrAccumulate { constraint ->
                 ensure(currentDatabase.satisfiesBatchConstraint(constraint)) { constraint }
-            }.mapLeft { BatchConstraintViolations(batch, it) }.bind()
+            }.mapLeft {
+                BatchConstraintViolations(batch, it)
+            }.bind()
 
-            // Validate event ID + stream uniqueness
+            // Validate event ID + stream uniqueness against the current database
             batch.events.mapOrAccumulate { event ->
                 ensure(currentDatabase.eventKeyIsUnique(event.stream, event.id)) {
-                    InvalidEvent(event.event, nonEmptyListOf(DuplicateEventId(event.stream.value, event.id.value)))
+                    InvalidEvent(
+                        event.event,
+                        nonEmptyListOf(DuplicateEventId(event.stream.value, event.id.value))
+                    )
                 }
             }.mapLeft { InvalidEvents(it) }.bind()
 
+            // Everything looks good, create DatabaseRootValue and index entries
             val nextDatabaseRoot = DatabaseRootValue(
                 newDatabase.name,
                 newDatabase.revision
@@ -178,20 +193,23 @@ private class InMemoryDatabaseRepository(
                 txn
             }
 
-            val currentDatabaseRoot = DatabaseRootValue(
-                currentDatabase.name,
-                currentDatabase.revision
-            )
-
             try {
+                // Apply the index entries
                 storage += transaction
+                // And set the database root value to the successor
                 storage[DatabaseRootKey] = nextDatabaseRoot
+                // Emit the database root to subscribers
                 _updates.tryEmit(nextDatabaseRoot.right())
-            } catch (t: Throwable) {
+            } catch (e: Exception) {
+                // If tryEmit above throws error, remove index entries...
                 transaction.forEach {
                     storage.remove(it.key)
                 }
-                storage[DatabaseRootKey] = currentDatabaseRoot
+                // ...and reset the root value to the current database
+                storage[DatabaseRootKey] = DatabaseRootValue(
+                    currentDatabase.name,
+                    currentDatabase.revision
+                )
             }
         }
     }
@@ -573,13 +591,11 @@ class InMemoryAdapter: EvidentDbAdapter {
     override val repository: DatabaseRepository
 
     companion object {
-        private val LOGGER = LoggerFactory.getLogger(
-            "com.evidentdb.server.adapter.in_memory.InMemoryAdapter"
-        )
+        private val LOGGER = LoggerFactory.getLogger(InMemoryAdapter::class.java)
     }
 
     init {
-        val repo = InMemoryCatalogRepository()
+        val repo = InMemoryDatabaseRepository()
         databaseUpdateStream = repo
         commandService = CommandService(
             decider(repo),

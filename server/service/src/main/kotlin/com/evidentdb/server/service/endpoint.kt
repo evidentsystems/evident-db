@@ -31,7 +31,7 @@ class EvidentDbEndpoint(
         when (val result = adapter.createDatabase(request.name)) {
             is Either.Left -> {
                 LOGGER.warn("createDatabase error: {}", request.name)
-                throw result.value.toRuntimeException()
+                throw result.value.toStatusException()
             }
             is Either.Right -> {
                 LOGGER.info("createDatabase success: {}", request.name)
@@ -64,7 +64,7 @@ class EvidentDbEndpoint(
             }
         when (result) {
             is Either.Left -> {
-                val exception = result.value.toRuntimeException()
+                val exception = result.value.toStatusException()
                 LOGGER.warn(
                     "transactBatch error in database {}: {}",
                     request.database, exception.message
@@ -85,7 +85,7 @@ class EvidentDbEndpoint(
         when (val result = adapter.deleteDatabase(request.name)) {
             is Either.Left -> {
                 LOGGER.warn("deleteDatabase error: {}", request.name)
-                throw result.value.toRuntimeException()
+                throw result.value.toStatusException()
             }
             is Either.Right -> {
                 LOGGER.info("deleteDatabase success: {}", request.name)
@@ -110,7 +110,7 @@ class EvidentDbEndpoint(
         emitAll(adapter.connect(request.name).map {
             val reply = DatabaseReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.database = it.value.toTransfer()
             }
             reply.build()
@@ -121,7 +121,7 @@ class EvidentDbEndpoint(
         LOGGER.info("latestDatabase: {}", request.name)
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.latestDatabase(request.name)) {
-            is Either.Left -> throw result.value.toRuntimeException()
+            is Either.Left -> throw result.value.toStatusException()
             is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
@@ -131,7 +131,7 @@ class EvidentDbEndpoint(
         LOGGER.info("databaseAtRevision: {}, {}", request.name, request.revision)
         val reply = DatabaseReply.newBuilder()
         when (val result = adapter.databaseAtRevision(request.name, request.revision.toULong())) {
-            is Either.Left -> throw result.value.toRuntimeException()
+            is Either.Left -> throw result.value.toStatusException()
             is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
@@ -142,7 +142,7 @@ class EvidentDbEndpoint(
         emitAll(adapter.databaseLog(request.name, request.revision.toULong()).map {
             val reply = DatabaseLogReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.batch = it.value.toTransfer()
             }
             reply.build()
@@ -158,7 +158,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -178,7 +178,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -197,7 +197,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -216,7 +216,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventRevisionReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.revision = it.value.toLong()
             }
             reply.build()
@@ -235,7 +235,7 @@ class EvidentDbEndpoint(
             request.stream,
             request.eventId
         )) {
-            is Either.Left -> throw result.value.toRuntimeException()
+            is Either.Left -> throw result.value.toStatusException()
             is Either.Right -> reply.event = result.value.toTransfer()
         }
         return reply.build()
@@ -251,7 +251,7 @@ class EvidentDbEndpoint(
         ).map {
             val reply = EventReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.event = it.value.toTransfer()
             }
             reply.build()

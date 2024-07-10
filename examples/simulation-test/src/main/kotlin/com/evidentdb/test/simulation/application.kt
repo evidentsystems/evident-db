@@ -1,8 +1,8 @@
 package com.evidentdb.test.simulation
 
 import io.micronaut.runtime.Micronaut.run
-import com.evidentdb.client.EvidentDb
-import com.evidentdb.client.EvidentDbKt
+import com.evidentdb.client.java.EvidentDb
+import com.evidentdb.client.kotlin.EvidentDb
 import com.evidentdb.client.kotlin.kotlinClient
 import io.grpc.ManagedChannelBuilder
 import io.micronaut.context.annotation.Bean
@@ -38,9 +38,7 @@ class Configuration {
 	private val databases = ConcurrentHashMap<String, Unit>(10)
 
 	companion object {
-		private val LOGGER = LoggerFactory.getLogger(
-			"com.evidentdb.test.simulation.Configuration"
-		)
+		private val LOGGER = LoggerFactory.getLogger(Configuration::class.java)
 	}
 
 	@Singleton
@@ -68,7 +66,7 @@ class Configuration {
 
 	@Singleton
 	@Bean(preDestroy = "shutdown")
-	fun evidentDbClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDbKt =
+	fun evidentDbClient(channelBuilder: ManagedChannelBuilder<*>): com.evidentdb.client.kotlin.EvidentDb =
 		EvidentDb.kotlinClient(channelBuilder)
 
 	@Singleton
@@ -78,7 +76,7 @@ class Configuration {
 		@Value("\${simulation.output.topic}")
 		resultsOutputTopic: String,
 		objectMapper: ObjectMapper,
-		evidentDb: EvidentDbKt
+		evidentDb: com.evidentdb.client.kotlin.EvidentDb
 	): Topology {
 		LOGGER.info(
 			"Initializing topology with input topic: {} and output topic: {}",

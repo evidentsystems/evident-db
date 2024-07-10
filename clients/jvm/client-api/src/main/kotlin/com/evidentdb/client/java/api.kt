@@ -2,15 +2,122 @@ package com.evidentdb.client.java
 
 import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
+
+import arrow.core.None
+import arrow.core.Option
+import arrow.core.Some
+import arrow.core.some
+import com.evidentdb.client.cloudevents.RecordedTimeExtension
+import com.evidentdb.client.cloudevents.SequenceExtension
+import io.cloudevents.CloudEventData
+import io.cloudevents.CloudEventExtension
+import io.cloudevents.core.builder.CloudEventBuilder
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import java.net.URI
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicReference
+import javax.annotation.concurrent.ThreadSafe
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
+
+interface EvidentDb: Shutdown {
+    /**
+     * Synchronously creates a database, which serves as the unit of total
+     * event ordering in an event-sourcing system.
+     *
+     * @param name The name of the database to create, must match
+     *  """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$""".
+     * @return `true` if database was created, `false` otherwise.
+     */
+    fun createDatabase(name: DatabaseName): Boolean
+
+    /**
+     * Synchronously deletes a database.
+     *
+     * @param name The name of the database to delete.
+     * @return `true` if database was deleted, `false` otherwise.
+     */
+    fun deleteDatabase(name: DatabaseName): Boolean
+
+    /**
+     * Returns the catalog of all available databases as an iterator.
+     *
+     * This iterator coordinates with the server to provide back-pressure. Callers
+     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * iterator is consumed to completion or not (e.g. using try-with-resources or similar).
+     *
+     * @returns a [CloseableIterator] of [Database].
+     */
+    fun fetchCatalog(): CloseableIterator<DatabaseName>
+
+    /**
+     * Returns a connection to a specific database. This method caches,
+     * so subsequent calls for the same database name will return
+     * the same connection.
+     *
+     * @param name the database name.
+     * @return the [Connection], possibly cached.
+     */
+    fun connectDatabase(name: DatabaseName): Connection
+
+    companion object {
+        // These need to be registered before any event processing is done
+        init {
+            SequenceExtension.register()
+            RecordedTimeExtension.register()
+        }
+
+        @JvmStatic
+        fun eventBuilder(
+            streamName: StreamName,
+            eventId: String,
+            eventType: String,
+            subject: String? = null,
+            data: CloudEventData? = null,
+            dataContentType: String? = null,
+            dataSchema: URI? = null,
+            extensions: List<CloudEventExtension> = listOf(),
+        ): CloudEventBuilder {
+            val builder = CloudEventBuilder.v1()
+                .withId(eventId)
+                .withSource(URI(streamName))
+                .withType(eventType)
+                .withData(data)
+                .withDataContentType(dataContentType)
+                .withDataSchema(dataSchema)
+                .withSubject(subject)
+            for (extension in extensions)
+                builder.withExtension(extension)
+            return builder
+        }
+
+        @JvmStatic
+        fun event(
+            streamName: StreamName,
+            eventId: String,
+            eventType: String,
+            subject: String? = null,
+            data: CloudEventData? = null,
+            dataContentType: String? = null,
+            dataSchema: URI? = null,
+            extensions: List<CloudEventExtension> = listOf(),
+        ): CloudEvent = eventBuilder(
+            streamName, eventId, eventType, subject, data, dataContentType, dataSchema, extensions
+        ).build()
+    }
+}
 
 /**
  * A connection to a specific database, used to [transact]
  * batches of events into the database, to read the resulting
  * transaction [fetchLog], as well as to obtain [Database] values to
- * query (via [db], [fetchLatestDb], and [fetchDbAsOf]). A background server-push process
- * keeps the connection informed as new database revisions are produced
- * on the server (i.e. due to any clients transacting event batches).
+ * query (via [db], [fetchLatestDb], and [fetchDbAsOf]). A background
+ * server-push process keeps the connection informed as new database revisions
+ * are produced on the server (i.e. due to any clients transacting event batches).
  *
  * Connections are thread-safe and long-lived, and do not follow
  * the acquire-use-release pattern. When a program is finished
@@ -18,13 +125,10 @@ import java.util.concurrent.CompletableFuture
  * may be cleanly [shutdown] (allowing in-flight requests to complete)
  * or urgently [shutdownNow] (cancelling in-flight requests). After shutdown,
  * all subsequent API method calls will throw [ConnectionClosedException].
- *
- * Connections cache database revisions, stream state (event ids), and events,
- * so that database values can often serve queries from local state.
- *
- * @property database The connected database.
+ **
+ * @property database The name of the connected database.
  */
-interface Connection: Lifecycle {
+interface Connection: Shutdown {
     val database: DatabaseName
 
     /**
@@ -180,3 +284,62 @@ interface Database {
      */
     fun fetchEventById(eventId: EventId): CompletableFuture<out CloudEvent?>
 }
+
+
+const val ITERATOR_READ_AHEAD_CACHE_SIZE = 100
+
+@ThreadSafe
+class FlowIterator<T>(
+    private val flow: Flow<T>
+): CloseableIterator<T> {
+    private val asyncScope = CoroutineScope(Dispatchers.Default)
+    private val blockingContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    private val queue = LinkedBlockingQueue<Option<T>>(ITERATOR_READ_AHEAD_CACHE_SIZE)
+    private val nextItem: AtomicReference<Option<T>>
+
+    init {
+        asyncScope.launch {
+            flow.collect {
+                transfer(it.some())
+            }
+            transfer(None)
+            close()
+        }
+        nextItem = AtomicReference(queue.take())
+    }
+
+    override fun hasNext(): Boolean =
+        nextItem.get() != None
+
+    override fun next(): T =
+        if (hasNext()) {
+            val currentItem = nextItem.get()
+            nextItem.set(queue.take())
+            when(currentItem) {
+                None -> throw IndexOutOfBoundsException("Iterator bounds exceeded")
+                is Some -> currentItem.value
+            }
+        }
+        else
+            throw IndexOutOfBoundsException("Iterator bounds exceeded")
+
+    override fun close() {
+        nextItem.set(None)
+        asyncScope.cancel()
+        blockingContext.close()
+    }
+
+    private suspend inline fun transfer(item: Option<T>) = withContext(blockingContext) {
+        suspendCoroutine { continuation ->
+            try {
+                queue.put(item)
+                continuation.resume(Unit)
+            } catch (e: Exception) {
+                continuation.resumeWithException(e)
+            }
+        }
+    }
+}
+
+fun <T> Flow<T>.asIterator() =
+    FlowIterator(this)

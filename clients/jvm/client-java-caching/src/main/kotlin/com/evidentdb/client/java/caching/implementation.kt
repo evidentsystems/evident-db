@@ -3,6 +3,7 @@ package com.evidentdb.client.java.caching
 import com.evidentdb.client.*
 import com.evidentdb.client.java.Connection
 import com.evidentdb.client.java.Database
+import com.evidentdb.client.java.EvidentDb
 import io.cloudevents.CloudEvent
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -14,8 +15,16 @@ import com.evidentdb.client.kotlin.Connection as ConnectionKt
 import com.evidentdb.client.kotlin.Database as DatabaseKt
 import com.evidentdb.client.kotlin.caching.KotlinCachingClient as EvidentDBKt
 
-fun EvidentDb.Companion.javaClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb =
+fun EvidentDb.Companion.javaClient(
+    channelBuilder: ManagedChannelBuilder<*>
+): EvidentDb =
     JavaCachingClient(channelBuilder)
+
+object EvidentDb {
+    @JvmStatic
+    fun javaClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb =
+        JavaCachingClient(channelBuilder)
+}
 
 class JavaCachingClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private val kotlinClient = EvidentDBKt(channelBuilder)

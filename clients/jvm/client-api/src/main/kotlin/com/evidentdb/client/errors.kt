@@ -72,7 +72,7 @@ data class InternalServerError(val message: String):
     BatchTransactionError,
     QueryError
 
-data class ClientClosedException(val client: Lifecycle):
+data class ClientClosedException(val client: Shutdown):
     RuntimeException("This client is closed: $client")
-data class ConnectionClosedException(val connection: Lifecycle):
+data class ConnectionClosedException(val connection: Shutdown):
     RuntimeException("This connection is closed: $connection")

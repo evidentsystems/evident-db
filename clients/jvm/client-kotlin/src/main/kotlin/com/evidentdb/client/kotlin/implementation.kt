@@ -2,6 +2,9 @@ package com.evidentdb.client.kotlin
 
 import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.*
+import com.evidentdb.client.CloseableIterator
+import com.evidentdb.client.java.EvidentDb
+import com.evidentdb.client.java.asIterator
 import com.evidentdb.client.transfer.toDomain
 import com.evidentdb.client.transfer.toInstant
 import com.evidentdb.client.transfer.toTransfer
@@ -27,7 +30,7 @@ import kotlin.math.max
 
 internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
 
-fun EvidentDb.Companion.kotlinClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDbKt =
+fun EvidentDb.Companion.kotlinClient(channelBuilder: ManagedChannelBuilder<*>): com.evidentdb.client.kotlin.EvidentDb =
     KotlinSimpleClient(channelBuilder)
 
 enum class ConnectionState {
@@ -36,7 +39,7 @@ enum class ConnectionState {
     CLOSED
 }
 
-interface SimpleClient: EvidentDbKt {
+interface SimpleClient: com.evidentdb.client.kotlin.EvidentDb {
     val grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub
     val isActive: Boolean
     val connections: MutableMap<DatabaseName, Connection>
@@ -119,7 +122,8 @@ interface SimpleClient: EvidentDbKt {
  */
 @ThreadSafe
 class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) : SimpleClient {
-    override val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channelBuilder.build())
+    private val grpcClientChannel = channelBuilder.build()
+    override val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
     override val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
     private val active = AtomicBoolean(true)
 
@@ -146,6 +150,7 @@ class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) :
     override fun shutdown() {
         if (isActive) {
             active.set(false)
+            grpcClientChannel.shutdown()
             connections.forEach { (name, connection) ->
                 removeConnection(name)
                 connection.shutdown()
@@ -156,6 +161,7 @@ class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) :
     override fun shutdownNow() {
         if (isActive) {
             active.set(false)
+            grpcClientChannel.shutdownNow()
             connections.forEach { (name, connection) ->
                 removeConnection(name)
                 connection.shutdownNow()
@@ -281,12 +287,12 @@ class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) :
                         .setName(database)
                         .build()
                 ).database.toDomain().let { summary ->
-                        maybeSetLatestRevision(summary.revision)
-                        DatabaseImpl(
-                            summary.name,
-                            summary.revision,
-                        )
-                    }
+                    maybeSetLatestRevision(summary.revision)
+                    DatabaseImpl(
+                        summary.name,
+                        summary.revision,
+                    )
+                }
 
         override fun fetchLog(): CloseableIterator<Batch> =
             fetchLogFlow().asIterator()

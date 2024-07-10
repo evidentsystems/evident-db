@@ -1,6 +1,6 @@
 package com.evidentdb.client.kotlin.test
 
-import com.evidentdb.client.EvidentDb
+import com.evidentdb.client.java.EvidentDb
 import io.grpc.ManagedChannelBuilder
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals

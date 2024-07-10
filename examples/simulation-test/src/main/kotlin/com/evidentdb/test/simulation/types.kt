@@ -363,7 +363,11 @@ sealed interface TransactionResultOutput {
                 .handle { batch, ex ->
                     val latency = Duration.between(start, Instant.now()).toNanos()
                     if (ex != null) {
-                        LOGGER.warn("failure latency nanos: $latency")
+                        if (input.constraints.isNotEmpty()) {
+                            LOGGER.warn("failure with constraints ${input.constraints}: ${ex.message}; latency nanos: $latency")
+                        } else {
+                            LOGGER.warn("failure with no constraints: ${ex.message}; latency nanos: $latency")
+                        }
                         Failure(input, ex, latency)
                     } else {
                         LOGGER.info("success latency nanos: $latency")
@@ -380,12 +384,15 @@ sealed interface TransactionResultOutput {
         override val latency: Long
     ): TransactionResultOutput {
         companion object {
-            operator fun invoke(input: BatchInput, ex: Throwable, latency: Long) = Failure(
-                ex.message!!,
-                input.events,
-                input.constraints,
-                latency
-            )
+            operator fun invoke(input: BatchInput, ex: Throwable, latency: Long): Failure {
+                LOGGER.warn("Encountered Failure", ex)
+                return Failure(
+                    ex.message!!,
+                    input.events,
+                    input.constraints,
+                    latency
+                )
+            }
         }
     }
 
@@ -547,8 +554,8 @@ class MicronautSerializer<T>(
 ): Serializer<T> {
     override fun serialize(topic: String, data: T): ByteArray = try {
         objectMapper.writeValueAsBytes(data)
-    } catch (e: Exception) {
-        throw SerializationException("Error serializing BatchInput", e)
+    } catch (e: IOException) {
+        throw SerializationException("Error serializing via Micronaut", e)
     }
 }
 
@@ -561,7 +568,7 @@ class MicronautDeserializer<T>(
     override fun deserialize(topic: String, data: ByteArray): T = try {
         objectMapper.readValue(data, argument)
     } catch (e: IOException) {
-        throw SerializationException("Error deserializing: $argument via Micronaut", e)
+        throw SerializationException("Error deserializing via Micronaut", e)
     }
 }
 

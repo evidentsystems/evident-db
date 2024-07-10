@@ -14,8 +14,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+
+private val LOGGER = LoggerFactory.getLogger("com.evidentdb.server.adapter.ApiKt")
 
 private fun isNotWriteCollision(transactionResult: Either<EvidentDbCommandError, IndexedBatch>) =
     when (transactionResult) {
@@ -25,7 +28,18 @@ private fun isNotWriteCollision(transactionResult: Either<EvidentDbCommandError,
 
 private val batchTransactRetrySchedule = Schedule
     .exponential<Either<EvidentDbCommandError, IndexedBatch>>(10.milliseconds)
-    .doUntil { result, duration -> duration > 60.seconds || isNotWriteCollision(result) }
+    .doUntil { result, duration ->
+        val timedOut = duration > 60.seconds
+        val notWriteCollision = isNotWriteCollision(result)
+        if (timedOut) {
+            LOGGER.warn("Write collision retries timed out after duration {}, won't retry", duration)
+        } else if (notWriteCollision) {
+            LOGGER.info("Encountered a non-write-collision condition after duration {}", duration)
+        } else {
+            LOGGER.info("Encountered a write collision after duration {}, will retry...", duration)
+        }
+        timedOut || notWriteCollision
+    }
 
 interface EvidentDbAdapter: Lifecycle {
     val commandService: CommandService
@@ -59,8 +73,14 @@ interface EvidentDbAdapter: Lifecycle {
     ): Either<EvidentDbCommandError, IndexedBatch> {
         var result: Either<EvidentDbCommandError, IndexedBatch> =
             ConcurrentWriteCollision(0uL, 0uL).left()
+        LOGGER.info("${javaClass}.transactBatch($databaseNameStr)")
         batchTransactRetrySchedule.repeat {
             result = commandService.transactBatch(databaseNameStr, events, constraints)
+            if (result.isLeft()) {
+                LOGGER.warn("Failure in transactBatch, may retry...")
+            } else {
+                LOGGER.info("Success in transactBatch, won't retry.")
+            }
             result
         }
         return result

@@ -27,7 +27,7 @@
               <build path="$PROJECT_DIR$/clients/jvm" name="clients.jvm">
                 <projects>
                   <project path="$PROJECT_DIR$/clients/jvm" />
-                  <project path="$PROJECT_DIR$/clients/jvm/client-api" />
+                  <project path="$PROJECT_DIR$/clients/jvm/client-core" />
                   <project path="$PROJECT_DIR$/clients/jvm/client-java" />
                   <project path="$PROJECT_DIR$/clients/jvm/client-java-caching" />
                   <project path="$PROJECT_DIR$/clients/jvm/client-kotlin" />
@@ -59,7 +59,7 @@
             <option value="$PROJECT_DIR$/build-logic/micronaut-lib" />
             <option value="$PROJECT_DIR$/build-logic/protobuf" />
             <option value="$PROJECT_DIR$/clients/jvm" />
-            <option value="$PROJECT_DIR$/clients/jvm/client-api" />
+            <option value="$PROJECT_DIR$/clients/jvm/client-core" />
             <option value="$PROJECT_DIR$/clients/jvm/client-java" />
             <option value="$PROJECT_DIR$/clients/jvm/client-java-caching" />
             <option value="$PROJECT_DIR$/clients/jvm/client-kotlin" />

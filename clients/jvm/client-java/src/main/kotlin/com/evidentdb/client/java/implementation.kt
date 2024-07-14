@@ -10,22 +10,25 @@ import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CompletableFuture
 import com.evidentdb.client.kotlin.Connection as ConnectionKt
 import com.evidentdb.client.kotlin.Database as DatabaseKt
-import com.evidentdb.client.kotlin.KotlinSimpleClient as EvidentDBKt
+import com.evidentdb.client.kotlin.KotlinClient
 
-fun EvidentDb.Companion.javaClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb =
-    JavaSimpleClient(channelBuilder)
+class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>):
+    EvidentDb {
+    init {
+        // Required for all clients
+        init()
+    }
 
-class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
-    private val kotlinClient = EvidentDBKt(channelBuilder)
+    private val kotlinClient = KotlinClient(channelBuilder)
 
     override fun createDatabase(name: DatabaseName): Boolean =
-        runBlocking { kotlinClient.createDatabaseAsync(name) }
+        runBlocking { kotlinClient.createDatabase(name) }
 
     override fun deleteDatabase(name: DatabaseName): Boolean =
-        runBlocking { kotlinClient.deleteDatabaseAsync(name) }
+        runBlocking { kotlinClient.deleteDatabase(name) }
 
     override fun fetchCatalog(): CloseableIterator<DatabaseName> =
-        kotlinClient.fetchCatalogAsync().asIterator()
+        kotlinClient.fetchCatalog().asIterator()
 
     override fun connectDatabase(name: DatabaseName): Connection =
         ConnectionImpl(kotlinClient.connectDatabase(name))
@@ -41,29 +44,32 @@ class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
     private class ConnectionImpl(
         private val kotlinConnection: ConnectionKt
     ) : Connection {
-        override val database: DatabaseName
-            get() = kotlinConnection.database
+        override val databaseName: DatabaseName
+            get() = kotlinConnection.databaseName
         private val connectionScope = CoroutineScope(Dispatchers.Default)
 
-        override fun transact(batch: BatchProposal): CompletableFuture<Batch> =
+        override fun transact(
+            events: List<CloudEvent>,
+            constraints: List<BatchConstraint>,
+        ): CompletableFuture<Batch> =
             connectionScope.future {
-                kotlinConnection.transactAsync(batch)
+                kotlinConnection.transact(events, constraints)
             }
 
         override fun db(): Database = DatabaseImpl(kotlinConnection.db())
 
-        override fun fetchDbAsOf(revision: Revision): CompletableFuture<Database> =
+        override fun awaitDb(revision: Revision): CompletableFuture<Database> =
             connectionScope.future {
-                DatabaseImpl(kotlinConnection.fetchDbAsOfAsync(revision))
+                DatabaseImpl(kotlinConnection.awaitDb(revision))
             }
 
         override fun fetchLatestDb(): CompletableFuture<Database> =
             connectionScope.future {
-                DatabaseImpl(kotlinConnection.fetchLatestDbAsync())
+                DatabaseImpl(kotlinConnection.fetchLatestDb())
             }
 
-        override fun fetchLog(): CloseableIterator<Batch> =
-            kotlinConnection.fetchLogFlow().asIterator()
+        override fun scanDatabaseLog(startAtRevision: Revision): CloseableIterator<Batch> =
+            kotlinConnection.scanDatabaseLog().asIterator()
 
         override fun shutdown() {
             kotlinConnection.shutdown()
@@ -80,25 +86,30 @@ class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
         override val revision: Revision
             get() = kotlinDatabase.revision
 
-        override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> =
-            kotlinDatabase.fetchStreamAsync(streamName).asIterator()
+        override fun fetchStream(streamName: StreamName): CloseableIterator<Event> =
+            kotlinDatabase.fetchStream(streamName).asIterator()
 
         override fun fetchSubjectStream(
             streamName: StreamName,
             subjectName: StreamSubject
-        ): CloseableIterator<CloudEvent> =
+        ): CloseableIterator<Event> =
             kotlinDatabase
-                .fetchSubjectStreamAsync(streamName, subjectName)
+                .fetchSubjectStream(streamName, subjectName)
                 .asIterator()
 
-        override fun fetchSubject(subjectName: StreamSubject): CloseableIterator<CloudEvent> =
-            kotlinDatabase.fetchSubjectAsync(subjectName).asIterator()
+        override fun fetchSubject(subjectName: StreamSubject): CloseableIterator<Event> =
+            kotlinDatabase.fetchSubject(subjectName).asIterator()
 
-        override fun fetchEventType(eventType: EventType): CloseableIterator<CloudEvent> =
-            kotlinDatabase.fetchEventTypeAsync(eventType).asIterator()
+        override fun fetchEventType(eventType: EventType): CloseableIterator<Event> =
+            kotlinDatabase.fetchEventType(eventType).asIterator()
 
-    override fun fetchEventById(eventId: EventId): CompletableFuture<out CloudEvent?> =
-            runBlocking { future { kotlinDatabase.fetchEventByIdAsync(eventId) } }
+        override fun fetchEventById(
+            streamName: StreamName,
+            eventId: EventId
+        ): CompletableFuture<out Event?> =
+            runBlocking {
+                future { kotlinDatabase.fetchEventById(streamName, eventId) }
+            }
 
         // Use as Data Class
         operator fun component1() = name

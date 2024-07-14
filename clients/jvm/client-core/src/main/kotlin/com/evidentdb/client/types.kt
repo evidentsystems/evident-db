@@ -9,6 +9,8 @@ import com.evidentdb.client.cloudevents.SequenceExtension
 import io.cloudevents.CloudEvent
 import io.cloudevents.core.provider.ExtensionProvider
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 typealias Revision = ULong
 
@@ -32,27 +34,19 @@ typealias EventId = String
 typealias EventType = String
 typealias EventSubject = String
 
-data class Event(val event: CloudEvent) {
+data class Event(val event: CloudEvent): CloudEvent by event {
     val database: DatabaseName
         get() = event.source.path.split('/')[1]
     val stream: StreamName
         get() = event.source.path.split('/').last()
-    val id: EventId
-        get() = event.id
-    val type: EventType
-        get() = event.type
-    val subject: EventSubject?
-        get() = event.subject
     val revision: Revision
         get() = ExtensionProvider.getInstance()
             .parseExtension(SequenceExtension::class.java, event)!!
             .sequence
-    val time: Instant?
-        get() = event.time?.toInstant()
-    val recordedTime: Instant
+    val recordedTime: OffsetDateTime
         get() = ExtensionProvider.getInstance()
             .parseExtension(RecordedTimeExtension::class.java, event)!!
-            .recordedTime
+            .recordedTime.atOffset(ZoneOffset.UTC)
 }
 
 // Batch
@@ -180,6 +174,13 @@ sealed interface BatchConstraint {
     }
 }
 
+data class BatchSummary(
+    val database: DatabaseName,
+    val basis: Revision,
+    val revision: Revision,
+    val timestamp: Instant,
+)
+
 data class Batch(
     val database: DatabaseName,
     val basis: Revision,
@@ -189,8 +190,3 @@ data class Batch(
     val revision: Revision
         get() = basis + events.size.toUInt()
 }
-
-data class BatchProposal(
-    val events: NonEmptyList<CloudEvent>,
-    val constraints: List<BatchConstraint>,
-)

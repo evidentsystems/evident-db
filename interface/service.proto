@@ -5,13 +5,13 @@ package com.evidentdb;
 import "domain.proto";
 import "cloudevents.proto";
 
-option csharp_namespace = "EvidentDB.V1";
-option go_package = "evidentdb.com/genproto/v1";
-option java_package = "com.evidentdb.service.v1";
+option csharp_namespace = "EvidentDB.V1.Proto.Service";
+option go_package = "evidentdb.com/v1/genproto/service";
+option java_package = "com.evidentdb.v1.proto.service";
 option java_multiple_files = true;
 option java_outer_classname = "EvidentDbService";
-option php_namespace = "Com\\EvidentDB\\V1\\Proto";
-option ruby_package = "Com::EvidentDB::V1::Proto";
+option php_namespace = "Com\\EvidentDB\\V1\\Proto\\Service";
+option ruby_package = "Com::EvidentDB::V1::Proto::Service";
 option objc_class_prefix = "EDB";
 
 service EvidentDb {
@@ -21,23 +21,19 @@ service EvidentDb {
   rpc deleteDatabase(DeleteDatabaseRequest) returns (DeleteDatabaseReply) {}
 
   // Query
-  rpc catalog(CatalogRequest) returns (stream CatalogReply) {}
-  rpc connect(ConnectRequest) returns (stream DatabaseReply) {}
-  rpc latestDatabase(LatestDatabaseRequest) returns (DatabaseReply) {}
-  rpc databaseAtRevision(DatabaseAtRevisionRequest) returns (DatabaseReply) {}
-  rpc databaseLog(DatabaseLogRequest) returns (stream DatabaseLogReply) {}
-  rpc stream(StreamRequest) returns (stream EventRevisionReply) {}
-  rpc subjectStream(SubjectStreamRequest) returns (stream EventRevisionReply) {}
-  rpc subject(SubjectRequest) returns (stream EventRevisionReply) {}
-  rpc eventType(EventTypeRequest) returns (stream EventRevisionReply) {}
-  rpc eventById(EventByIdRequest) returns (EventReply) {}
-  rpc events(EventByRevisionRequest) returns (stream EventReply) {}
+  rpc fetchCatalog(CatalogRequest) returns (stream CatalogReply) {}
+  rpc fetchLatestDatabase(LatestDatabaseRequest) returns (DatabaseReply) {}
+  rpc awaitDatabase(AwaitDatabaseRequest) returns (DatabaseReply) {}
+  rpc scanDatabaseLog(LogScanRequest) returns (stream DatabaseLogReply) {}
+  rpc tailDatabaseLog(LogTailRequest) returns (stream DatabaseLogReply) {}
+  rpc queryEventIndex(EventIndexRequest) returns (stream EventIndexReply) {}
+  rpc fetchEventsByRevisions(EventsByRevisionsRequest) returns (stream EventReply) {}
 }
 
 // Command API
 
 message CreateDatabaseRequest {
-  string name = 1;
+  string database_name = 1;
 }
 
 message CreateDatabaseReply {
@@ -45,7 +41,7 @@ message CreateDatabaseReply {
 }
 
 message TransactBatchRequest {
-  string database = 1;
+  string database_name = 1;
   repeated io.cloudevents.v1.CloudEvent events = 2;
   repeated BatchConstraint constraints = 3;
 }
@@ -55,7 +51,7 @@ message TransactBatchReply {
 }
 
 message DeleteDatabaseRequest {
-  string name = 1;
+  string database_name = 1;
 }
 
 message DeleteDatabaseReply {
@@ -69,70 +65,74 @@ message CatalogReply {
   string database_name = 1;
 }
 
-message ConnectRequest {
-  string name = 1;
-}
 message LatestDatabaseRequest {
-  string name = 1;
+  string database_name = 1;
 }
-message DatabaseAtRevisionRequest {
-  string name = 1;
-  uint64 revision = 2;
+message AwaitDatabaseRequest {
+  string database_name = 1;
+  uint64 at_least_revision = 2;
 }
 message DatabaseReply {
   Database database = 1;
 }
 
-message DatabaseLogRequest {
-  string name = 1;
-  uint64 revision = 2;
+message LogScanRequest {
+  string database_name = 1;
+  uint64 start_at_revision = 2;
+  bool include_event_detail = 3;
 }
-
+message LogTailRequest {
+  string database_name = 1;
+  bool include_event_detail = 2;
+}
 message DatabaseLogReply {
-  BatchSummary batch = 1;
+  oneof batch {
+    BatchSummary summary = 1;
+    Batch detail = 2;
+  }
 }
 
-message StreamRequest {
-  string database = 1;
+message EventIndexRequest {
+  message StreamQuery {
+    string stream = 1;
+  }
+  message SubjectStreamQuery {
+    string stream = 1;
+    string subject = 2;
+  }
+  message SubjectQuery {
+    string subject = 1;
+  }
+  message EventTypeQuery {
+    string event_type = 1;
+  }
+  message EventByIdQuery {
+    string stream = 1;
+    string event_id = 2;
+  }
+
+  string database_name = 1;
   uint64 revision = 2;
-  string stream = 3;
+  bool include_event_detail = 3;
+  oneof query {
+    StreamQuery stream = 4;
+    SubjectStreamQuery subject_stream = 5;
+    SubjectQuery subject = 6;
+    EventTypeQuery event_type = 7;
+    EventByIdQuery event_by_id = 8;
+  }
+}
+message EventIndexReply {
+  oneof event {
+    uint64 revision = 1;
+    io.cloudevents.v1.CloudEvent detail = 2;
+  }
 }
 
-message SubjectStreamRequest {
-  string database = 1;
-  uint64 revision = 2;
-  string stream = 3;
-  string subject = 4;
-}
-
-message SubjectRequest {
-  string database = 1;
-  uint64 revision = 2;
-  string subject = 3;
-}
-
-message EventTypeRequest {
-  string database = 1;
-  uint64 revision = 2;
-  string event_type = 3;
-}
-
-message EventRevisionReply {
-  uint64 revision = 1;
-}
-
-message EventByIdRequest {
-  string database = 1;
-  uint64 revision = 2;
-  string stream = 3;
-  string event_id = 4;
-}
-
-message EventByRevisionRequest {
-  string database = 1;
+message EventsByRevisionsRequest {
+  string database_name = 1;
   repeated uint64 event_revisions = 2;
 }
-
 message EventReply {
   io.cloudevents.v1.CloudEvent event = 1;
 }

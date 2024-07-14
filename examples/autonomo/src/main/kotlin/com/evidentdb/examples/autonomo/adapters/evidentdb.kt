@@ -1,8 +1,6 @@
 package com.evidentdb.examples.autonomo.adapters
 
-import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.BatchConstraint
-import com.evidentdb.client.BatchProposal
 import com.evidentdb.client.Revision
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.client.kotlin.Database
@@ -29,8 +27,8 @@ interface EvidentDbEventRepository<E>: EventRepository<E> {
 
     override suspend fun store(events: List<E>): Result<Unit> =
         try {
-            val cloudEvents = events.map(::domainEventToCloudEvent).toNonEmptyListOrNull()!!
-            connection.transactAsync(BatchProposal(cloudEvents, constraints(db)))
+            val cloudEvents = events.map(::domainEventToCloudEvent)
+            connection.transactAsync(cloudEvents, constraints(db))
             Result.success(Unit)
         } catch (e: Throwable) {
             Result.failure(e)
@@ -50,7 +48,7 @@ class VehiclesEventRepository(
     override val db: Database = if (revision == null) {
         connection.db()
     } else {
-        runBlocking { connection.fetchDbAsOfAsync(revision) }
+        runBlocking { connection.awaitDb(revision) }
     }
 
     override fun cloudEventToDomainEvent(event: CloudEvent) =
@@ -153,7 +151,7 @@ class RidesEventRepository(
     override val db: Database = if (revision == null) {
         connection.db()
     } else {
-        runBlocking { connection.fetchDbAsOfAsync(revision) }
+        runBlocking { connection.awaitDb(revision) }
     }
 
     override fun cloudEventToDomainEvent(event: CloudEvent)=

@@ -37,7 +37,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "clients.jvm"
-include(":client-api")
+include(":client-core")
 include(":client-java")
 include(":client-kotlin")
 include(":client-java-caching")

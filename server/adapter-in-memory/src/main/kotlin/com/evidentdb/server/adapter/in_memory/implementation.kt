@@ -373,10 +373,10 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
 
     private data class BatchValue(
         override val database: DatabaseName,
-        val events: NonEmptyList<Event>,
+        override val events: NonEmptyList<Event>,
         override val timestamp: Instant,
         override val basis: Revision,
-    ): Batch, InMemoryRepositoryValue {
+    ): BatchDetail, InMemoryRepositoryValue {
         override val revision: Revision
             get() = basis + events.size.toUInt()
 
@@ -498,12 +498,19 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 }
             }
 
-        override fun log(): Flow<Batch> =
+        override fun log(startAtRevision: Revision): Flow<Batch> = logDetail(startAtRevision)
+
+        override fun logDetail(startAtRevision: Revision): Flow<BatchDetail> =
             // From minimum batch key (exclusive) to batch key as of this DB's revision
-            storage.subMap(BatchKey.MIN_VALUE, false, BatchKey(revision), true)
+            storage.subMap(BatchKey(startAtRevision), true, BatchKey(revision), true)
                 .values
                 .filterIsInstance<BatchValue>()
                 .asFlow()
+
+        override suspend fun latestBatch(): Batch = latestBatchDetail()
+
+        override suspend fun latestBatchDetail(): BatchDetail =
+            storage.floorEntry(BatchKey.MAX_VALUE).value as BatchValue
 
         override suspend fun eventById(stream: StreamName, id: EventId): Either<EventNotFound, Event> = either {
             val indexValue = storage[EventIdIndexKey(stream, id)]
@@ -527,6 +534,9 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 .map { it.revision }
                 .asFlow()
 
+        override fun streamDetail(stream: StreamName): Flow<Event> =
+            stream(stream).map { eventByRevision(it)!! }
+
         override fun subjectStream(stream: StreamName, subject: EventSubject): Flow<Revision> =
             storage.subMap(
                 EventSubjectStreamIndexKey.minSubjectStreamKey(stream, subject), false,
@@ -536,6 +546,12 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 .filterIsInstance<EventSubjectStreamIndexKey>()
                 .map { it.revision }
                 .asFlow()
+
+        override fun subjectStreamDetail(
+            stream: StreamName,
+            subject: EventSubject
+        ): Flow<Event> =
+            subjectStream(stream, subject).map { eventByRevision(it)!! }
 
         override fun subject(subject: EventSubject): Flow<Revision> =
             storage.subMap(
@@ -547,6 +563,9 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 .map { it.revision }
                 .asFlow()
 
+        override fun subjectDetail(subject: EventSubject): Flow<Event> =
+            subject(subject).map { eventByRevision(it)!! }
+
         override fun eventType(type: EventType): Flow<Revision> =
             storage.subMap(
                 EventTypeIndexKey.minEventTypeKey(type), false,
@@ -556,6 +575,9 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 .filterIsInstance<EventTypeIndexKey>()
                 .map { it.revision }
                 .asFlow()
+
+        override fun eventTypeDetail(type: EventType): Flow<Event> =
+            eventType(type).map { eventByRevision(it)!! }
 
         private fun eventByRevision(
             revision: Revision

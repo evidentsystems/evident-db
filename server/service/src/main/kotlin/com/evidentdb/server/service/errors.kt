@@ -8,18 +8,18 @@ import com.google.rpc.Status
 import io.cloudevents.protobuf.toTransfer
 import io.grpc.StatusException
 import io.grpc.protobuf.StatusProto
-import com.evidentdb.dto.v1.proto.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
-import com.evidentdb.dto.v1.proto.BatchConstraintConflict as ProtoBatchConstraintConflict
-import com.evidentdb.dto.v1.proto.DuplicateEventId as ProtoDuplicateEventId
-import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
-import com.evidentdb.dto.v1.proto.InvalidBatchConstraint as ProtoInvalidBatchConstraint
-import com.evidentdb.dto.v1.proto.InvalidBatchConstraintRange as ProtoInvalidBatchConstraintRange
-import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
-import com.evidentdb.dto.v1.proto.InvalidEventId as ProtoInvalidEventId
-import com.evidentdb.dto.v1.proto.InvalidEventSource as ProtoInvalidEventSource
-import com.evidentdb.dto.v1.proto.InvalidEventSubject as ProtoInvalidEventSubject
-import com.evidentdb.dto.v1.proto.InvalidEventType as ProtoInvalidEventType
-import com.evidentdb.dto.v1.proto.InvalidStreamName as ProtoInvalidStreamName
+import com.evidentdb.v1.proto.domain.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
+import com.evidentdb.v1.proto.domain.BatchConstraintConflict as ProtoBatchConstraintConflict
+import com.evidentdb.v1.proto.domain.DuplicateEventId as ProtoDuplicateEventId
+import com.evidentdb.v1.proto.domain.EventInvalidation as ProtoEventInvalidation
+import com.evidentdb.v1.proto.domain.InvalidBatchConstraint as ProtoInvalidBatchConstraint
+import com.evidentdb.v1.proto.domain.InvalidBatchConstraintRange as ProtoInvalidBatchConstraintRange
+import com.evidentdb.v1.proto.domain.InvalidEvent as ProtoInvalidEvent
+import com.evidentdb.v1.proto.domain.InvalidEventId as ProtoInvalidEventId
+import com.evidentdb.v1.proto.domain.InvalidEventSource as ProtoInvalidEventSource
+import com.evidentdb.v1.proto.domain.InvalidEventSubject as ProtoInvalidEventSubject
+import com.evidentdb.v1.proto.domain.InvalidEventType as ProtoInvalidEventType
+import com.evidentdb.v1.proto.domain.InvalidStreamName as ProtoInvalidStreamName
 
 fun EvidentDbCommandError.toStatusException(): StatusException =
     when (this) {
@@ -46,6 +46,7 @@ fun QueryError.toStatusException(): StatusException =
         is InvalidEventSubject -> this.toStatusException()
         is InvalidEventType -> this.toStatusException()
         is InvalidStreamName -> this.toStatusException()
+        InvalidIndexQuery -> this.toStatusException()
     }
 
 fun DatabaseNameAlreadyExists.toStatusException(): StatusException {
@@ -68,6 +69,14 @@ fun DatabaseNotFound.toStatusException(): StatusException {
     val status = Status.newBuilder()
         .setCode(Code.NOT_FOUND_VALUE)
         .setMessage("No database named '$name' found")
+        .build()
+    return StatusProto.toStatusException(status)
+}
+
+fun InvalidIndexQuery.toStatusException(): StatusException {
+    val status = Status.newBuilder()
+        .setCode(Code.INVALID_ARGUMENT_VALUE)
+        .setMessage("Malformed event index query")
         .build()
     return StatusProto.toStatusException(status)
 }

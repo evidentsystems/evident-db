@@ -5,9 +5,10 @@ import com.evidentdb.client.*
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.toDomain
 import java.time.Instant
-import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
-import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
-import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
+import com.evidentdb.v1.proto.domain.Batch as ProtoBatch
+import com.evidentdb.v1.proto.domain.BatchSummary as ProtoBatchSummary
+import com.evidentdb.v1.proto.domain.BatchConstraint as ProtoBatchConstraint
+import com.evidentdb.v1.proto.domain.Database as ProtoDatabase
 
 fun Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
@@ -15,6 +16,13 @@ fun Timestamp.toInstant(): Instant =
 fun ProtoDatabase.toDomain() = Database(
     name,
     revision.toULong()
+)
+
+fun ProtoBatchSummary.toDomain() = BatchSummary(
+    database,
+    basis.toULong(),
+    revision.toULong(),
+    timestamp.toInstant()
 )
 
 fun ProtoBatch.toDomain() = Batch(

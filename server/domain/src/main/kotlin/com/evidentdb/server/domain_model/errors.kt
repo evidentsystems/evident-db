@@ -32,6 +32,7 @@ data class DuplicateEventId(val stream: String, val eventId: String) : EventInva
 data class InvalidEventSubject(val eventSubject: String) : EventInvalidation,
     BatchConstraintInvalidation, QueryError
 data class InvalidEventType(val eventType: String) : EventInvalidation, QueryError
+data object InvalidIndexQuery: QueryError
 
 data class InvalidEvent(val event: CloudEvent, val errors: NonEmptyList<EventInvalidation>)
 data class InvalidEvents(val invalidEvents: NonEmptyList<InvalidEvent>) : InvalidBatchError

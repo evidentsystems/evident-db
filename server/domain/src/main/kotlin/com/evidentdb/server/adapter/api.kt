@@ -10,10 +10,7 @@ import com.evidentdb.server.application.DatabaseRepository
 import com.evidentdb.server.application.DatabaseUpdateStream
 import com.evidentdb.server.application.Lifecycle
 import com.evidentdb.server.domain_model.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -90,54 +87,121 @@ interface EvidentDbAdapter: Lifecycle {
         commandService.deleteDatabase(nameStr)
 
     // Query API
-    suspend fun catalog(): Flow<DatabaseName> = repository.databaseCatalog()
+    suspend fun fetchCatalog(): Flow<DatabaseName> = repository.databaseCatalog()
 
-    fun connect(databaseNameStr: String): Flow<Either<DatabaseNotFound, Database>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
-            is Either.Left -> emit(databaseName)
-            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
-                is Either.Left -> emit(database)
-                is Either.Right -> {
-                    emit(database)
-                    emitAll(databaseUpdateStream.subscribe(database.value.name))
-                }
-            }
-        }
-    }
-
-    suspend fun latestDatabase(databaseNameStr: String): Either<QueryError, Database> = either {
+    suspend fun fetchLatestDatabase(databaseNameStr: String): Either<QueryError, Database> = either {
         val databaseName = DatabaseName(databaseNameStr)
             .mapLeft { DatabaseNotFound(databaseNameStr) }
             .bind()
         repository.latestDatabase(databaseName).bind()
     }
 
-    suspend fun databaseAtRevision(
+    suspend fun awaitDatabase(
         databaseNameStr: String,
-        revision: Revision,
+        atLeastRevision: Revision,
     ): Either<QueryError, Database> = either {
         val databaseName = DatabaseName(databaseNameStr)
             .mapLeft { DatabaseNotFound(databaseNameStr) }
             .bind()
-        repository.databaseAtRevision(databaseName, revision).bind()
+        when (val maybeDatabase = repository.latestDatabase(databaseName)) {
+            is Either.Left -> maybeDatabase.bind()
+            is Either.Right -> if (atLeastRevision <= maybeDatabase.value.revision) {
+                maybeDatabase.bind()
+            } else {
+                databaseUpdateStream.subscribe(databaseName)
+                    .first { maybeBatch ->
+                        maybeBatch.isRight { atLeastRevision <= it.revision }
+                    }
+                    .bind()
+            }
+        }
     }
 
-    fun databaseLog(
+    fun scanDatabaseLog(
         databaseNameStr: String,
-        revision: Revision,
+        startAtRevision: Revision,
     ): Flow<Either<QueryError, Batch>> = flow {
         when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
             is Either.Left -> emit(databaseName)
             is Either.Right -> {
-                when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
+                when (val database = repository.latestDatabase(databaseName.value)) {
                     is Either.Left -> emit(database)
-                    is Either.Right -> emitAll(database.value.log().map { it.right() })
+                    is Either.Right -> emitAll(database.value.log(startAtRevision).map { it.right() })
                 }
             }
         }
     }
 
-    fun stream(
+    fun scanDatabaseLogDetail(
+        databaseNameStr: String,
+        startAtRevision: Revision,
+    ): Flow<Either<QueryError, BatchDetail>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> {
+                when (val database = repository.latestDatabase(databaseName.value)) {
+                    is Either.Left -> emit(database)
+                    is Either.Right -> emitAll(database.value.logDetail(startAtRevision).map { it.right() })
+                }
+            }
+        }
+    }
+
+    fun tailDatabaseLog(databaseNameStr: String): Flow<Either<DatabaseNotFound, Batch>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
+                is Either.Left -> emit(database)
+                is Either.Right -> {
+                    emit(database.value.latestBatch().right())
+                    emitAll(
+                        databaseUpdateStream
+                            .subscribe(database.value.name)
+                            .map { maybeDatabase ->
+                                when(maybeDatabase) {
+                                    is Either.Left -> maybeDatabase
+                                    is Either.Right ->
+                                        repository.databaseAtRevision(
+                                            maybeDatabase.value.name,
+                                            maybeDatabase.value.revision,
+                                        ).map { database -> database.latestBatch() }
+                                }
+                            }
+                    )
+                }
+            }
+        }
+    }
+
+    fun tailDatabaseLogDetail(databaseNameStr: String): Flow<Either<DatabaseNotFound, BatchDetail>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
+                is Either.Left -> emit(database)
+                is Either.Right -> {
+                    emit(database.value.latestBatchDetail().right())
+                    emitAll(
+                        databaseUpdateStream
+                            .subscribe(database.value.name)
+                            .map { maybeDatabase ->
+                                when(maybeDatabase) {
+                                    is Either.Left -> maybeDatabase
+                                    is Either.Right ->
+                                        repository.databaseAtRevision(
+                                            maybeDatabase.value.name,
+                                            maybeDatabase.value.revision,
+                                        ).map { database ->
+                                            database.latestBatchDetail()
+                                        }
+                                }
+                            }
+                    )
+                }
+            }
+        }
+    }
+
+    fun fetchEventRevisionsByStream(
         databaseNameStr: String,
         revision: Revision,
         streamNameStr: String,
@@ -158,8 +222,29 @@ interface EvidentDbAdapter: Lifecycle {
         }
     }
 
+    fun fetchEventsByStream(
+        databaseNameStr: String,
+        revision: Revision,
+        streamNameStr: String,
+    ): Flow<Either<QueryError, Event>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> {
+                when (val streamName = StreamName(streamNameStr)) {
+                    is Either.Left -> emit(streamName)
+                    is Either.Right -> {
+                        when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
+                            is Either.Left -> emit(database)
+                            is Either.Right -> emitAll(database.value.streamDetail(streamName.value).map { it.right() })
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-    fun subjectStream(
+
+    fun fetchEventRevisionsBySubjectAndStream(
         databaseNameStr: String,
         revision: Revision,
         streamNameStr: String,
@@ -189,7 +274,37 @@ interface EvidentDbAdapter: Lifecycle {
         }
     }
 
-    fun subject(
+    fun fetchEventsBySubjectAndStream(
+        databaseNameStr: String,
+        revision: Revision,
+        streamNameStr: String,
+        subjectStr: String,
+    ): Flow<Either<QueryError, Event>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> {
+                when (val streamName = StreamName(streamNameStr)) {
+                    is Either.Left -> emit(streamName)
+                    is Either.Right -> {
+                        when (val subject = EventSubject(subjectStr)) {
+                            is Either.Left -> emit(subject)
+                            is Either.Right -> {
+                                when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
+                                    is Either.Left -> emit(database)
+                                    is Either.Right -> emitAll(
+                                        database.value.subjectStreamDetail(streamName.value, subject.value)
+                                            .map { it.right() }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun fetchEventRevisionsBySubject(
         databaseNameStr: String,
         revision: Revision,
         subjectStr: String,
@@ -210,7 +325,28 @@ interface EvidentDbAdapter: Lifecycle {
         }
     }
 
-    fun eventType(
+    fun fetchEventsBySubject(
+        databaseNameStr: String,
+        revision: Revision,
+        subjectStr: String,
+    ): Flow<Either<QueryError, Event>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> {
+                when (val subject = EventSubject(subjectStr)) {
+                    is Either.Left -> emit(subject)
+                    is Either.Right -> {
+                        when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
+                            is Either.Left -> emit(database)
+                            is Either.Right -> emitAll(database.value.subjectDetail(subject.value).map { it.right() })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun fetchEventRevisionsByType(
         databaseNameStr: String,
         revision: Revision,
         typeStr: String,
@@ -231,7 +367,28 @@ interface EvidentDbAdapter: Lifecycle {
         }
     }
 
-    suspend fun eventById(
+    fun fetchEventsByType(
+        databaseNameStr: String,
+        revision: Revision,
+        typeStr: String,
+    ): Flow<Either<QueryError, Event>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> {
+                when (val type = EventType(typeStr)) {
+                    is Either.Left -> emit(type)
+                    is Either.Right -> {
+                        when (val database = repository.databaseAtRevision(databaseName.value, revision)) {
+                            is Either.Left -> emit(database)
+                            is Either.Right -> emitAll(database.value.eventTypeDetail(type.value).map { it.right() })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun fetchEventById(
         databaseNameStr: String,
         revision: Revision,
         streamNameStr: String,
@@ -246,7 +403,7 @@ interface EvidentDbAdapter: Lifecycle {
         database.eventById(streamName, id).bind()
     }
 
-    fun eventsByRevision(
+    fun fetchEventsByRevisions(
         databaseNameStr: String,
         revisions: List<Revision>,
     ): Flow<Either<QueryError, Event>> = flow {

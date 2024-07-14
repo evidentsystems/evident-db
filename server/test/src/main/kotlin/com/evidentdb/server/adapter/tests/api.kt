@@ -24,12 +24,12 @@ interface AdapterTests {
         Assertions.assertInstanceOf(Database::class.java, creationResult.getOrNull())
 
         // Ensure the updates are being sent upon connection
-        val update = adapter.connect(databaseName).first()
+        val update = adapter.tailDatabaseLog(databaseName).first()
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(0uL, update.getOrNull()?.revision)
 
         // Ensure it shows up in catalog
-        val catalog = adapter.catalog().toList()
+        val catalog = adapter.fetchCatalog().toList()
         Assertions.assertEquals(listOf(databaseName), catalog.map { it.value })
     }
 
@@ -77,7 +77,7 @@ interface AdapterTests {
         Assertions.assertTrue(result.isRight())
         Assertions.assertEquals(revisionAfterBatch, result.getOrNull()!!.revision)
         // New transaction should show up on log
-        val log = adapter.databaseLog(databaseName, revisionAfterBatch).toList()
+        val log = adapter.scanDatabaseLog(databaseName, revisionAfterBatch).toList()
         Assertions.assertEquals(
                 listOf(Pair(true, 3uL)),
                 log.map { Pair(it.isRight(), it.getOrNull()!!.revision) }
@@ -85,7 +85,7 @@ interface AdapterTests {
         // New transaction event should be indexed
         // By EventId + Stream
         listOf(event1, event2, event3).forEach { event ->
-            val eventById = adapter.eventById(
+            val eventById = adapter.fetchEventById(
                     databaseName,
                     revisionAfterBatch,
                     event.source.toString(),
@@ -100,54 +100,54 @@ interface AdapterTests {
             )
         }
         // By Stream
-        val stream1 = adapter.stream(
+        val stream1 = adapter.fetchEventRevisionsByStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream1,
         ).toList()
         Assertions.assertEquals(listOf(1uL.right(), 2uL.right()), stream1)
-        val stream2 = adapter.stream(
+        val stream2 = adapter.fetchEventRevisionsByStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream2,
         ).toList()
         Assertions.assertEquals(listOf(3uL.right()), stream2)
         // By Subject
-        val subject1 = adapter.subject(
+        val subject1 = adapter.fetchEventRevisionsBySubject(
                 databaseName,
                 revisionAfterBatch,
                 eventSubject1
         ).toList()
         Assertions.assertEquals(listOf(1uL.right()), subject1)
-        val subject2 = adapter.subject(
+        val subject2 = adapter.fetchEventRevisionsBySubject(
                 databaseName,
                 revisionAfterBatch,
                 eventSubject2
         ).toList()
         Assertions.assertEquals(listOf(2uL.right(), 3uL.right()), subject2)
         // By Subject + Stream
-        val subjectStream11 = adapter.subjectStream(
+        val subjectStream11 = adapter.fetchEventRevisionsBySubjectAndStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream1,
                 eventSubject1
         ).toList()
         Assertions.assertEquals(listOf(1uL.right()), subjectStream11)
-        val subjectStream12 = adapter.subjectStream(
+        val subjectStream12 = adapter.fetchEventRevisionsBySubjectAndStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream1,
                 eventSubject2
         ).toList()
         Assertions.assertEquals(listOf(2uL.right()), subjectStream12)
-        val subjectStream21 = adapter.subjectStream(
+        val subjectStream21 = adapter.fetchEventRevisionsBySubjectAndStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream2,
                 eventSubject1
         ).toList()
         Assertions.assertEquals(emptyList<ULong>(), subjectStream21)
-        val subjectStream22 = adapter.subjectStream(
+        val subjectStream22 = adapter.fetchEventRevisionsBySubjectAndStream(
                 databaseName,
                 revisionAfterBatch,
                 eventStream2,
@@ -155,13 +155,13 @@ interface AdapterTests {
         ).toList()
         Assertions.assertEquals(listOf(3uL.right()), subjectStream22)
         // By Event Type
-        val type1 = adapter.eventType(
+        val type1 = adapter.fetchEventRevisionsByType(
                 databaseName,
                 revisionAfterBatch,
                 eventType1
         ).toList()
         Assertions.assertEquals(listOf(1uL.right()), type1)
-        val type2 = adapter.eventType(
+        val type2 = adapter.fetchEventRevisionsByType(
                 databaseName,
                 revisionAfterBatch,
                 eventType2
@@ -389,7 +389,7 @@ interface AdapterTests {
 
         val result = adapter.deleteDatabase(databaseName)
         Assertions.assertTrue(result.isRight())
-        val catalog = adapter.catalog().toList()
+        val catalog = adapter.fetchCatalog().toList()
         Assertions.assertEquals(
                 listOf<Database>(),
                 catalog
@@ -399,7 +399,7 @@ interface AdapterTests {
         Assertions.assertTrue(update.isLeft())
         Assertions.assertInstanceOf(DatabaseNotFound::class.java, update.leftOrNull())
 
-        val connectDatabaseNotFound = adapter.connect(databaseName).first()
+        val connectDatabaseNotFound = adapter.tailDatabaseLog(databaseName).first()
         Assertions.assertInstanceOf(
                 DatabaseNotFound::class.java,
                 connectDatabaseNotFound.leftOrNull()
@@ -424,7 +424,7 @@ interface AdapterTests {
         scope: CoroutineScope,
     ): Flow<Either<DatabaseNotFound, Database>> {
         val init = CompletableDeferred<Boolean>()
-        val flow = adapter.connect(database)
+        val flow = adapter.tailDatabaseLog(database)
         scope.async {
             val first = flow.first()
             Assertions.assertEquals(expectedInitialRevision, first.getOrNull()!!.revision)

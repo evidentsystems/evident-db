@@ -14,7 +14,7 @@ dependencies {
     compileOnly(libs.slf4j.api)
 
     // Test dependencies
-    testImplementation("io.grpc:grpc-netty:1.64.0")
+    testImplementation("io.grpc:grpc-netty:1.65.0")
 }
 
 publishing {

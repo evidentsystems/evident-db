@@ -1,110 +1,22 @@
 package com.evidentdb.client.kotlin
 
-import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.*
-import com.evidentdb.client.CloseableIterator
-import com.evidentdb.client.java.EvidentDb
-import com.evidentdb.client.java.asIterator
-import com.evidentdb.client.transfer.toDomain
-import com.evidentdb.client.transfer.toInstant
-import com.evidentdb.client.transfer.toTransfer
-import com.evidentdb.service.v1.*
+import com.evidentdb.client.core.EvidentDb as EvidentDbCore
 import io.cloudevents.CloudEvent
-import io.cloudevents.protobuf.toDomain
-import io.cloudevents.protobuf.toTransfer
 import io.grpc.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.takeWhile
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.future.future
+import kotlinx.coroutines.flow.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.annotation.concurrent.ThreadSafe
 import kotlin.math.max
 
-internal const val GRPC_CONNECTION_SHUTDOWN_TIMEOUT = 30L
-
-fun EvidentDb.Companion.kotlinClient(channelBuilder: ManagedChannelBuilder<*>): com.evidentdb.client.kotlin.EvidentDb =
-    KotlinSimpleClient(channelBuilder)
-
-enum class ConnectionState {
-    DISCONNECTED,
-    CONNECTED,
-    CLOSED
-}
-
-interface SimpleClient: com.evidentdb.client.kotlin.EvidentDb {
-    val grpcClient: EvidentDbGrpcKt.EvidentDbCoroutineStub
-    val isActive: Boolean
-    val connections: MutableMap<DatabaseName, Connection>
-
-    override fun createDatabase(name: DatabaseName): Boolean =
-        runBlocking { createDatabaseAsync(name) }
-
-    override suspend fun createDatabaseAsync(name: DatabaseName): Boolean =
-        if (!isActive)
-            throw ClientClosedException(this)
-        else {
-            try {
-                val result = grpcClient.createDatabase(
-                    CreateDatabaseRequest.newBuilder()
-                        .setName(name)
-                        .build()
-                )
-                result.hasDatabase()
-            } catch (e: StatusException) {
-                if (e.status.code == Status.Code.ALREADY_EXISTS) {
-                    false
-                } else {
-                    throw e
-                }
-            }
-        }
-
-    override fun deleteDatabase(name: DatabaseName): Boolean =
-        runBlocking { deleteDatabaseAsync(name) }
-
-    override suspend fun deleteDatabaseAsync(name: DatabaseName): Boolean =
-        if (!isActive)
-            throw ClientClosedException(this)
-        else {
-            try {
-                val result = grpcClient.deleteDatabase(
-                    DeleteDatabaseRequest.newBuilder()
-                        .setName(name)
-                        .build()
-                )
-                result.hasDatabase()
-            } catch (e: StatusException) {
-                if (e.status.code == Status.Code.NOT_FOUND) {
-                    false
-                } else {
-                    throw e
-                }
-            }
-        }
-
-    override fun fetchCatalog(): CloseableIterator<DatabaseName> =
-        fetchCatalogAsync().asIterator()
-
-    override fun fetchCatalogAsync(): Flow<DatabaseName> =
-        if (!isActive)
-            throw ClientClosedException(this)
-        else
-            grpcClient
-                .catalog(CatalogRequest.getDefaultInstance())
-                .map { reply -> reply.databaseName }
-}
-
 /**
- * This is the top-level entry point for the EvidentDB Kotlin client. Use
- * instances of this client to create and delete databases, show
+ * This is the top-level entry point for the basic (non-caching) EvidentDB Kotlin client.
+ * Use instances of this client to create and delete databases, show
  * the catalog of all available databases, and get connections to
  * a specific database.
  *
@@ -121,23 +33,52 @@ interface SimpleClient: com.evidentdb.client.kotlin.EvidentDb {
  * @constructor Main entry point for creating EvidentDB clients
  */
 @ThreadSafe
-class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) : SimpleClient {
-    private val grpcClientChannel = channelBuilder.build()
-    override val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
-    override val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
-    private val active = AtomicBoolean(true)
+class KotlinClient(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDb {
+    private val coreClient = EvidentDbCore(channelBuilder.build())
+    private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
 
-    override val isActive: Boolean
-        get() = active.get()
+    // Lifecycle
+    init {
+        // Required for all clients
+        init()
+    }
+
+    val isActive: Boolean
+        get() = coreClient.isActive
+
+    override fun shutdown() {
+        coreClient.shutdown()
+        connections.forEach { (_, connection) ->
+            connection.shutdown()
+        }
+    }
+
+    override fun shutdownNow() {
+        coreClient.shutdownNow()
+        connections.forEach { (_, connection) ->
+            connection.shutdownNow()
+        }
+    }
 
     private fun removeConnection(database: DatabaseName) =
         connections.remove(database)
+
+    // Client
+
+    override suspend fun createDatabase(name: DatabaseName): Boolean =
+        coreClient.createDatabase(name)
+
+    override suspend fun deleteDatabase(name: DatabaseName): Boolean =
+        coreClient.deleteDatabase(name)
+
+    override fun fetchCatalog(): Flow<DatabaseName> =
+        coreClient.fetchCatalog()
 
     override fun connectDatabase(name: DatabaseName): Connection =
         if (!isActive) {
             throw ClientClosedException(this)
         } else {
-            // Return from storage, if available
+            // Return from connection cache, if available
             connections[name]?.let {
                 return@connectDatabase it
             }
@@ -147,65 +88,46 @@ class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) :
             newConnection
         }
 
-    override fun shutdown() {
-        if (isActive) {
-            active.set(false)
-            grpcClientChannel.shutdown()
-            connections.forEach { (name, connection) ->
-                removeConnection(name)
-                connection.shutdown()
-            }
-        }
-    }
-
-    override fun shutdownNow() {
-        if (isActive) {
-            active.set(false)
-            grpcClientChannel.shutdownNow()
-            connections.forEach { (name, connection) ->
-                removeConnection(name)
-                connection.shutdownNow()
-            }
-        }
-    }
-
     private inner class ConnectionImpl(
-        override val database: DatabaseName
+        override val databaseName: DatabaseName
     ) : Connection {
+        private val coreClient = EvidentDbCore(channelBuilder.build())
         private val scope = CoroutineScope(Dispatchers.Default)
         private val state = AtomicReference(ConnectionState.DISCONNECTED)
         private val latestRevision = AtomicReference(0uL)
 
-        private val grpcClientChannel = channelBuilder.build()
-        private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(grpcClientChannel)
+        // Lifecycle
 
         private val isActive
-            get() = state.get() != ConnectionState.CLOSED
+            get() = this@KotlinClient.isActive && state.get() != ConnectionState.CLOSED
 
+        private fun setLatestRevision(revision: Revision) {
+            latestRevision.getAndUpdate { prev -> max(revision, prev) }
+        }
+
+        // Start the log tail subscription loop
         init {
             val started = CompletableFuture<Boolean>()
             scope.launch {
                 while (isActive) {
-                    try {
-                        grpcClient.connect(
-                            ConnectRequest.newBuilder()
-                                .setName(database)
-                                .build()
-                        ).collect { reply ->
+                    coreClient
+                        .tailDatabaseLog(databaseName)
+                        .catch { e ->
+                            if (e is StatusException) {
+                                if (!started.isDone) {
+                                    started.complete(true)
+                                }
+                                state.set(ConnectionState.CLOSED)
+                            }
+                        }
+                        .collect { batchSummary ->
                             if (!started.isDone) {
                                 started.complete(true)
                             }
                             state.set(ConnectionState.CONNECTED)
-                            val summary = reply.database.toDomain()
-                            latestRevision.set(summary.revision)
+                            setLatestRevision(batchSummary.revision)
                         }
-                        state.set(ConnectionState.DISCONNECTED)
-                    } catch (e: StatusException) {
-                        if (!started.isDone) {
-                            started.complete(true)
-                        }
-                        state.set(ConnectionState.CLOSED)
-                    }
+                    state.set(ConnectionState.DISCONNECTED)
                 }
             }
             try {
@@ -215,247 +137,111 @@ class KotlinSimpleClient(private val channelBuilder: ManagedChannelBuilder<*>) :
             }
         }
 
-        override fun transact(batch: BatchProposal): CompletableFuture<Batch> =
-            scope.future { transactAsync(batch) }
+        override fun shutdown() {
+            state.set(ConnectionState.CLOSED)
+            coreClient.shutdown()
+            scope.cancel()
+            removeConnection(databaseName)
+        }
 
-        override suspend fun transactAsync(batch: BatchProposal): Batch =
-            if (!isActive)
-                throw ConnectionClosedException(this)
-            else {
-                // Fail fast on empty batch, no need to round-trip
-                if (batch.events.isEmpty())
-                    throw IllegalArgumentException("Batch cannot be empty")
+        override fun shutdownNow() {
+            state.set(ConnectionState.CLOSED)
+            coreClient.shutdownNow()
+            scope.cancel()
+            removeConnection(databaseName)
+        }
 
-                val result = grpcClient.transactBatch(
-                    TransactBatchRequest.newBuilder()
-                        .setDatabase(database)
-                        .addAllEvents(batch.events.map { it.toTransfer() })
-                        .addAllConstraints(batch.constraints.map { it.toTransfer() })
-                        .build()
-                )
-                val acceptedBatch = result.batch.toDomain()
-                maybeSetLatestRevision(acceptedBatch.revision)
+        override suspend fun transact(
+            events: List<CloudEvent>,
+            constraints: List<BatchConstraint>
+        ): Batch {
+            // Fail fast on empty batch, no need to round-trip
+            if (events.isEmpty())
+                throw IllegalArgumentException("Batch cannot be empty")
 
-                acceptedBatch
-            }
+            val acceptedBatch = coreClient.transact(databaseName, events, constraints)
+            setLatestRevision(acceptedBatch.revision)
+
+            return acceptedBatch
+        }
 
         override fun db(): Database =
+            // No baseClient interaction here, so manually check if active
             if (!isActive)
                 throw ConnectionClosedException(this)
             else
                 DatabaseImpl(
-                    database,
+                    databaseName,
                     latestRevision.get(),
                 )
-
-        override fun fetchDbAsOf(revision: Revision): CompletableFuture<Database> =
-            scope.future {
-                fetchDbAsOfAsync(revision)
-            }
 
         /**
          * May block while awaiting database revision on server
          */
-        override suspend fun fetchDbAsOfAsync(revision: Revision): Database =
-            if (!isActive)
-                throw ConnectionClosedException(this)
-            else {
-                val summary = grpcClient.databaseAtRevision(
-                    DatabaseAtRevisionRequest.newBuilder()
-                        .setName(database)
-                        .setRevision(revision.toLong())
-                        .build()
-                ).database.toDomain()
-                maybeSetLatestRevision(summary.revision)
+        override suspend fun awaitDb(revision: Revision): Database {
+            val summary = coreClient.awaitDatabase(databaseName, revision)
+            setLatestRevision(summary.revision)
+            return DatabaseImpl(
+                summary.name,
+                summary.revision,
+            )
+        }
+
+        override suspend fun fetchLatestDb(): Database =
+            coreClient.fetchLatestDatabase(databaseName).let { summary ->
+                setLatestRevision(summary.revision)
                 DatabaseImpl(
                     summary.name,
                     summary.revision,
                 )
             }
 
-        override fun fetchLatestDb(): CompletableFuture<Database> =
-            scope.future {
-                fetchLatestDbAsync()
-            }
-
-        override suspend fun fetchLatestDbAsync(): Database =
-            if (!isActive)
-                throw ConnectionClosedException(this)
-            else
-                grpcClient.latestDatabase(
-                    LatestDatabaseRequest.newBuilder()
-                        .setName(database)
-                        .build()
-                ).database.toDomain().let { summary ->
-                    maybeSetLatestRevision(summary.revision)
-                    DatabaseImpl(
-                        summary.name,
-                        summary.revision,
-                    )
-                }
-
-        override fun fetchLog(): CloseableIterator<Batch> =
-            fetchLogFlow().asIterator()
-
-        override fun fetchLogFlow(): Flow<Batch> =
-            if (!isActive)
-                throw ConnectionClosedException(this)
-            else
-                grpcClient.databaseLog(
-                    DatabaseLogRequest
-                        .newBuilder()
-                        .setName(database)
-                        .build()
-                ).map { batch ->
-                    val batchSummary = batch.batch
-                    val eventRevisions = (batchSummary.basis + 1).toULong()..batchSummary.revision.toULong()
-                    // fetch events by revision here
-                    val batchEvents = fetchEvents(eventRevisions.toList())
-                    Batch(
-                        database,
-                        batchSummary.basis.toULong(),
-                        batchEvents.map { Event(it) }.toNonEmptyListOrNull()!!,
-                        batchSummary.timestamp.toInstant(),
-                    )
-                }
-
-        override fun shutdown() {
-            state.set(ConnectionState.CLOSED)
-            scope.cancel()
-            grpcClientChannel.shutdown().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
-            removeConnection(database)
-        }
-
-        override fun shutdownNow() {
-            state.set(ConnectionState.CLOSED)
-            scope.cancel()
-            grpcClientChannel.shutdownNow().awaitTermination(GRPC_CONNECTION_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
-            removeConnection(database)
-        }
-
-        private fun maybeSetLatestRevision(revision: Revision) =
-            latestRevision.getAndUpdate { current ->
-                max(revision, current)
-            }
-
-         private suspend fun fetchEvents(
-            revisions: List<Revision>
-        ): List<CloudEvent> = grpcClient.events(
-            EventByRevisionRequest.newBuilder()
-                .setDatabase(database)
-                .addAllEventRevisions(revisions.map { it.toLong() })
-                .build()
-        )
-            .map { it.event.toDomain() }
-            .toList()
-
-        private suspend fun fetchEvent(revision: Revision): CloudEvent =
-            fetchEvents(listOf(revision)).first()
+        override fun scanDatabaseLog(startAtRevision: Revision): Flow<Batch> =
+            coreClient.scanDatabaseLogDetail(databaseName, startAtRevision)
 
         private inner class DatabaseImpl(
             override val name: DatabaseName,
             override val revision: Revision,
         ) : Database {
-            override fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent> =
-                fetchStreamAsync(streamName).asIterator()
-
-            override fun fetchStreamAsync(streamName: StreamName): Flow<CloudEvent> =
-                if (!isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
-                else {
-                    processStreamReplyFlow(
-                        grpcClient.stream(
-                            StreamRequest.newBuilder()
-                                .setDatabase(database)
-                                .setRevision(revision.toLong())
-                                .setStream(streamName)
-                                .build()
-                        )
-                    )
-                }
+            override fun fetchStream(streamName: StreamName): Flow<Event> =
+                coreClient.fetchEventsByStream(
+                    databaseName,
+                    revision,
+                    streamName
+                )
 
             override fun fetchSubjectStream(
                 streamName: StreamName,
                 subjectName: StreamSubject
-            ): CloseableIterator<CloudEvent> =
-                fetchSubjectStreamAsync(streamName, subjectName).asIterator()
+            ): Flow<Event> =
+                coreClient.fetchEventsBySubjectAndStream(
+                    databaseName,
+                    revision,
+                    streamName,
+                    subjectName,
+                )
 
-            override fun fetchSubjectStreamAsync(
-                streamName: StreamName,
-                subjectName: StreamSubject
-            ): Flow<CloudEvent> =
-                if (!isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
-                else {
-                    processStreamReplyFlow(
-                        grpcClient.subjectStream(
-                            SubjectStreamRequest.newBuilder()
-                                .setDatabase(database)
-                                .setStream(streamName)
-                                .setSubject(subjectName)
-                                .build()
-                        )
-                    )
-                }
+            override fun fetchSubject(subjectName: StreamSubject): Flow<Event> =
+                coreClient.fetchEventsBySubject(
+                    databaseName,
+                    revision,
+                    subjectName,
+                )
 
-            override fun fetchSubject(subjectName: StreamSubject): CloseableIterator<CloudEvent> =
-                fetchSubjectAsync(subjectName).asIterator()
+            override fun fetchEventType(eventType: EventType): Flow<Event> =
+                coreClient.fetchEventsByType(
+                    databaseName,
+                    revision,
+                    eventType,
+                )
 
-            override fun fetchSubjectAsync(subjectName: StreamSubject): Flow<CloudEvent> =
-                if (!isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
-                else {
-                    processStreamReplyFlow(
-                        grpcClient.subject(
-                            SubjectRequest.newBuilder()
-                                .setDatabase(database)
-                                .setRevision(revision.toLong())
-                                .setSubject(subjectName)
-                                .build()
-                        )
-                    )
-                }
-
-            override fun fetchEventType(eventType: EventType): CloseableIterator<CloudEvent> =
-                fetchEventTypeAsync(eventType).asIterator()
-
-            override fun fetchEventTypeAsync(eventType: EventType): Flow<CloudEvent> =
-                if (!isActive)
-                    throw ConnectionClosedException(this@ConnectionImpl)
-                else {
-                    processStreamReplyFlow(
-                        grpcClient.eventType(
-                            EventTypeRequest.newBuilder()
-                                .setDatabase(database)
-                                .setRevision(revision.toLong())
-                                .setEventType(eventType)
-                                .build()
-                        )
-                    )
-                }
-
-            private fun processStreamReplyFlow(
-                streamReplyFlow: Flow<EventRevisionReply>
-            ) = streamReplyFlow
-                .map { it.revision.toULong() }
-                .takeWhile { r -> r <= revision }
-                .map { r -> fetchEvent(r)!! }
-
-            override fun fetchEventById(eventId: EventId): CompletableFuture<CloudEvent?> =
-                runBlocking { future { fetchEventByIdAsync(eventId) } }
-
-            override suspend fun fetchEventByIdAsync(eventId: EventId): CloudEvent? =
-                if (!isActive) {
-                    throw ConnectionClosedException(this@ConnectionImpl)
-                } else {
-                    // TODO: build a cache/map of id -> revision for 2-step lookup?
-                    grpcClient.eventById(
-                        EventByIdRequest.newBuilder()
-                            .setDatabase(database)
-                            .setEventId(eventId)
-                            .build()
-                    ).event.toDomain()
-                }
+            override suspend fun fetchEventById(streamName: StreamName, eventId: EventId): Event? =
+                coreClient.fetchEventById(
+                    databaseName,
+                    revision,
+                    streamName,
+                    eventId,
+                )
 
             // Use as Data Class
             operator fun component1() = name

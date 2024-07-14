@@ -7,14 +7,9 @@ import arrow.core.None
 import arrow.core.Option
 import arrow.core.Some
 import arrow.core.some
-import com.evidentdb.client.cloudevents.RecordedTimeExtension
-import com.evidentdb.client.cloudevents.SequenceExtension
-import io.cloudevents.CloudEventData
-import io.cloudevents.CloudEventExtension
-import io.cloudevents.core.builder.CloudEventBuilder
+import io.grpc.StatusException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
-import java.net.URI
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -24,7 +19,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
-interface EvidentDb: Shutdown {
+interface EvidentDb: Shutdown, ClientHelpers {
     /**
      * Synchronously creates a database, which serves as the unit of total
      * event ordering in an event-sourcing system.
@@ -32,6 +27,7 @@ interface EvidentDb: Shutdown {
      * @param name The name of the database to create, must match
      *  """^[a-zA-Z][a-zA-Z0-9\-_]{0,127}$""".
      * @return `true` if database was created, `false` otherwise.
+     * @throws StatusException on gRPC error
      */
     fun createDatabase(name: DatabaseName): Boolean
 
@@ -40,6 +36,7 @@ interface EvidentDb: Shutdown {
      *
      * @param name The name of the database to delete.
      * @return `true` if database was deleted, `false` otherwise.
+     * @throws StatusException on gRPC error
      */
     fun deleteDatabase(name: DatabaseName): Boolean
 
@@ -47,7 +44,7 @@ interface EvidentDb: Shutdown {
      * Returns the catalog of all available databases as an iterator.
      *
      * This iterator coordinates with the server to provide back-pressure. Callers
-     * must [CloseableIterator.close] after using the returned iterator, whether the
+     * must [AutoCloseable.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not (e.g. using try-with-resources or similar).
      *
      * @returns a [CloseableIterator] of [Database].
@@ -61,61 +58,16 @@ interface EvidentDb: Shutdown {
      *
      * @param name the database name.
      * @return the [Connection], possibly cached.
+     * @throws StatusException on gRPC error
      */
     fun connectDatabase(name: DatabaseName): Connection
-
-    companion object {
-        // These need to be registered before any event processing is done
-        init {
-            SequenceExtension.register()
-            RecordedTimeExtension.register()
-        }
-
-        @JvmStatic
-        fun eventBuilder(
-            streamName: StreamName,
-            eventId: String,
-            eventType: String,
-            subject: String? = null,
-            data: CloudEventData? = null,
-            dataContentType: String? = null,
-            dataSchema: URI? = null,
-            extensions: List<CloudEventExtension> = listOf(),
-        ): CloudEventBuilder {
-            val builder = CloudEventBuilder.v1()
-                .withId(eventId)
-                .withSource(URI(streamName))
-                .withType(eventType)
-                .withData(data)
-                .withDataContentType(dataContentType)
-                .withDataSchema(dataSchema)
-                .withSubject(subject)
-            for (extension in extensions)
-                builder.withExtension(extension)
-            return builder
-        }
-
-        @JvmStatic
-        fun event(
-            streamName: StreamName,
-            eventId: String,
-            eventType: String,
-            subject: String? = null,
-            data: CloudEventData? = null,
-            dataContentType: String? = null,
-            dataSchema: URI? = null,
-            extensions: List<CloudEventExtension> = listOf(),
-        ): CloudEvent = eventBuilder(
-            streamName, eventId, eventType, subject, data, dataContentType, dataSchema, extensions
-        ).build()
-    }
 }
 
 /**
  * A connection to a specific database, used to [transact]
  * batches of events into the database, to read the resulting
- * transaction [fetchLog], as well as to obtain [Database] values to
- * query (via [db], [fetchLatestDb], and [fetchDbAsOf]). A background
+ * transaction [scanDatabaseLog], as well as to obtain [Database] values to
+ * query (via [db], [fetchLatestDb], and [awaitDb]). A background
  * server-push process keeps the connection informed as new database revisions
  * are produced on the server (i.e. due to any clients transacting event batches).
  *
@@ -126,33 +78,43 @@ interface EvidentDb: Shutdown {
  * or urgently [shutdownNow] (cancelling in-flight requests). After shutdown,
  * all subsequent API method calls will throw [ConnectionClosedException].
  **
- * @property database The name of the connected database.
+ * @property databaseName The name of the connected database.
  */
 interface Connection: Shutdown {
-    val database: DatabaseName
+    val databaseName: DatabaseName
 
     /**
      * Atomically adds a batch of events to the database.
      *
-     * @param events The [EventProposal]s to atomically add to the database.
-     * @return a [CompletableFuture] conveying the [Batch] transacted to the database
-     * @throws IllegalArgumentException subtypes [InvalidDatabaseNameError],
-     *  [NoEventsProvidedError], [InvalidEventsError] when invalid data provided to method
-     * @throws IllegalStateException subtypes [StreamStateConflictsError] when the transaction
-     *  is aborted due to user-provided stream state constraints, and [DatabaseNotFoundError]
-     *  when this connection's database is no longer present on the server
-     *  (callers should [shutdown] the connection in this case)
-     * @throws RuntimeException subtypes [InternalServerError] and [SerializationError]
-     *  in rare cases of server-side or client-server serialization issues respectively
+     * @param events The [List] of [Event]s to add to the database.
+     * @param constraints The [List] of [BatchConstraint]s that the event batch is conditional upon.
+     * @return the [Batch] transacted to the database
+     * @throws StatusException when invalid data provided to method; when the transaction
+     *  is aborted due to user-provided stream state constraints;
+     *  when this connection's database is no longer present on the server; or
+     *  in rare cases of server-side or client-server serialization issues
      * */
-    fun transact(batch: BatchProposal): CompletableFuture<out Batch>
+    fun transact(
+        events: List<CloudEvent>,
+        constraints: List<BatchConstraint>,
+    ): CompletableFuture<out Batch>
 
     /**
      * Immediately returns the latest database value available locally.
      *
-     * @return the Database value.
+     * @return the [Database] value.
      * */
     fun db(): Database
+
+    /**
+     * Returns a completable future bearing the latest database available on the
+     * server as of this inquiry.
+     *
+     * @return a [CompletableFuture] bearing the latest [Database] available on the server.
+     * @throws StatusException conveyed by [CompletableFuture] when this connection's
+     *  database is no longer present on the server or for network or server errors
+     */
+    fun fetchLatestDb(): CompletableFuture<out Database>
 
     /**
      * Returns a completable future bearing the next database revision
@@ -161,29 +123,14 @@ interface Connection: Shutdown {
      * than the latest available on server, so callers should use timeouts or
      * similar when getting the value of the returned future.
      *
-     * @param revision a DatabaseRevision (Long). Future will not complete until
+     * @param revision a [Revision]. Future will not complete until
      *  this revision is available on the server.
      * @return a [CompletableFuture] bearing the [Database] at the given revision
-     * @throws DatabaseNotFoundError conveyed by the [CompletableFuture] when this
-     *  connection's database is no longer present on the server
-     *  (callers should [shutdown] the connection in this case)
-     * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
-     *  of client-server serialization issues
+     * @throws StatusException when this
+     *  connection's database is no longer present on the server or for
+     *  network or server errors
      * */
-    fun fetchDbAsOf(revision: Revision): CompletableFuture<out Database>
-
-    /**
-     * Returns a completable future bearing the latest database available on the
-     * server as of this request's arrival.
-     *
-     * @return a [CompletableFuture] bearing the latest [Database] available on the server.
-     * @throws DatabaseNotFoundError conveyed by the [CompletableFuture] when this
-     *  connection's database is no longer present on the server
-     *  (callers should [shutdown] the connection in this case)
-     * @throws SerializationError conveyed by the [CompletableFuture] in rare cases
-     *  of client-server serialization issues
-     */
-    fun fetchLatestDb(): CompletableFuture<out Database>
+    fun awaitDb(revision: Revision): CompletableFuture<out Database>
 
     /**
      * Returns the transaction log of this database as a [CloseableIterator]
@@ -193,14 +140,11 @@ interface Connection: Shutdown {
      * the iterator is consumed to completion or not.
      *
      * @return a [CloseableIterator] of [Batch]es in transaction order.
-     * @throws DatabaseNotFoundError when this connection's database
-     *  is no longer present on the server
-     *  (callers should [shutdown] the connection in this case)
-     * @throws SerializationError in rare cases of client-server serialization issues
+     * @throws StatusException when this
+     *  connection's database is no longer present on the server or for
+     *  network or server errors
      */
-    fun fetchLog(): CloseableIterator<Batch>
-    // TODO: Allow range iteration from a start revision (fuzzy) and
-    //  iterating from there (possibly to a (fuzzy) end revision)
+    fun scanDatabaseLog(startAtRevision: Revision = 0uL): CloseableIterator<Batch>
 }
 
 /**
@@ -211,7 +155,6 @@ interface Connection: Shutdown {
  * The clock state of a Database is its [revision], a monotonically increasing unsigned long
  * representing the count of events present in the database.
  *
- * Databases cache their stream state (eventIds) and draw on their connection's event cache.
  * After their parent client or connection is closed, all subsequent API method calls will
  * throw [ConnectionClosedException].
  */
@@ -220,20 +163,20 @@ interface Database {
     val revision: Revision
 
     /**
-     * Returns a [CloseableIterator] of [CloudEvent]s comprising
+     * Returns a [CloseableIterator] of [Event]s comprising
      * this stream as of this [Database]'s revision.
      *
      * This iterator coordinates with the server to provide back-pressure. Callers
      * must [CloseableIterator.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not.
      *
-     * @return [CloseableIterator] of [CloudEvent]s comprising this stream, in transaction order.
-     * @throws StreamNotFoundError if stream is not found within database.
+     * @return [CloseableIterator] of [Event]s comprising this stream, in transaction order.
+     * @throws StatusException for network or server errors
      */
-    fun fetchStream(streamName: StreamName): CloseableIterator<CloudEvent>
+    fun fetchStream(streamName: StreamName): CloseableIterator<Event>
 
     /**
-     * Returns a [CloseableIterator] of [CloudEvent]s comprising this subject stream as
+     * Returns a [CloseableIterator] of [Event]s comprising this subject stream as
      * of this [Database]'s revision, if both stream and events for the given subject
      * on that stream exist.
      *
@@ -241,48 +184,44 @@ interface Database {
      * must [CloseableIterator.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not.
      *
-     * @return [CloseableIterator] of [CloudEvent]s comprising this stream, if any, in transaction order.
+     * @return [CloseableIterator] of [Event]s comprising this stream, if any, in transaction order.
      */
     fun fetchSubjectStream(
         streamName: StreamName,
         subjectName: StreamSubject
-    ): CloseableIterator<CloudEvent>
+    ): CloseableIterator<Event>
 
 
     /**
-     * Returns a [CloseableIterator] of [CloudEvent]s comprising this subject across all streams as
+     * Returns a [CloseableIterator] of [Event]s comprising this subject across all streams as
      * of this [Database]'s revision.
      *
      * This iterator coordinates with the server to provide back-pressure. Callers
      * must [CloseableIterator.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not.
      *
-     * @return [CloseableIterator] of [CloudEvent]s comprising this subject, if any, in transaction order.
+     * @return [CloseableIterator] of [Event]s comprising this subject, if any, in transaction order.
      */
-    fun fetchSubject(
-        subjectName: StreamSubject
-    ): CloseableIterator<CloudEvent>
+    fun fetchSubject(subjectName: StreamSubject): CloseableIterator<Event>
 
     /**
-     * Returns a [CloseableIterator] of [CloudEvent]s having the given event type across all streams
+     * Returns a [CloseableIterator] of [Event]s having the given event type across all streams
      * as of this [Database]'s revision.
      *
      * This iterator coordinates with the server to provide back-pressure. Callers
      * must [CloseableIterator.close] after using the returned iterator, whether the
      * iterator is consumed to completion or not.
      *
-     * @return [CloseableIterator] of [CloudEvent]s having the given event type, if any, in transaction order.
+     * @return [CloseableIterator] of [Event]s having the given event type, if any, in transaction order.
      */
-    fun fetchEventType(
-        eventType: EventType
-    ): CloseableIterator<CloudEvent>
+    fun fetchEventType(eventType: EventType): CloseableIterator<Event>
 
     /**
-     * Returns a future bearing the [CloudEvent] having the given ID, if it exists.
+     * Returns a future bearing the [Event] having the given ID, if it exists.
      *
-     * @return a [CompletableFuture] bearing the [CloudEvent]? if it exists w/in this database.
+     * @return a [CompletableFuture] bearing the [Event]? if it exists w/in this database.
      */
-    fun fetchEventById(eventId: EventId): CompletableFuture<out CloudEvent?>
+    fun fetchEventById(streamName: StreamName, eventId: EventId): CompletableFuture<out Event?>
 }
 
 

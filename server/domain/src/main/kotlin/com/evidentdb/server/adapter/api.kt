@@ -117,6 +117,21 @@ interface EvidentDbAdapter: Lifecycle {
         }
     }
 
+    fun subscribeDatabaseUpdates(
+        databaseNameStr: String
+    ): Flow<Either<DatabaseNotFound, Database>> = flow {
+        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
+            is Either.Left -> emit(databaseName)
+            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
+                is Either.Left -> emit(database)
+                is Either.Right -> {
+                    emit(database)
+                    emitAll(databaseUpdateStream.subscribe(database.value.name))
+                }
+            }
+        }
+    }
+
     fun scanDatabaseLog(
         databaseNameStr: String,
         startAtRevision: Revision,
@@ -142,60 +157,6 @@ interface EvidentDbAdapter: Lifecycle {
                 when (val database = repository.latestDatabase(databaseName.value)) {
                     is Either.Left -> emit(database)
                     is Either.Right -> emitAll(database.value.logDetail(startAtRevision).map { it.right() })
-                }
-            }
-        }
-    }
-
-    fun tailDatabaseLog(databaseNameStr: String): Flow<Either<DatabaseNotFound, Batch>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
-            is Either.Left -> emit(databaseName)
-            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
-                is Either.Left -> emit(database)
-                is Either.Right -> {
-                    emit(database.value.latestBatch().right())
-                    emitAll(
-                        databaseUpdateStream
-                            .subscribe(database.value.name)
-                            .map { maybeDatabase ->
-                                when(maybeDatabase) {
-                                    is Either.Left -> maybeDatabase
-                                    is Either.Right ->
-                                        repository.databaseAtRevision(
-                                            maybeDatabase.value.name,
-                                            maybeDatabase.value.revision,
-                                        ).map { database -> database.latestBatch() }
-                                }
-                            }
-                    )
-                }
-            }
-        }
-    }
-
-    fun tailDatabaseLogDetail(databaseNameStr: String): Flow<Either<DatabaseNotFound, BatchDetail>> = flow {
-        when (val databaseName = DatabaseName(databaseNameStr).mapLeft { DatabaseNotFound(databaseNameStr) }) {
-            is Either.Left -> emit(databaseName)
-            is Either.Right -> when (val database = repository.latestDatabase(databaseName.value)) {
-                is Either.Left -> emit(database)
-                is Either.Right -> {
-                    emit(database.value.latestBatchDetail().right())
-                    emitAll(
-                        databaseUpdateStream
-                            .subscribe(database.value.name)
-                            .map { maybeDatabase ->
-                                when(maybeDatabase) {
-                                    is Either.Left -> maybeDatabase
-                                    is Either.Right ->
-                                        repository.databaseAtRevision(
-                                            maybeDatabase.value.name,
-                                            maybeDatabase.value.revision,
-                                        ).map { database ->
-                                            database.latestBatchDetail()
-                                        }
-                                }
-                            }
-                    )
                 }
             }
         }

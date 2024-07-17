@@ -143,6 +143,22 @@ class EvidentDbEndpoint(
         return reply.build()
     }
 
+    override fun subscribeDatabaseUpdates(
+        request: DatabaseUpdatesSubscriptionRequest
+    ): Flow<DatabaseReply> = flow {
+        LOGGER.info("subscribeDatabaseUpdates(databaseName: {})", request.databaseName)
+        emitAll(
+                adapter.subscribeDatabaseUpdates(request.databaseName).map {
+                    val reply = DatabaseReply.newBuilder()
+                    when (it) {
+                        is Either.Left -> throw it.value.toStatusException()
+                        is Either.Right -> reply.database = it.value.toTransfer()
+                    }
+                    reply.build()
+                }
+        )
+    }
+
     override fun scanDatabaseLog(request: LogScanRequest): Flow<DatabaseLogReply> = flow {
         LOGGER.info(
             "scanDatabaseLog(databaseName: {}, startAtRevision: {}, includeEventDetail: {})",
@@ -172,34 +188,6 @@ class EvidentDbEndpoint(
                         is Either.Right -> reply.summary = it.value.toTransfer()
                     }
                      reply.build()
-                }
-            }
-        )
-    }
-
-    override fun tailDatabaseLog(request: LogTailRequest): Flow<DatabaseLogReply> = flow {
-        LOGGER.info(
-            "tailDatabaseLog(databaseName: {}, includeEventDetail: {})",
-            request.databaseName, request.includeEventDetail
-        )
-        emitAll(
-            if (request.includeEventDetail) {
-                adapter.tailDatabaseLogDetail(request.databaseName).map {
-                    val reply = DatabaseLogReply.newBuilder()
-                    when (it) {
-                        is Either.Left -> throw it.value.toStatusException()
-                        is Either.Right -> reply.detail = it.value.toTransfer()
-                    }
-                    reply.build()
-                }
-            } else {
-                adapter.tailDatabaseLog(request.databaseName).map {
-                    val reply = DatabaseLogReply.newBuilder()
-                    when (it) {
-                        is Either.Left -> throw it.value.toStatusException()
-                        is Either.Right -> reply.summary = it.value.toTransfer()
-                    }
-                    reply.build()
                 }
             }
         )

@@ -30,9 +30,6 @@ interface DatabaseReadModel: Database {
     fun log(startAtRevision: Revision = 0uL): Flow<Batch>
     fun logDetail(startAtRevision: Revision = 0uL): Flow<BatchDetail>
 
-    suspend fun latestBatch(): Batch
-    suspend fun latestBatchDetail(): BatchDetail
-
     // Simple event lookup by user-provided ID and stream
     suspend fun eventById(stream: StreamName, id: EventId): Either<EventNotFound, Event>
 

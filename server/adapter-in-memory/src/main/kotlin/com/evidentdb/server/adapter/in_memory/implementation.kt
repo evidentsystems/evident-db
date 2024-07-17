@@ -285,7 +285,6 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
 
         companion object {
             fun minStreamKey(stream: StreamName) = EventStreamIndexKey(stream, Revision.MIN_VALUE)
-            fun maxStreamKey(stream: StreamName) = EventStreamIndexKey(stream, Revision.MAX_VALUE)
         }
     }
 
@@ -307,7 +306,6 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
 
         companion object {
             fun minSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, Revision.MIN_VALUE)
-            fun maxSubjectKey(subject: EventSubject) = EventSubjectIndexKey(subject, Revision.MAX_VALUE)
         }
     }
 
@@ -333,8 +331,6 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
         companion object {
             fun minSubjectStreamKey(stream: StreamName, subject: EventSubject) =
                 EventSubjectStreamIndexKey(stream, subject, Revision.MIN_VALUE)
-            fun maxSubjectStreamKey(stream: StreamName, subject: EventSubject) =
-                EventSubjectStreamIndexKey(stream, subject, Revision.MAX_VALUE)
         }
     }
 
@@ -356,7 +352,6 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
 
         companion object {
             fun minEventTypeKey(type: EventType) = EventTypeIndexKey(type, Revision.MIN_VALUE)
-            fun maxEventTypeKey(type: EventType) = EventTypeIndexKey(type, Revision.MAX_VALUE)
         }
     }
 
@@ -507,11 +502,6 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
                 .filterIsInstance<BatchValue>()
                 .asFlow()
 
-        override suspend fun latestBatch(): Batch = latestBatchDetail()
-
-        override suspend fun latestBatchDetail(): BatchDetail =
-            storage.floorEntry(BatchKey.MAX_VALUE).value as BatchValue
-
         override suspend fun eventById(stream: StreamName, id: EventId): Either<EventNotFound, Event> = either {
             val indexValue = storage[EventIdIndexKey(stream, id)]
             val notFound = EventNotFound("No event with id=$id and stream=$stream found in database: ${name.value}")
@@ -531,6 +521,7 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
             )
                 .keys
                 .filterIsInstance<EventStreamIndexKey>()
+                .filter { it.revision <= revision }
                 .map { it.revision }
                 .asFlow()
 
@@ -544,6 +535,7 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
             )
                 .keys
                 .filterIsInstance<EventSubjectStreamIndexKey>()
+                .filter { it.revision <= revision }
                 .map { it.revision }
                 .asFlow()
 
@@ -560,6 +552,7 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
             )
                 .keys
                 .filterIsInstance<EventSubjectIndexKey>()
+                .filter { it.revision <= revision }
                 .map { it.revision }
                 .asFlow()
 
@@ -573,6 +566,7 @@ private class InMemoryDatabaseStore(val name: DatabaseName) {
             )
                 .keys
                 .filterIsInstance<EventTypeIndexKey>()
+                .filter { it.revision <= revision }
                 .map { it.revision }
                 .asFlow()
 

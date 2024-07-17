@@ -24,7 +24,7 @@ interface AdapterTests {
         Assertions.assertInstanceOf(Database::class.java, creationResult.getOrNull())
 
         // Ensure the updates are being sent upon connection
-        val update = adapter.tailDatabaseLog(databaseName).first()
+        val update = adapter.subscribeDatabaseUpdates(databaseName).first()
         Assertions.assertTrue(update.isRight())
         Assertions.assertEquals(0uL, update.getOrNull()?.revision)
 
@@ -399,7 +399,7 @@ interface AdapterTests {
         Assertions.assertTrue(update.isLeft())
         Assertions.assertInstanceOf(DatabaseNotFound::class.java, update.leftOrNull())
 
-        val connectDatabaseNotFound = adapter.tailDatabaseLog(databaseName).first()
+        val connectDatabaseNotFound = adapter.subscribeDatabaseUpdates(databaseName).first()
         Assertions.assertInstanceOf(
                 DatabaseNotFound::class.java,
                 connectDatabaseNotFound.leftOrNull()
@@ -424,7 +424,7 @@ interface AdapterTests {
         scope: CoroutineScope,
     ): Flow<Either<DatabaseNotFound, Database>> {
         val init = CompletableDeferred<Boolean>()
-        val flow = adapter.tailDatabaseLog(database)
+        val flow = adapter.subscribeDatabaseUpdates(database)
         scope.async {
             val first = flow.first()
             Assertions.assertEquals(expectedInitialRevision, first.getOrNull()!!.revision)

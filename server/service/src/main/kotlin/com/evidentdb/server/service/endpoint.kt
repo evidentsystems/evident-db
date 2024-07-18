@@ -148,14 +148,14 @@ class EvidentDbEndpoint(
     ): Flow<DatabaseReply> = flow {
         LOGGER.info("subscribeDatabaseUpdates(databaseName: {})", request.databaseName)
         emitAll(
-                adapter.subscribeDatabaseUpdates(request.databaseName).map {
-                    val reply = DatabaseReply.newBuilder()
-                    when (it) {
-                        is Either.Left -> throw it.value.toStatusException()
-                        is Either.Right -> reply.database = it.value.toTransfer()
-                    }
-                    reply.build()
+            adapter.subscribeDatabaseUpdates(request.databaseName).map {
+                val reply = DatabaseReply.newBuilder()
+                when (it) {
+                    is Either.Left -> throw it.value.toStatusException()
+                    is Either.Right -> reply.database = it.value.toTransfer()
                 }
+                reply.build()
+            }
         )
     }
 

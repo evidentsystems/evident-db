@@ -147,7 +147,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
             scope.launch {
                 while (isActive) {
                     coreClient
-                        .tailDatabaseLog(databaseName)
+                        .subscribeDatabaseUpdates(databaseName)
                         .catch { e ->
                             if (e is StatusException) {
                                 if (!started.isDone) {
@@ -215,6 +215,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
             val acceptedBatch = coreClient.transact(databaseName, events, constraints)
             setLatestRevision(acceptedBatch.revision)
 
+            // Cache returned batch to quickly read own writes w/out server round-trip
             eventCache.synchronous().putAll(
                     acceptedBatch.events.fold(mutableMapOf()) { acc, event ->
                         acc[event.revision] = event
@@ -263,6 +264,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
             override val name: DatabaseName,
             override val revision: Revision,
         ) : Database {
+            // TODO: Cache stream revisions?
             override fun fetchStream(streamName: StreamName): Flow<Event> =
                 coreClient.fetchEventRevisionsByStream(
                     databaseName,
@@ -270,6 +272,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
                     streamName
                 ).map { eventCache[it].await() }
 
+            // TODO: Cache subject stream revisions?
             override fun fetchSubjectStream(
                 streamName: StreamName,
                 subjectName: StreamSubject
@@ -281,6 +284,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
                     subjectName
                 ).map { eventCache[it].await() }
 
+            // TODO: Cache subject revisions?
             override fun fetchSubject(subjectName: StreamSubject): Flow<Event> =
                 coreClient.fetchEventRevisionsBySubject(
                     databaseName,
@@ -288,6 +292,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
                     subjectName
                 ).map { eventCache[it].await() }
 
+            // TODO: Cache event type revisions?
             override fun fetchEventType(eventType: EventType): Flow<Event> =
                 coreClient.fetchEventRevisionsByType(
                     databaseName,
@@ -295,6 +300,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
                     eventType
                 ).map { eventCache[it].await() }
 
+            // TODO: Cache event stream+eventId -> revision at the connection level?
             override suspend fun fetchEventById(
                 streamName: StreamName,
                 eventId: EventId
@@ -378,8 +384,8 @@ internal class EventLoader(
         coreClient
             .fetchEventsByRevisions(database, eventIds)
             .collect { event ->
-            eventMap[event.revision] = event
-        }
+                eventMap[event.revision] = event
+            }
         return eventMap
     }
 }

@@ -111,7 +111,7 @@ class KotlinClient(private val channelBuilder: ManagedChannelBuilder<*>) : Evide
             scope.launch {
                 while (isActive) {
                     coreClient
-                        .tailDatabaseLog(databaseName)
+                        .subscribeDatabaseUpdates(databaseName)
                         .catch { e ->
                             if (e is StatusException) {
                                 if (!started.isDone) {

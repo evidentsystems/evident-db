@@ -128,6 +128,16 @@ class EvidentDb(
         ).database.toDomain()
     }
 
+    fun subscribeDatabaseUpdates(
+        database: DatabaseName
+    ): Flow<Database> = whenActive {
+        grpcClient.subscribeDatabaseUpdates(
+            DatabaseUpdatesSubscriptionRequest.newBuilder()
+                .setDatabaseName(database)
+                .build()
+        ).map { it.database.toDomain() }
+    }
+
     fun scanDatabaseLog(
         database: DatabaseName,
         startAtRevision: Revision = 0uL,
@@ -151,28 +161,6 @@ class EvidentDb(
                 .newBuilder()
                 .setIncludeEventDetail(true)
                 .setStartAtRevision(startAtRevision.toLong())
-                .setDatabaseName(database)
-                .build()
-        ).map { it.detail.toDomain() }
-    }
-
-    fun tailDatabaseLog(
-        database: DatabaseName
-    ): Flow<BatchSummary> = whenActive {
-        grpcClient.tailDatabaseLog(
-            LogTailRequest.newBuilder()
-                .setIncludeEventDetail(false)
-                .setDatabaseName(database)
-                .build()
-        ).map { it.summary.toDomain() }
-    }
-
-    fun tailDatabaseLogDetail(
-        database: DatabaseName
-    ): Flow<Batch> = whenActive {
-        grpcClient.tailDatabaseLog(
-            LogTailRequest.newBuilder()
-                .setIncludeEventDetail(true)
                 .setDatabaseName(database)
                 .build()
         ).map { it.detail.toDomain() }

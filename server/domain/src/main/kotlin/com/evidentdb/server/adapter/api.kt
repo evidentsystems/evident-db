@@ -96,6 +96,12 @@ interface EvidentDbAdapter: Lifecycle {
         repository.latestDatabase(databaseName).bind()
     }
 
+    /**
+     * Returns immediately (or awaits if not yet available) a database value greater than
+     * or equal to [atLeastRevision].
+     * @param atLeastRevision, the revision to await for inclusion in the returned [Database]
+     * @return [Either] a [Database], or else a [QueryError]
+     */
     suspend fun awaitDatabase(
         databaseNameStr: String,
         atLeastRevision: Revision,
@@ -103,17 +109,15 @@ interface EvidentDbAdapter: Lifecycle {
         val databaseName = DatabaseName(databaseNameStr)
             .mapLeft { DatabaseNotFound(databaseNameStr) }
             .bind()
-        when (val maybeDatabase = repository.latestDatabase(databaseName)) {
-            is Either.Left -> maybeDatabase.bind()
-            is Either.Right -> if (atLeastRevision <= maybeDatabase.value.revision) {
-                maybeDatabase.bind()
-            } else {
-                databaseUpdateStream.subscribe(databaseName)
-                    .first { maybeBatch ->
-                        maybeBatch.isRight { atLeastRevision <= it.revision }
-                    }
-                    .bind()
-            }
+        val maybeDatabase = repository.latestDatabase(databaseName).bind()
+        if (atLeastRevision <= maybeDatabase.revision) {
+            maybeDatabase
+        } else {
+            databaseUpdateStream.subscribe(databaseName)
+                .first { maybeDatabaseUpdate ->
+                    maybeDatabaseUpdate.isRight { atLeastRevision <= it.revision }
+                }
+                .bind()
         }
     }
 

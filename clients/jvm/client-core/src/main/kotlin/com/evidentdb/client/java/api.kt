@@ -19,6 +19,21 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
+/**
+ * This is the EvidentDB Java client.
+ * Use instances of this client to create and delete databases, show
+ * the catalog of all available databases, and get connections to
+ * a specific database.
+ *
+ * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
+ * When a program is finished communicating with an EvidentDB server (e.g.
+ * at program termination), the client can be cleanly [shutdown] (shutting down
+ * and removing all cached [Connection]s after awaiting in-flight requests to complete),
+ * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
+ * but not awaiting in-flight requests to complete). Subsequent API method calls will
+ * throw [ClientClosedException].
+ */
+@ThreadSafe
 interface EvidentDb: Shutdown, ClientHelpers {
     /**
      * Synchronously creates a database, which serves as the unit of total

@@ -10,16 +10,16 @@ import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CompletableFuture
 import com.evidentdb.client.kotlin.Connection as ConnectionKt
 import com.evidentdb.client.kotlin.Database as DatabaseKt
-import com.evidentdb.client.kotlin.KotlinClient
+import com.evidentdb.client.kotlin.EvidentDbClient as EvidentDbClientKt
 
-class JavaSimpleClient(channelBuilder: ManagedChannelBuilder<*>):
-    EvidentDb {
-    init {
-        // Required for all clients
-        init()
-    }
-
-    private val kotlinClient = KotlinClient(channelBuilder)
+/**
+ * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
+ *  for connecting to the EvidentDB server.
+ * @constructor Main entry point for creating EvidentDB clients
+ */
+class EvidentDbClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDb {
+    // Init extension loading is handled by kotlinClient
+    private val kotlinClient = EvidentDbClientKt(channelBuilder)
 
     override fun createDatabase(name: DatabaseName): Boolean =
         runBlocking { kotlinClient.createDatabase(name) }

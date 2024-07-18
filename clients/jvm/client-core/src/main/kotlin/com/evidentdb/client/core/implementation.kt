@@ -13,7 +13,7 @@ import io.grpc.Status
 import io.grpc.StatusException
 import kotlinx.coroutines.flow.*
 
-class EvidentDb(
+class EvidentDbClientCore(
     private val channel: ManagedChannel,
 ): Shutdown {
     private val grpcClient = EvidentDbGrpcKt.EvidentDbCoroutineStub(channel)

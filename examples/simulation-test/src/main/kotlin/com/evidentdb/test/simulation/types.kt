@@ -1,12 +1,10 @@
 package com.evidentdb.test.simulation
 
 import arrow.core.getOrElse
-import arrow.core.toNonEmptyListOrNull
 import com.evidentdb.client.Batch
 import com.evidentdb.client.BatchConstraint
-import com.evidentdb.client.BatchProposal
 import com.evidentdb.client.Revision
-import com.evidentdb.client.kotlin.Connection
+import com.evidentdb.client.java.Connection
 import io.cloudevents.CloudEvent
 import io.cloudevents.CloudEventData
 import io.cloudevents.core.builder.CloudEventBuilder
@@ -341,12 +339,7 @@ data class BatchInput(
     var database: String,
     var events: List<CloudEvent>,
     var constraints: List<BatchConstraint>
-) {
-    fun toBatchProposal() = BatchProposal(
-        events.toNonEmptyListOrNull()!!,
-        constraints
-    )
-}
+)
 
 sealed interface TransactionResultOutput {
     val latency: Long
@@ -359,7 +352,7 @@ sealed interface TransactionResultOutput {
             conn: Connection,
             start: Instant
         ): TransactionResultOutput =
-            conn.transact(input.toBatchProposal())
+            conn.transact(input.events, input.constraints)
                 .handle { batch, ex ->
                     val latency = Duration.between(start, Instant.now()).toNanos()
                     if (ex != null) {

@@ -1,6 +1,6 @@
 package com.evidentdb.client.kotlin.test
 
-import com.evidentdb.client.EvidentDb
+import com.evidentdb.client.java.EvidentDbCachingClient
 import io.grpc.ManagedChannelBuilder
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -12,7 +12,7 @@ private const val DATABASE_NAME = "kotlin-client-test-database"
 internal class CommandTests {
 
     companion object {
-        private val client = EvidentDb.javaClient(
+        private val client = EvidentDbCachingClient(
             ManagedChannelBuilder
                 .forAddress("localhost", 50051)
                 .usePlaintext()

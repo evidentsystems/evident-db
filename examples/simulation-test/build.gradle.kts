@@ -6,11 +6,11 @@ plugins {
 version = "0.1"
 group = "com.evidentdb.test"
 
-val kotlinVersion=project.properties.get("kotlinVersion")
+val kotlinVersion = project.properties["kotlinVersion"]
 
 dependencies {
     // EvidentDB client
-    implementation("com.evidentdb:client-kotlin")
+    implementation("com.evidentdb:client-java")
     implementation(libs.cloudevents.core)
     implementation(libs.grpc.netty)
     implementation(libs.arrow.core)

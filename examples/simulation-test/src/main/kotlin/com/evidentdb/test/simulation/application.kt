@@ -1,10 +1,10 @@
 package com.evidentdb.test.simulation
 
 import io.micronaut.runtime.Micronaut.run
-import com.evidentdb.client.java.EvidentDb
-import com.evidentdb.client.kotlin.EvidentDb
-import com.evidentdb.client.kotlin.kotlinClient
+import com.evidentdb.client.java.EvidentDbClient as EvidentDbJava
 import io.grpc.ManagedChannelBuilder
+import io.grpc.Status
+import io.grpc.StatusException
 import io.micronaut.context.annotation.Bean
 import io.micronaut.context.annotation.Context
 import io.micronaut.context.annotation.Factory
@@ -66,8 +66,8 @@ class Configuration {
 
 	@Singleton
 	@Bean(preDestroy = "shutdown")
-	fun evidentDbClient(channelBuilder: ManagedChannelBuilder<*>): com.evidentdb.client.kotlin.EvidentDb =
-		EvidentDb.kotlinClient(channelBuilder)
+	fun evidentDbClient(channelBuilder: ManagedChannelBuilder<*>): EvidentDbJava =
+		EvidentDbJava(channelBuilder)
 
 	@Singleton
 	fun topology(
@@ -76,7 +76,7 @@ class Configuration {
 		@Value("\${simulation.output.topic}")
 		resultsOutputTopic: String,
 		objectMapper: ObjectMapper,
-		evidentDb: com.evidentdb.client.kotlin.EvidentDb
+		evidentDb: EvidentDbJava
 	): Topology {
 		LOGGER.info(
 			"Initializing topology with input topic: {} and output topic: {}",
@@ -91,13 +91,13 @@ class Configuration {
 			)
 		).mapValues { batch ->
 			val start = Instant.now()
-			if (!databases.containsKey(batch.database)) {
-				println("Cache miss, can't find ${batch.database} in cache: ${databases.keys()}")
-				if (evidentDb.createDatabase(batch.database)) {
-					databases[batch.database] = Unit
-				}
+			val conn = try {
+				evidentDb.connectDatabase(batch.database)
+			} catch (e: StatusException) {
+				evidentDb.createDatabase(batch.database)
+				evidentDb.connectDatabase(batch.database)
 			}
-			val conn = evidentDb.connectDatabase(batch.database)
+			LOGGER.debug("conn.db() revision: {}", conn.db().revision)
 			TransactionResultOutput.fromBatchInput(batch, conn, start)
 		}
 

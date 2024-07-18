@@ -4,7 +4,27 @@ import com.evidentdb.client.*
 import io.cloudevents.CloudEvent
 import io.grpc.StatusException
 import kotlinx.coroutines.flow.Flow
+import javax.annotation.concurrent.ThreadSafe
 
+/**
+ * This is the EvidentDB Kotlin client.
+ * Use instances of this client to create and delete databases, show
+ * the catalog of all available databases, and get connections to
+ * a specific database.
+ *
+ * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
+ * When a program is finished communicating with an EvidentDB server (e.g.
+ * at program termination), the client can be cleanly [shutdown] (shutting down
+ * and removing all cached [Connection]s after awaiting in-flight requests to complete),
+ * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
+ * but not awaiting in-flight requests to complete). Subsequent API method calls will
+ * throw [ClientClosedException].
+ *
+ * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
+ * used to connect to the EvidentDB server.
+ * @constructor Main entry point for creating EvidentDB clients
+ */
+@ThreadSafe
 interface EvidentDb: Shutdown, ClientHelpers {
     /**
      * Creates a database, which serves as the unit of total

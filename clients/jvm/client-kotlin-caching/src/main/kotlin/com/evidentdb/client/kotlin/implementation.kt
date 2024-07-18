@@ -1,11 +1,7 @@
-package com.evidentdb.client.kotlin.caching
+package com.evidentdb.client.kotlin
 
 import com.evidentdb.client.*
-import com.evidentdb.client.core.EvidentDb as EvidentDbCore
-import com.evidentdb.client.kotlin.EvidentDb
-import com.evidentdb.client.kotlin.Connection
-import com.evidentdb.client.kotlin.ConnectionState
-import com.evidentdb.client.kotlin.Database
+import com.evidentdb.client.core.EvidentDbClientCore as EvidentDbCore
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache
 import com.github.benmanes.caffeine.cache.Caffeine
@@ -20,6 +16,7 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -34,17 +31,6 @@ internal const val EMPTY_EVENT_WEIGHT = 10
 
 /**
  * This is the top-level entry point for an EvidentDB Kotlin client that caches Event data.
- * Use instances of this client to create and delete databases, show
- * the catalog of all available databases, and get connections to
- * a specific database.
- *
- * Clients do not follow an acquire-use-release pattern, and are thread-safe and long-lived.
- * When a program is finished communicating with an EvidentDB server (e.g.
- * at program termination), the client can be cleanly [shutdown] (shutting down
- * and removing all cached [Connection]s after awaiting in-flight requests to complete),
- * or urgently [shutdownNow] (shutting down and removing all cached [Connection]s
- * but not awaiting in-flight requests to complete). Subsequent API method calls will
- * throw [ClientClosedException].
  *
  * @param channelBuilder The gRPC [io.grpc.ManagedChannelBuilder]
  * used to connect to the EvidentDB server.
@@ -52,7 +38,7 @@ internal const val EMPTY_EVENT_WEIGHT = 10
  * @constructor Main entry point for creating EvidentDB clients
  */
 @ThreadSafe
-class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDb {
+class EvidentDbCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) : EvidentDb {
     private val coreClient = EvidentDbCore(channelBuilder.build())
     private val connections = ConcurrentHashMap<DatabaseName, Connection>(10)
     private val cacheSizeReference = AtomicLong(DEFAULT_CACHE_SIZE)
@@ -136,7 +122,7 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
                 .buildAsync(eventLoader)
 
         private val isActive
-            get() = this@KotlinCachingClient.isActive && state.get() != ConnectionState.CLOSED
+            get() = this@EvidentDbCachingClient.isActive && state.get() != ConnectionState.CLOSED
 
         private fun setLatestRevision(revision: Revision) {
             latestRevision.getAndUpdate { prev -> max(revision, prev) }
@@ -146,49 +132,54 @@ class KotlinCachingClient(private val channelBuilder: ManagedChannelBuilder<*>) 
             val started = CompletableFuture<Boolean>()
             scope.launch {
                 while (isActive) {
-                    coreClient
-                        .subscribeDatabaseUpdates(databaseName)
-                        .catch { e ->
-                            if (e is StatusException) {
+                    try {
+                        coreClient
+                            .subscribeDatabaseUpdates(databaseName)
+                            .collect { batchSummary ->
                                 if (!started.isDone) {
                                     started.complete(true)
                                 }
-                                state.set(ConnectionState.CLOSED)
+                                state.set(ConnectionState.CONNECTED)
+                                setLatestRevision(batchSummary.revision)
                             }
-                        }
-                        .collect { batchSummary ->
+                    } catch (e: Exception) {
+                        if (e is StatusException) {
                             if (!started.isDone) {
-                                started.complete(true)
+                                // If immediate error (first response), prevent construction
+                                started.completeExceptionally(e)
+                            } else {
+                                // Otherwise, shutdown (and thereby uncache) this connection
+                                shutdown()
                             }
-                            state.set(ConnectionState.CONNECTED)
-                            setLatestRevision(batchSummary.revision)
                         }
-                    state.set(ConnectionState.DISCONNECTED)
+                    }
                 }
             }
             try {
                 started.get(30, TimeUnit.SECONDS)
             } catch (e: TimeoutException) {
-                state.set(ConnectionState.CLOSED)
+                shutdown()
+            } catch (e: ExecutionException) {
+                throw e.cause!!
             }
         }
 
         override fun shutdown() {
             state.set(ConnectionState.CLOSED)
+            removeConnection(databaseName)
+            scope.cancel()
             coreClient.shutdown()
             eventLoader.shutdown()
-            scope.cancel()
             invalidateCaches()
-            removeConnection(databaseName)
         }
 
         override fun shutdownNow() {
             state.set(ConnectionState.CLOSED)
+            removeConnection(databaseName)
+            scope.cancel()
             coreClient.shutdownNow()
             eventLoader.shutdownNow()
-            scope.cancel()
             invalidateCaches()
-            removeConnection(databaseName)
         }
 
         // Cache management

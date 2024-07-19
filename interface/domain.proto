@@ -5,12 +5,12 @@ package com.evidentdb;
 import "cloudevents.proto";
 import "google/protobuf/timestamp.proto";
 
-option csharp_namespace = "EvidentDB.V1";
-option go_package = "evidentdb.com/genproto/v1";
-option java_package = "com.evidentdb.dto.v1.proto";
+option csharp_namespace = "EvidentDB.V1.Proto.Domain";
+option go_package = "evidentdb.com/v1/genproto/domain";
+option java_package = "com.evidentdb.v1.proto.domain";
 option java_multiple_files = true;
-option php_namespace = "Com\\EvidentDB\\V1\\Proto";
-option ruby_package = "Com::EvidentDB::V1::Proto";
+option php_namespace = "Com\\EvidentDB\\V1\\Proto\\Domain";
+option ruby_package = "Com::EvidentDB::V1::Proto::Domain";
 option objc_class_prefix = "EDB";
 
 message Database {

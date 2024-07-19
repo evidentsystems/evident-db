@@ -11,6 +11,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
     implementation(libs.cloudevents.core)
     implementation(libs.commons.codec)
+    compileOnly(libs.slf4j.api)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }

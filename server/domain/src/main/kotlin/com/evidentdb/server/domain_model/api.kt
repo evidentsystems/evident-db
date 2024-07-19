@@ -260,11 +260,11 @@ data class WellFormedProposedBatch(
 
 data class IndexedBatch private constructor(
     override val database: DatabaseName,
-    val events: NonEmptyList<IndexedEvent>,
+    override val events: NonEmptyList<IndexedEvent>,
     override val timestamp: Instant,
     override val basis: Revision,
     val constraints: Map<BatchConstraintKey, BatchConstraint>,
-): Batch {
+): BatchDetail {
     override val revision
         get() = basis + events.size.toUInt()
 

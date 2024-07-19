@@ -6,173 +6,184 @@ import com.google.protobuf.Any
 import com.google.rpc.Code
 import com.google.rpc.Status
 import io.cloudevents.protobuf.toTransfer
-import io.grpc.StatusRuntimeException
+import io.grpc.StatusException
 import io.grpc.protobuf.StatusProto
-import com.evidentdb.dto.v1.proto.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
-import com.evidentdb.dto.v1.proto.BatchConstraintConflict as ProtoBatchConstraintConflict
-import com.evidentdb.dto.v1.proto.DuplicateEventId as ProtoDuplicateEventId
-import com.evidentdb.dto.v1.proto.EventInvalidation as ProtoEventInvalidation
-import com.evidentdb.dto.v1.proto.InvalidBatchConstraint as ProtoInvalidBatchConstraint
-import com.evidentdb.dto.v1.proto.InvalidBatchConstraintRange as ProtoInvalidBatchConstraintRange
-import com.evidentdb.dto.v1.proto.InvalidEvent as ProtoInvalidEvent
-import com.evidentdb.dto.v1.proto.InvalidEventId as ProtoInvalidEventId
-import com.evidentdb.dto.v1.proto.InvalidEventSource as ProtoInvalidEventSource
-import com.evidentdb.dto.v1.proto.InvalidEventSubject as ProtoInvalidEventSubject
-import com.evidentdb.dto.v1.proto.InvalidEventType as ProtoInvalidEventType
-import com.evidentdb.dto.v1.proto.InvalidStreamName as ProtoInvalidStreamName
+import com.evidentdb.v1.proto.domain.BatchConstraintInvalidation as ProtoBatchConstraintInvalidation
+import com.evidentdb.v1.proto.domain.BatchConstraintConflict as ProtoBatchConstraintConflict
+import com.evidentdb.v1.proto.domain.DuplicateEventId as ProtoDuplicateEventId
+import com.evidentdb.v1.proto.domain.EventInvalidation as ProtoEventInvalidation
+import com.evidentdb.v1.proto.domain.InvalidBatchConstraint as ProtoInvalidBatchConstraint
+import com.evidentdb.v1.proto.domain.InvalidBatchConstraintRange as ProtoInvalidBatchConstraintRange
+import com.evidentdb.v1.proto.domain.InvalidEvent as ProtoInvalidEvent
+import com.evidentdb.v1.proto.domain.InvalidEventId as ProtoInvalidEventId
+import com.evidentdb.v1.proto.domain.InvalidEventSource as ProtoInvalidEventSource
+import com.evidentdb.v1.proto.domain.InvalidEventSubject as ProtoInvalidEventSubject
+import com.evidentdb.v1.proto.domain.InvalidEventType as ProtoInvalidEventType
+import com.evidentdb.v1.proto.domain.InvalidStreamName as ProtoInvalidStreamName
 
-fun EvidentDbCommandError.toRuntimeException(): StatusRuntimeException =
+fun EvidentDbCommandError.toStatusException(): StatusException =
     when (this) {
-        is ConcurrentWriteCollision -> throw IllegalStateException("ConcurrentWriteCollision isn't public")
-        is BatchConstraintViolations -> this.toRuntimeException()
-        is DatabaseNotFound -> this.toRuntimeException()
-        is InternalServerError -> this.toRuntimeException()
-        EmptyBatch -> EmptyBatch.toRuntimeException()
-        is InvalidBatchConstraints -> this.toRuntimeException()
-        is BatchConstraintConflicts -> this.toRuntimeException()
-        is InvalidEvents -> this.toRuntimeException()
-        is DatabaseNameAlreadyExists -> this.toRuntimeException()
-        is InvalidDatabaseName -> this.toRuntimeException()
+        is ConcurrentWriteCollision ->
+            // Don't surface ConcurrentWriteCollision to client
+            InternalServerError("Write collision timeout").toStatusException()
+        is BatchConstraintViolations -> this.toStatusException()
+        is DatabaseNotFound -> this.toStatusException()
+        is InternalServerError -> this.toStatusException()
+        EmptyBatch -> EmptyBatch.toStatusException()
+        is InvalidBatchConstraints -> this.toStatusException()
+        is BatchConstraintConflicts -> this.toStatusException()
+        is InvalidEvents -> this.toStatusException()
+        is DatabaseNameAlreadyExists -> this.toStatusException()
+        is InvalidDatabaseName -> this.toStatusException()
     }
 
-fun QueryError.toRuntimeException(): StatusRuntimeException =
+fun QueryError.toStatusException(): StatusException =
     when (this) {
-        is DatabaseNotFound -> this.toRuntimeException()
-        is EventNotFound -> this.toRuntimeException()
-        is InternalServerError -> this.toRuntimeException()
-        is InvalidEventId -> this.toRuntimeException()
-        is InvalidEventSubject -> this.toRuntimeException()
-        is InvalidEventType -> this.toRuntimeException()
-        is InvalidStreamName -> this.toRuntimeException()
+        is DatabaseNotFound -> this.toStatusException()
+        is EventNotFound -> this.toStatusException()
+        is InternalServerError -> this.toStatusException()
+        is InvalidEventId -> this.toStatusException()
+        is InvalidEventSubject -> this.toStatusException()
+        is InvalidEventType -> this.toStatusException()
+        is InvalidStreamName -> this.toStatusException()
+        InvalidIndexQuery -> this.toStatusException()
     }
 
-fun DatabaseNameAlreadyExists.toRuntimeException(): StatusRuntimeException {
+fun DatabaseNameAlreadyExists.toStatusException(): StatusException {
     val status = Status.newBuilder()
         .setCode(Code.ALREADY_EXISTS_VALUE)
         .setMessage("A database named '${name.value}' already exists")
         .build()
-    return StatusProto.toStatusRuntimeException(status)
+    return StatusProto.toStatusException(status)
 }
 
-fun InvalidDatabaseName.toRuntimeException(): StatusRuntimeException {
+fun InvalidDatabaseName.toStatusException(): StatusException {
     val status = Status.newBuilder()
         .setCode(Code.INVALID_ARGUMENT_VALUE)
-        .setMessage("Invalid database name: '$name'. Names must match ${DatabaseName.PATTERN}")
+        .setMessage("Invalid database name: '$name'. Names must match /${DatabaseName.PATTERN}/")
         .build()
-    return StatusProto.toStatusRuntimeException(status)
+    return StatusProto.toStatusException(status)
 }
 
-fun DatabaseNotFound.toRuntimeException(): StatusRuntimeException {
+fun DatabaseNotFound.toStatusException(): StatusException {
     val status = Status.newBuilder()
         .setCode(Code.NOT_FOUND_VALUE)
-        .setMessage("No database named '$name' could be found")
+        .setMessage("No database named '$name' found")
         .build()
-    return StatusProto.toStatusRuntimeException(status)
+    return StatusProto.toStatusException(status)
 }
 
-fun EmptyBatch.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(Status.newBuilder()
+fun InvalidIndexQuery.toStatusException(): StatusException {
+    val status = Status.newBuilder()
+        .setCode(Code.INVALID_ARGUMENT_VALUE)
+        .setMessage("Malformed event index query")
+        .build()
+    return StatusProto.toStatusException(status)
+}
+
+fun EmptyBatch.toStatusException(): StatusException =
+    StatusProto.toStatusException(Status.newBuilder()
         .setCode(Code.INVALID_ARGUMENT_VALUE)
         .setMessage("A transaction batch must contain at least one event")
         .build())
 
-fun InvalidBatchConstraints.toRuntimeException(): StatusRuntimeException {
+fun InvalidBatchConstraints.toStatusException(): StatusException {
     val details = invalidConstraints.map { invalidBatchConstraint ->
         Any.pack(invalidBatchConstraint.toTransfer())
     }
-    return StatusProto.toStatusRuntimeException(
+    return StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
-            .setMessage("The provided batch included some invalid constraints")
+            .setMessage("The provided batch includes some invalid constraints")
             .addAllDetails(details)
             .build()
     )
 }
 
-fun BatchConstraintConflicts.toRuntimeException(): StatusRuntimeException {
+fun BatchConstraintConflicts.toStatusException(): StatusException {
     val details = conflicts.map { conflict ->
         Any.pack(conflict.toTransfer())
     }
-    return StatusProto.toStatusRuntimeException(
+    return StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
-            .setMessage("The provided batch included some constraints that conflicted with each other")
+            .setMessage("The provided batch includes some constraints that conflicted with each other")
             .addAllDetails(details)
             .build()
     )
 }
 
-fun InvalidEvents.toRuntimeException(): StatusRuntimeException {
+fun InvalidEvents.toStatusException(): StatusException {
     val details = invalidEvents.map { invalidEvent ->
         Any.pack(invalidEvent.toTransfer())
     }
-    return StatusProto.toStatusRuntimeException(
+    return StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
-            .setMessage("The provided batch included some invalid events")
+            .setMessage("The provided batch includes some invalid events")
             .addAllDetails(details)
             .build()
     )
 }
 
-fun BatchConstraintViolations.toRuntimeException(): StatusRuntimeException {
+fun BatchConstraintViolations.toStatusException(): StatusException {
     val details = violations.map { violation ->
         Any.pack(violation.toTransfer())
     }
-    return StatusProto.toStatusRuntimeException(
+    return StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.FAILED_PRECONDITION_VALUE)
-            .setMessage("Batch optimistic concurrency control constraints don't match current database state")
+            .setMessage("Current database doesn't conform to the provided batch constraints: ${violations}")
             .addAllDetails(details)
             .build()
     )
 }
 
-fun EventNotFound.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun EventNotFound.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.NOT_FOUND_VALUE)
             .setMessage(message)
             .build()
     )
 
-fun InternalServerError.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun InternalServerError.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INTERNAL_VALUE)
             .setMessage(message)
             .build()
     )
 
-fun InvalidEventId.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun InvalidEventId.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
             .setMessage("Event ID cannot be empty")
             .build()
 )
 
-fun InvalidEventSubject.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun InvalidEventSubject.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
             .setMessage("Event subject cannot be empty")
             .build()
     )
 
-fun InvalidEventType.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun InvalidEventType.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
             .setMessage("Event type cannot be empty, and should be a reverse DNS name")
             .build()
     )
 
-fun InvalidStreamName.toRuntimeException(): StatusRuntimeException =
-    StatusProto.toStatusRuntimeException(
+fun InvalidStreamName.toStatusException(): StatusException =
+    StatusProto.toStatusException(
         Status.newBuilder()
             .setCode(Code.INVALID_ARGUMENT_VALUE)
-            .setMessage("Invalid stream name '$streamName'. Stream names must match ${StreamName.PATTERN}")
+            .setMessage("Invalid stream name '$streamName'. Stream names must match /${StreamName.PATTERN}/")
             .build()
     )
 

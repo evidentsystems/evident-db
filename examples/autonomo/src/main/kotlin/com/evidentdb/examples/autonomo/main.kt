@@ -1,7 +1,7 @@
 package com.evidentdb.examples.autonomo
 
-import com.evidentdb.client.EvidentDb
-import com.evidentdb.client.EvidentDbKt
+import com.evidentdb.client.java.EvidentDb
+import com.evidentdb.client.kotlin.EvidentDb
 import com.evidentdb.client.kotlin.Connection
 import com.evidentdb.examples.autonomo.adapters.EvidentDbRideService
 import com.evidentdb.examples.autonomo.adapters.EvidentDbVehicleService
@@ -24,7 +24,7 @@ class Beans {
 	fun evidentDbConnection(
 		@Value("\${evident-db.database-name}")
 		databaseName: String,
-		client: EvidentDbKt,
+		client: com.evidentdb.client.kotlin.EvidentDb,
 	): Connection = runBlocking {
 		client.createDatabaseAsync(databaseName)
 		client.connectDatabase(databaseName)
@@ -37,7 +37,7 @@ class Beans {
 		host: String,
 		@Value("\${evident-db.port}")
 		port: Int,
-	): EvidentDbKt {
+	): com.evidentdb.client.kotlin.EvidentDb {
 		val builder = ManagedChannelBuilder
 			.forAddress(host, port)
 			.usePlaintext()

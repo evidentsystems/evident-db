@@ -548,3 +548,7 @@ interface Batch {
     val revision: Revision
     val timestamp: Instant
 }
+
+interface BatchDetail: Batch {
+    val events: List<Event>
+}

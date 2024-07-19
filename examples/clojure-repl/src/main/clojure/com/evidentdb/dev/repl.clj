@@ -3,7 +3,8 @@
   (:import [java.net URI]
            [io.grpc ManagedChannelBuilder]
            [io.cloudevents CloudEventData]
-           [com.evidentdb.client EvidentDb CloseableIterator]))
+           [com.evidentdb.client CloseableIterator]
+           [com.evidentdb.client.java.caching EvidentDb]))
 
 (defn event-proposal
   ([event-type stream-name]
@@ -38,6 +39,7 @@
 
   (def client (EvidentDb/javaClient
                (-> (ManagedChannelBuilder/forAddress "localhost" 50051)
+                   #_.useTransportSecurity
                    .usePlaintext)))
   (def database-name "clojure-repl")
 
@@ -58,7 +60,8 @@
 
   (def batch [(event-proposal "event.occurred"
                               (str "stream-" (rand-int 4))
-                              {:subject (str "foo-" (rand-int 10))})
+                              {:event-id (random-uuid)
+                               :subject (str "foo-" (rand-int 10))})
               (event-proposal "event.happened"
                               (str "stream-" (rand-int 4))
                               {:subject (str "foo-" (rand-int 10))})])

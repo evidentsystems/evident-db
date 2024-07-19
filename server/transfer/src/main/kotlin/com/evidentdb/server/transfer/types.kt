@@ -5,15 +5,15 @@ import arrow.core.NonEmptyList
 import arrow.core.nonEmptyListOf
 import arrow.core.raise.either
 import arrow.core.raise.zipOrAccumulate
-import com.evidentdb.dto.v1.proto.BatchConstraint.ConstraintCase.*
+import com.evidentdb.v1.proto.domain.BatchConstraint.ConstraintCase.*
 import com.evidentdb.server.domain_model.*
 import com.google.protobuf.Timestamp
 import io.cloudevents.protobuf.toTransfer
 import java.time.Instant
-import com.evidentdb.dto.v1.proto.Batch as ProtoBatch
-import com.evidentdb.dto.v1.proto.BatchConstraint as ProtoBatchConstraint
-import com.evidentdb.dto.v1.proto.BatchSummary as ProtoBatchSummary
-import com.evidentdb.dto.v1.proto.Database as ProtoDatabase
+import com.evidentdb.v1.proto.domain.Batch as ProtoBatch
+import com.evidentdb.v1.proto.domain.BatchConstraint as ProtoBatchConstraint
+import com.evidentdb.v1.proto.domain.BatchSummary as ProtoBatchSummary
+import com.evidentdb.v1.proto.domain.Database as ProtoDatabase
 import io.cloudevents.v1.proto.CloudEvent as ProtoCloudEvent
 
 fun Instant.toTimestamp(): Timestamp =
@@ -28,11 +28,11 @@ fun Database.toTransfer(): ProtoDatabase = ProtoDatabase.newBuilder()
     .build()
 
 // For returning AcceptedBatch from transaction
-fun IndexedBatch.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
+fun BatchDetail.toTransfer(): ProtoBatch = ProtoBatch.newBuilder()
     .setDatabase(database.value)
+    .setBasis(basis.toLong())
     .addAllEvents(events.map { it.event.toTransfer() })
     .setTimestamp(timestamp.toTimestamp())
-    .setBasis(basis.toLong())
     .build()
 
 // For fetching BatchSummary for log, etc.

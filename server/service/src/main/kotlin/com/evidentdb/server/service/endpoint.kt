@@ -8,12 +8,10 @@ import com.evidentdb.server.adapter.EvidentDbAdapter
 import com.evidentdb.server.domain_model.*
 import com.evidentdb.server.transfer.toDomain
 import com.evidentdb.server.transfer.toTransfer
-import com.evidentdb.service.v1.*
+import com.evidentdb.v1.proto.service.*
 import io.cloudevents.protobuf.toDomain
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import io.cloudevents.protobuf.toTransfer
+import kotlinx.coroutines.flow.*
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -26,15 +24,19 @@ class EvidentDbEndpoint(
 
     // Command
     override suspend fun createDatabase(request: CreateDatabaseRequest): CreateDatabaseReply {
-        LOGGER.info("createDatabase: ${request.name}")
+        LOGGER.info("createDatabase(databaseName: {})", request.databaseName)
         val reply = CreateDatabaseReply.newBuilder()
-        when (val result = adapter.createDatabase(request.name)) {
+        when (val result = adapter.createDatabase(request.databaseName)) {
             is Either.Left -> {
-                LOGGER.warn("createDatabase error: ${request.name}")
-                throw result.value.toRuntimeException()
+                val exception = result.value.toStatusException()
+                LOGGER.warn(
+                    "createDatabase error in database {}: {}",
+                    request.databaseName, exception.message
+                )
+                throw exception
             }
             is Either.Right -> {
-                LOGGER.info("createDatabase success: ${request.name}")
+                LOGGER.info("createDatabase success: {}", request.databaseName)
                 reply.database = result.value.toTransfer()
             }
         }
@@ -42,7 +44,7 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun transactBatch(request: TransactBatchRequest): TransactBatchReply {
-        LOGGER.info("transactBatch in database: ${request.database}")
+        LOGGER.info("transactBatch(databaseName: {})", request.databaseName)
         val reply = TransactBatchReply.newBuilder()
         val constraints = either<NonEmptyList<InvalidBatchConstraint>, List<BatchConstraint>> {
             mapOrAccumulate(
@@ -57,18 +59,25 @@ class EvidentDbEndpoint(
         val result: Either<EvidentDbCommandError, IndexedBatch> =
             either {
                 adapter.transactBatch(
-                    request.database,
+                    request.databaseName,
                     request.eventsList.map { ProposedEvent(it.toDomain()) },
                     constraints.bind(),
                 ).bind()
             }
         when (result) {
             is Either.Left -> {
-                LOGGER.warn("transactBatch error in database: ${request.database}")
-                throw result.value.toRuntimeException()
+                val exception = result.value.toStatusException()
+                LOGGER.warn(
+                    "transactBatch error in database {}: {}",
+                    request.databaseName, exception.message
+                )
+                throw exception
             }
             is Either.Right -> {
-                LOGGER.info("transactBatch success in database: ${request.database}")
+                LOGGER.info(
+                    "transactBatch success in database {}, now at revision {}",
+                    request.databaseName, result.value.revision
+                )
                 reply.batch = result.value.toTransfer()
             }
         }
@@ -76,15 +85,19 @@ class EvidentDbEndpoint(
     }
 
     override suspend fun deleteDatabase(request: DeleteDatabaseRequest): DeleteDatabaseReply {
-        LOGGER.info("deleteDatabase: ${request.name}")
+        LOGGER.info("deleteDatabase(databaseName: {})", request.databaseName)
         val reply = DeleteDatabaseReply.newBuilder()
-        when (val result = adapter.deleteDatabase(request.name)) {
+        when (val result = adapter.deleteDatabase(request.databaseName)) {
             is Either.Left -> {
-                LOGGER.warn("deleteDatabase error: ${request.name}")
-                throw result.value.toRuntimeException()
+                val exception = result.value.toStatusException()
+                LOGGER.warn(
+                    "deleteDatabase error in database {}: {}",
+                    request.databaseName, exception.message
+                )
+                throw exception
             }
             is Either.Right -> {
-                LOGGER.info("deleteDatabase success: ${request.name}")
+                LOGGER.info("deleteDatabase success: {}", request.databaseName)
                 reply.database = result.value.toTransfer()
             }
         }
@@ -92,147 +105,209 @@ class EvidentDbEndpoint(
     }
 
     // Query
-    override fun catalog(request: CatalogRequest): Flow<CatalogReply> = flow {
-        LOGGER.info("catalog")
-        emitAll(adapter.catalog().map {
+    override fun fetchCatalog(request: CatalogRequest): Flow<CatalogReply> = flow {
+        LOGGER.info("fetchCatalog()")
+        emitAll(adapter.fetchCatalog().map {
             CatalogReply.newBuilder()
                 .setDatabaseName(it.value)
                 .build()
         })
     }
 
-    override fun connect(request: ConnectRequest): Flow<DatabaseReply> = flow {
-        LOGGER.info("connect: ${request.name}")
-        emitAll(adapter.connect(request.name).map {
-            val reply = DatabaseReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.database = it.value.toTransfer()
-            }
-            reply.build()
-        })
-    }
-
-    override suspend fun latestDatabase(request: LatestDatabaseRequest): DatabaseReply {
-        LOGGER.info("latestDatabase: ${request.name}")
+    override suspend fun fetchLatestDatabase(request: LatestDatabaseRequest): DatabaseReply {
+        LOGGER.info("fetchLatestDatabase(databaseName: {})", request.databaseName)
         val reply = DatabaseReply.newBuilder()
-        when (val result = adapter.latestDatabase(request.name)) {
-            is Either.Left -> throw result.value.toRuntimeException()
+        when (val result = adapter.fetchLatestDatabase(request.databaseName)) {
+            is Either.Left -> throw result.value.toStatusException()
             is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
     }
 
-    override suspend fun databaseAtRevision(request: DatabaseAtRevisionRequest): DatabaseReply {
-        LOGGER.info("databaseAtRevision: ${request.name}, ${request.revision}")
+    // TODO: Write test to ensure that we await if database revision isn't already available
+    override suspend fun awaitDatabase(
+        request: AwaitDatabaseRequest
+    ): DatabaseReply {
+        LOGGER.info(
+            "awaitDatabaseGreaterThanRevision(databaseName: {}, minimumRevision: {})",
+            request.databaseName, request.atLeastRevision
+        )
         val reply = DatabaseReply.newBuilder()
-        when (val result = adapter.databaseAtRevision(request.name, request.revision.toULong())) {
-            is Either.Left -> throw result.value.toRuntimeException()
-            is Either.Right -> reply.database = result.value.toTransfer()
-        }
-        return reply.build()
-    }
-
-    override fun databaseLog(request: DatabaseLogRequest): Flow<DatabaseLogReply> = flow {
-        LOGGER.info("databaseLog: ${request.name}, ${request.revision}")
-        emitAll(adapter.databaseLog(request.name, request.revision.toULong()).map {
-            val reply = DatabaseLogReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.batch = it.value.toTransfer()
-            }
-            reply.build()
-        })
-    }
-
-    override fun stream(request: StreamRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("stream: ${request.database}, ${request.revision}, ${request.stream}")
-        emitAll(adapter.stream(
-            request.database,
-            request.revision.toULong(),
-            request.stream
-        ).map {
-            val reply = EventRevisionReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.revision = it.value.toLong()
-            }
-            reply.build()
-        })
-    }
-
-    override fun subjectStream(request: SubjectStreamRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("subjectStream: ${request.database}, ${request.revision}, ${request.stream}, ${request.subject}")
-        emitAll(adapter.subjectStream(
-            request.database,
-            request.revision.toULong(),
-            request.stream,
-            request.subject
-        ).map {
-            val reply = EventRevisionReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.revision = it.value.toLong()
-            }
-            reply.build()
-        })
-    }
-
-    override fun subject(request: SubjectRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("subject: ${request.database}, ${request.revision}, ${request.subject}")
-        emitAll(adapter.subject(
-            request.database,
-            request.revision.toULong(),
-            request.subject
-        ).map {
-            val reply = EventRevisionReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.revision = it.value.toLong()
-            }
-            reply.build()
-        })
-    }
-
-    override fun eventType(request: EventTypeRequest): Flow<EventRevisionReply> = flow {
-        LOGGER.info("eventType: ${request.database}, ${request.revision}, ${request.eventType}")
-        emitAll(adapter.eventType(
-            request.database,
-            request.revision.toULong(),
-            request.eventType
-        ).map {
-            val reply = EventRevisionReply.newBuilder()
-            when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
-                is Either.Right -> reply.revision = it.value.toLong()
-            }
-            reply.build()
-        })
-    }
-
-    override suspend fun eventById(request: EventByIdRequest): EventReply {
-        LOGGER.info("eventById: ${request.database}, ${request.revision}, ${request.stream}, ${request.eventId}")
-        val reply = EventReply.newBuilder()
-        when (val result = adapter.eventById(
-            request.database,
-            request.revision.toULong(),
-            request.stream,
-            request.eventId
+        when (val result = adapter.awaitDatabase(
+            request.databaseName,
+            request.atLeastRevision.toULong()
         )) {
-            is Either.Left -> throw result.value.toRuntimeException()
-            is Either.Right -> reply.event = result.value.toTransfer()
+            is Either.Left -> throw result.value.toStatusException()
+            is Either.Right -> reply.database = result.value.toTransfer()
         }
         return reply.build()
     }
 
-    override fun events(request: EventByRevisionRequest): Flow<EventReply> = flow {
-        LOGGER.info("events: ${request.database}, ${request.eventRevisionsList}")
-        emitAll(adapter.eventsByRevision(
-            request.database, request.eventRevisionsList.map { it.toULong() }
+    override fun subscribeDatabaseUpdates(
+        request: DatabaseUpdatesSubscriptionRequest
+    ): Flow<DatabaseReply> = flow {
+        LOGGER.info("subscribeDatabaseUpdates(databaseName: {})", request.databaseName)
+        emitAll(
+            adapter.subscribeDatabaseUpdates(request.databaseName).map {
+                val reply = DatabaseReply.newBuilder()
+                when (it) {
+                    is Either.Left -> throw it.value.toStatusException()
+                    is Either.Right -> reply.database = it.value.toTransfer()
+                }
+                reply.build()
+            }
+        )
+    }
+
+    override fun scanDatabaseLog(request: LogScanRequest): Flow<DatabaseLogReply> = flow {
+        LOGGER.info(
+            "scanDatabaseLog(databaseName: {}, startAtRevision: {}, includeEventDetail: {})",
+            request.databaseName, request.startAtRevision, request.includeEventDetail
+        )
+        emitAll(
+            if (request.includeEventDetail) {
+                adapter.scanDatabaseLogDetail(
+                    request.databaseName,
+                    request.startAtRevision.toULong()
+                ).map {
+                    val reply = DatabaseLogReply.newBuilder()
+                    when (it) {
+                        is Either.Left -> throw it.value.toStatusException()
+                        is Either.Right -> reply.detail = it.value.toTransfer()
+                    }
+                    reply.build()
+                }
+            } else {
+                adapter.scanDatabaseLog(
+                    request.databaseName,
+                    request.startAtRevision.toULong()
+                ).map {
+                    val reply = DatabaseLogReply.newBuilder()
+                    when (it) {
+                        is Either.Left -> throw it.value.toStatusException()
+                        is Either.Right -> reply.summary = it.value.toTransfer()
+                    }
+                     reply.build()
+                }
+            }
+        )
+    }
+
+    override fun queryEventIndex(request: EventIndexRequest): Flow<EventIndexReply> = flow {
+        LOGGER.info(
+            "queryEventIndex(databaseName: {}, revision: {}, includeEventDetail: {}, queryCase: {})",
+            request.databaseName, request.revision, request.includeEventDetail, request.queryCase
+        )
+        if (request.includeEventDetail) {
+            val eventIndex = when(request.queryCase) {
+                EventIndexRequest.QueryCase.STREAM ->
+                    adapter.fetchEventsByStream(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.stream.stream
+                    )
+                EventIndexRequest.QueryCase.SUBJECT_STREAM ->
+                    adapter.fetchEventsBySubjectAndStream(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.subjectStream.stream,
+                        request.subjectStream.subject
+                    )
+                EventIndexRequest.QueryCase.SUBJECT ->
+                    adapter.fetchEventsBySubject(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.subject.subject
+                    )
+                EventIndexRequest.QueryCase.EVENT_TYPE ->
+                    adapter.fetchEventsByType(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.eventType.eventType
+                    )
+                EventIndexRequest.QueryCase.EVENT_BY_ID ->
+                    flowOf(
+                        adapter.fetchEventById(
+                            request.databaseName,
+                            request.revision.toULong(),
+                            request.eventById.stream,
+                            request.eventById.eventId,
+                        )
+                    )
+                EventIndexRequest.QueryCase.QUERY_NOT_SET, null ->
+                    throw InvalidIndexQuery.toStatusException()
+            }
+            emitAll(
+                eventIndex.map {
+                    val reply = EventIndexReply.newBuilder()
+                    when (it) {
+                        is Either.Left -> throw it.value.toStatusException()
+                        is Either.Right -> reply.detail = it.value.event.toTransfer()
+                    }
+                    reply.build()
+                }
+            )
+        } else {
+            val eventIndex = when(request.queryCase) {
+                EventIndexRequest.QueryCase.STREAM ->
+                    adapter.fetchEventRevisionsByStream(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.stream.stream
+                    )
+                EventIndexRequest.QueryCase.SUBJECT_STREAM ->
+                    adapter.fetchEventRevisionsBySubjectAndStream(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.subjectStream.stream,
+                        request.subjectStream.subject
+                    )
+                EventIndexRequest.QueryCase.SUBJECT ->
+                    adapter.fetchEventRevisionsBySubject(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.subject.subject
+                    )
+                EventIndexRequest.QueryCase.EVENT_TYPE ->
+                    adapter.fetchEventRevisionsByType(
+                        request.databaseName,
+                        request.revision.toULong(),
+                        request.eventType.eventType
+                    )
+                EventIndexRequest.QueryCase.EVENT_BY_ID ->
+                    flowOf(
+                        adapter.fetchEventById(
+                            request.databaseName,
+                            request.revision.toULong(),
+                            request.eventById.stream,
+                            request.eventById.eventId,
+                        ).map { it.revision }
+                    )
+                EventIndexRequest.QueryCase.QUERY_NOT_SET, null ->
+                    throw InvalidIndexQuery.toStatusException()
+            }
+            emitAll(eventIndex.map {
+                val reply = EventIndexReply.newBuilder()
+                when (it) {
+                    is Either.Left -> throw it.value.toStatusException()
+                    is Either.Right -> reply.revision = it.value.toLong()
+                }
+                reply.build()
+            })
+        }
+    }
+
+    override fun fetchEventsByRevisions(request: EventsByRevisionsRequest): Flow<EventReply> = flow {
+        LOGGER.info(
+            "fetchEventsByRevisions(databaseName: {}, eventRevisions: {})",
+            request.databaseName, request.eventRevisionsList
+        )
+        emitAll(adapter.fetchEventsByRevisions(
+            request.databaseName, request.eventRevisionsList.map { it.toULong() }
         ).map {
             val reply = EventReply.newBuilder()
             when (it) {
-                is Either.Left -> throw it.value.toRuntimeException()
+                is Either.Left -> throw it.value.toStatusException()
                 is Either.Right -> reply.event = it.value.toTransfer()
             }
             reply.build()

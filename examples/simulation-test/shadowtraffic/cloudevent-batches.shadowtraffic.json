@@ -1,0 +1,129 @@
+{
+  "generators": [
+    {
+      "fork": {
+        "key": [
+          "database1",
+          "database2",
+          "database3",
+          "database4",
+          "database5",
+          "database6",
+          "database7",
+          "database8"
+        ]
+      },
+      "localConfigs": {
+        "maxEvents": 1000000000
+      },
+      "vars": {
+        "events": {
+          "_gen": "repeatedly",
+          "n": {"_gen": "uniformDistribution", "bounds": [1, 10], "decimals": 0},
+          "target": {
+            "specversion": "1.0",
+            "id": {"_gen": "uuid"},
+            "source": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+            "type": {"_gen": "string", "expr": "#{HarryPotter.spell}"},
+            "subject": {"_gen": "string", "expr": "#{HarryPotter.character}", "elide": {"rate": 0.2}},
+            "time": {"_gen": "formatDateTime", "ms": {"_gen": "now"}},
+            "datacontenttype": "application/json",
+            "data": {
+              "_gen": "map",
+              "key": {"_gen": "string", "expr": "#{Internet.slug}"},
+              "value": {
+                "_gen": "oneOf",
+                "choices": [
+                  {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                  {"_gen": "string", "expr": "#{HarryPotter.spell}"},
+                  {"_gen": "string", "expr": "#{HarryPotter.quote}"}
+                ]
+              },
+              "n": {"_gen": "uniformDistribution", "bounds": [0, 25], "decimals": 0}
+            }
+          }
+        },
+        "constraints": {
+          "_gen": "repeatedly",
+          "n": {
+            "_gen": "weightedOneOf",
+            "choices": [
+              {"weight": 100, "value": 0},
+              {"weight": 30,  "value": 1},
+              {"weight": 5,   "value": 2},
+              {"weight": 1,   "value": 3}
+            ]
+          },
+          "target": {
+            "_gen": "oneOf",
+            "choices": [
+              {"database_min_revision":
+               {"revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"database_max_revision":
+               {"revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"database_revision_range":
+               {"min": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0},
+                "max": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"stream_min_revision":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"stream_max_revision":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"stream_revision_range":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "min": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0},
+                "max": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_min_revision":
+               {"subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_max_revision":
+               {"subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_revision_range":
+               {"subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "min": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0},
+                "max": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_min_revision_on_stream":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_max_revision_on_stream":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "revision": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}},
+              {"subject_stream_revision_range":
+               {"stream": {"_gen": "string", "expr": "#{Internet.domainSuffix}"},
+                "subject": {"_gen": "string", "expr": "#{HarryPotter.character}"},
+                "min": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0},
+                "max": {"_gen": "uniformDistribution", "bounds": [0, 10000000000], "decimals": 0}}}
+            ]
+          }
+        }
+      },
+      "topic": "cloudevent-batches",
+      "table": "cloudevent-batches",
+      "key": {"_gen": "var", "var": "forkKey"},
+      "value": {
+        "database": {"_gen": "var", "var": "forkKey"},
+        "events": {"_gen": "var", "var": "events"},
+        "constraints": {"_gen": "var", "var": "constraints"}
+      }
+    }
+  ],
+  "connections": {
+    "kafka": {
+      "kind": "kafka",
+      "topicPolicy": {
+        "policy": "create",
+        "partitions": 8,
+        "replicationFactor": {"_gen": "env", "var": "KAFKA_REPLICATION_FACTOR", "as": "integer"}
+      },
+      "producerConfigs": {
+        "bootstrap.servers": {"_gen": "env", "var": "KAFKA_BOOTSTRAP_SERVERS"},
+        "key.serializer": "org.apache.kafka.common.serialization.StringSerializer",
+        "value.serializer": "io.shadowtraffic.kafka.serdes.JsonSerializer"
+      }
+    }
+  }
+}

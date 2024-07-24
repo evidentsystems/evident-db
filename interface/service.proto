@@ -15,12 +15,21 @@ option ruby_package = "Com::EvidentDB::V1::Proto::Service";
 option objc_class_prefix = "EDB";
 
 service EvidentDb {
-  // Command
+  //// Command
+  // Core
   rpc createDatabase(CreateDatabaseRequest) returns (CreateDatabaseReply) {}
   rpc transactBatch(TransactBatchRequest)   returns (TransactBatchReply)  {}
   rpc deleteDatabase(DeleteDatabaseRequest) returns (DeleteDatabaseReply) {}
 
-  // Query
+  // Read Model
+  rpc publishReadModel(PublishReadModelRequest) returns (PublishReadModelReply) {}
+  rpc activateReadModel(ActivateReadModelRequest) returns (ActivateReadModelReply) {}
+  rpc deactivateReadModel(DeactivateReadModelRequest) returns (DeactivateReadModelReply) {}
+  rpc deleteReadModel(DeleteReadModelRequest) returns (DeleteReadModelReply) {}
+
+  //// Query
+
+  // Core
   rpc fetchCatalog(CatalogRequest) returns (stream CatalogReply) {}
   rpc fetchLatestDatabase(LatestDatabaseRequest) returns (DatabaseReply) {}
   rpc awaitDatabase(AwaitDatabaseRequest) returns (DatabaseReply) {}
@@ -28,9 +37,16 @@ service EvidentDb {
   rpc scanDatabaseLog(LogScanRequest) returns (stream DatabaseLogReply) {}
   rpc queryEventIndex(EventIndexRequest) returns (stream EventIndexReply) {}
   rpc fetchEventsByRevisions(EventsByRevisionsRequest) returns (stream EventReply) {}
+
+  // Read Model
+  rpc listReadModels(ListReadModelsRequest) returns (stream ListReadModelsReply) {}
+  rpc fetchReadModelAtRevision(FetchReadModelRequest) returns (ReadModelReply) {}
+  rpc subscribeReadModelUpdates(ReadModelSubscriptionRequest) returns (stream ReadModelReply) {}
 }
 
-// Command API
+//// Command API
+
+// Core
 
 message CreateDatabaseRequest {
   string database_name = 1;
@@ -58,7 +74,62 @@ message DeleteDatabaseReply {
   Database database = 1;
 }
 
-// Query API
+// Read Model Maintenance
+enum ReadModelState {
+  INACTIVE = 0;
+  ACTIVE = 1;
+}
+
+message PublishReadModelRequest {
+  string database_name = 1;
+  string read_model_name = 2;
+  bytes evolve_function_wasm = 3;
+  string evolve_function_version_ref = 4; // Git URI/SHA or build URI/version
+}
+message PublishReadModelReply {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+  string evolve_function_version_ref = 4; // Git URI/SHA or build URI/version
+  ReadModelState state = 5;
+}
+
+message ActivateReadModelRequest {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+}
+message ActivateReadModelReply {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+  ReadModelState state = 4;
+  uint64 latest_revision = 5;
+}
+
+message DeactivateReadModelRequest {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+}
+message DeactivateReadModelReply {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+  ReadModelState state = 4;
+}
+
+message DeleteReadModelRequest {
+  string database_name = 1;
+  string read_model_name = 2;
+}
+message DeleteReadModelReply {
+  string database_name = 1;
+  string read_model_name = 2;
+  // list of versions that were deleted?
+}
+
+//// Query API
 
 message CatalogRequest {}
 message CatalogReply {
@@ -135,4 +206,50 @@ message EventsByRevisionsRequest {
 }
 message EventReply {
   io.cloudevents.v1.CloudEvent event = 1;
+}
+
+// Read Model Queries
+message ListReadModelsRequest {
+  string database_name = 1;
+}
+message ListReadModelsReply {
+  string database_name = 1;
+  string read_model_name = 2;
+  uint64 read_model_version = 3;
+  ReadModelState state = 4;
+  uint64 latest_revision = 5;
+}
+
+message FetchReadModelRequest {
+  string database_name = 1;
+  uint64 revision = 2;
+  string read_model_name = 3;
+  uint64 read_model_version = 4;
+}
+message ReadModelSubscriptionRequest {
+  string database_name = 1;
+  string read_model_name = 3;
+  uint64 read_model_version = 4;
+}
+// Cache-able w/ ETag & Cache-Control on
+// database_name + revision + read_model_name + read_model_version
+message ReadModelReply {
+  string database_name = 1;
+  uint64 revision = 2;
+  string read_model_name = 3;
+  uint64 read_model_version = 4;
+  oneof read_model {
+    ReadModelData data = 5;
+    ReadModelReference reference = 6;
+  }
+
+  message ReadModelData {
+    bytes data = 1;
+    string datacontenttype = 2; // RFC 2046
+    string dataschema = 3; // URI
+  }
+
+  message ReadModelReference {
+    string uri = 1; // URI; destination responsible for content type and schema
+  }
 }
